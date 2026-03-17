@@ -1,0 +1,199 @@
+import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
+import https from 'https';
+import dns from 'dns';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+// Base URL for all APIs (account-ms). Endpoints match Product API doc:
+// POST /api/v1/products/select-type, POST /api/v1/products/create-after-type, POST /api/v1/products (legacy),
+// GET /api/v1/products, GET /api/v1/products/app/:appId
+const PRODUCT_SERVICE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(/\/$/, '');
+
+const agent = new https.Agent({
+  keepAlive: true,
+  family: 4,
+  // @ts-ignore - Node lookup signature compatibility
+  lookup: (hostname: string, _options: unknown, cb: (err: NodeJS.ErrnoException | null, address: string, family: number) => void) =>
+    dns.lookup(hostname, { family: 4 }, cb),
+});
+
+const http = axios.create({
+  timeout: 30000,
+  httpsAgent: agent,
+  validateStatus: () => true,
+  headers: { 'Content-Type': 'application/json' },
+});
+
+function logAxiosError(prefix: string, err: unknown, url?: string) {
+  const ax = err && typeof err === 'object' && 'isAxiosError' in err ? (err as import('axios').AxiosError) : null;
+  const code = ax?.code ?? (err as Error)?.cause;
+  const msg = (err as Error)?.message;
+  console.error(`[Product API] ${prefix}:`, msg || code);
+  console.error(`[Product API] ${prefix} details:`, {
+    url: url ?? ax?.config?.url,
+    code: code ?? 'unknown',
+    message: msg,
+    responseStatus: ax?.response?.status,
+    responseData: ax?.response?.data ? JSON.stringify(ax.response.data).slice(0, 400) : undefined,
+  });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const authHeader = request.headers.get('authorization');
+
+    if (!authHeader) {
+      return NextResponse.json(
+        { success: false, error: 'Authorization required' },
+        { status: 401 }
+      );
+    }
+
+    const { appId, type, name, description, ...rest } = body || {};
+    if (!appId || !type || !name || !description) {
+      return NextResponse.json(
+        { success: false, error: 'appId, type, name, and description are required' },
+        { status: 400 }
+      );
+    }
+
+    console.log('[Product API] Creating product:', { appId, type, name: name?.slice(0, 30) });
+
+    const selectUrl = `${PRODUCT_SERVICE_URL}/api/v1/products/select-type`;
+    console.log('[Product API] POST select-type:', selectUrl);
+
+    let selectResp;
+    try {
+      selectResp = await http.post(selectUrl, { appId, type, ...rest }, {
+        headers: { Authorization: authHeader },
+      });
+    } catch (err) {
+      logAxiosError('select-type request failed', err, selectUrl);
+      return NextResponse.json(
+        { success: false, error: (err as Error)?.message || 'Product service request failed (select-type)' },
+        { status: 500 }
+      );
+    }
+
+    const selectData = selectResp.data;
+    if (selectResp.status !== 200 || !selectData?.data?.id) {
+      console.error('[Product API] select-type error:', { status: selectResp.status, data: selectData });
+      // Fallback: legacy create
+      const legacyUrl = `${PRODUCT_SERVICE_URL}/api/v1/products`;
+      console.log('[Product API] Fallback POST legacy create:', legacyUrl);
+      let legacyResp;
+      try {
+        legacyResp = await http.post(legacyUrl, { appId, type, name, description, ...rest }, {
+          headers: { Authorization: authHeader },
+        });
+      } catch (err) {
+        logAxiosError('legacy create request failed', err, legacyUrl);
+        return NextResponse.json(
+          { success: false, error: (err as Error)?.message || 'Product service request failed (legacy create)' },
+          { status: 500 }
+        );
+      }
+      const legacyData = legacyResp.data;
+      if (legacyResp.status < 200 || legacyResp.status >= 300) {
+        console.error('[Product API] legacy create error:', { status: legacyResp.status, data: legacyData });
+        return NextResponse.json(
+          { success: false, error: legacyData?.error || legacyData?.message || 'Failed to create product' },
+          { status: legacyResp.status }
+        );
+      }
+      console.log('[Product API] Legacy product created successfully');
+      return NextResponse.json(legacyData);
+    }
+
+    const productId = selectData.data.id as string;
+    const createUrl = `${PRODUCT_SERVICE_URL}/api/v1/products/create-after-type`;
+    console.log('[Product API] POST create-after-type:', createUrl, { productId });
+
+    let createResp;
+    try {
+      createResp = await http.post(createUrl, { productId, name, description }, {
+        headers: { Authorization: authHeader },
+      });
+    } catch (err) {
+      logAxiosError('create-after-type request failed', err, createUrl);
+      return NextResponse.json(
+        { success: false, error: (err as Error)?.message || 'Product service request failed (create-after-type)' },
+        { status: 500 }
+      );
+    }
+
+    const createData = createResp.data;
+    if (createResp.status < 200 || createResp.status >= 300) {
+      console.error('[Product API] create-after-type error:', { status: createResp.status, data: createData });
+      return NextResponse.json(
+        { success: false, error: createData?.error || createData?.message || 'Failed to create product' },
+        { status: createResp.status }
+      );
+    }
+
+    console.log('[Product API] Product created successfully');
+    return NextResponse.json(createData);
+  } catch (error: unknown) {
+    console.error('[Product API] Unexpected error:', error);
+    return NextResponse.json(
+      { success: false, error: (error as Error)?.message || 'Failed to create product' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const appId = searchParams.get('appId');
+    const authHeader = request.headers.get('authorization');
+
+    if (!authHeader) {
+      return NextResponse.json(
+        { success: false, error: 'Authorization required' },
+        { status: 401 }
+      );
+    }
+
+    const url = appId
+      ? `${PRODUCT_SERVICE_URL}/api/v1/products/app/${appId}`
+      : `${PRODUCT_SERVICE_URL}/api/v1/products`;
+
+    console.log('[Product API] GET products:', url);
+
+    let response;
+    try {
+      response = await http.get(url, {
+        headers: { Authorization: authHeader },
+      });
+    } catch (err) {
+      logAxiosError('GET products request failed', err, url);
+      return NextResponse.json(
+        { success: false, error: (err as Error)?.message || 'Failed to fetch products' },
+        { status: 500 }
+      );
+    }
+
+    const data = response.data;
+    if (response.status < 200 || response.status >= 300) {
+      console.error('[Product API] GET products error:', { status: response.status, data });
+      return NextResponse.json(
+        { success: false, error: data?.error || data?.message || 'Failed to fetch products' },
+        { status: response.status }
+      );
+    }
+
+    const count = Array.isArray(data?.data) ? data.data.length : (data?.data?.length ?? 0);
+    console.log('[Product API] Products fetched:', count);
+    return NextResponse.json(data);
+  } catch (error: unknown) {
+    console.error('[Product API] GET products unexpected error:', error);
+    return NextResponse.json(
+      { success: false, error: (error as Error)?.message || 'Failed to fetch products' },
+      { status: 500 }
+    );
+  }
+}

@@ -1,0 +1,363 @@
+/**
+ * Client-auth-ms API endpoints and descriptions.
+ * Use with backend base URL: `${NEXT_PUBLIC_API_URL}` (e.g. BACKEND.registration.merchant → POST /api/v1/registration/merchant).
+ *
+ * Total: 44 endpoints (4 root/docs + 4 registration + 7 auth + 3 OTP + 3 password + 10 user + 3 roles + 4 invitations + 2 sessions + 1 verify-email).
+ */
+
+/** Backend path suffixes. Build URL as `${baseUrl}${BACKEND.registration.merchant}` etc. */
+export const BACKEND = {
+  /** Root & docs */
+  root: {
+    /** GET — Service info: name, version, status, and list of endpoint groups. */
+    info: "/",
+    /** GET — Liveness/readiness check for the client-auth service. */
+    health: "/health",
+    /** GET — Serves the Swagger UI for interactive API docs. */
+    apiDocs: "/api-docs",
+    /** GET — OpenAPI (Swagger) spec as JSON. */
+    apiDocsJson: "/api-docs.json",
+  },
+
+  /** Registration (`/api/v1/registration`) — all public */
+  registration: {
+    /** GET — Returns form schemas (fields, labels, validation) for merchant, user, and admin registration. */
+    forms: "/api/v1/registration/forms",
+    /** POST — Registers a new merchant account; sends verification OTP email. */
+    merchant: "/api/v1/registration/merchant",
+    /** POST — Registers a new user account; sends verification OTP email. */
+    user: "/api/v1/registration/user",
+    /** POST — Registers a new admin account. */
+    admin: "/api/v1/registration/admin",
+  },
+
+  /** Auth (`/api/v1/auth`) — only paths under /api/v1/auth */
+  auth: {
+    /** POST — Public. Verifies an account using a token (e.g. from an email link). Not for 6-digit OTP; use otp.verify for that. */
+    verifyAccount: "/api/v1/auth/verify-account",
+    /** POST — Public. Authenticates with email/password; returns access and refresh tokens. */
+    login: "/api/v1/auth/login",
+    /** POST — Public. Issues new access (and optionally refresh) token using a valid refresh token. */
+    refresh: "/api/v1/auth/refresh",
+    /** POST — Public. Validates a JWT (e.g. used by other services to check tokens). */
+    verifyToken: "/api/v1/auth/verify-token",
+    /** GET — Public. Checks whether an email is already registered. */
+    emailExists: (email: string) => `/api/v1/auth/email-exists/${encodeURIComponent(email)}`,
+    /** POST — Bearer. Invalidates the current session / logs the user out. */
+    logout: "/api/v1/auth/logout",
+    /** GET — Bearer. Returns the current authenticated user's profile. */
+    me: "/api/v1/auth/me",
+  },
+
+  /** OTP (`/api/v1/otp`) — only paths under /api/v1/otp */
+  otp: {
+    /** POST — Public. Generates an OTP for an identifier (e.g. email), stores it, and sends it by email or SMS. */
+    generate: "/api/v1/otp/generate",
+    /** POST — Public. Deletes existing OTP for the identifier and sends a new OTP (e.g. "resend code"). */
+    resend: "/api/v1/otp/resend",
+    /** POST — Bearer. Verifies the OTP sent to email (6-digit code); for purpose `verification`, marks email verified and sets status to ACTIVE. */
+    verify: "/api/v1/otp/verify",
+  },
+
+  /** Password (`/api/v1/password`) */
+  password: {
+    /** POST — Public. Sends a password-reset link or OTP to the given email. */
+    forgot: "/api/v1/password/forgot",
+    /** POST — Public. Resets password using a valid reset token (from email link or OTP flow). */
+    reset: "/api/v1/password/reset",
+    /** PUT — Bearer. Changes the authenticated user's password (requires current password). */
+    change: "/api/v1/password/change",
+  },
+
+  /** User (`/api/v1/user`) — all Bearer */
+  user: {
+    /** GET — Lists users (e.g. for the authenticated merchant). */
+    list: "/api/v1/user/list",
+    /** GET — Returns the authenticated user's profile. */
+    profile: "/api/v1/user/profile",
+    /** PUT — Updates the authenticated user's profile (e.g. name, phone). */
+    updateProfile: "/api/v1/user/profile",
+    /** PUT — Updates the user's email (may send a new verification email). */
+    updateEmail: "/api/v1/user/email",
+    /** PUT — Updates a user's status (e.g. active/suspended) by a merchant or admin. */
+    updateStatus: (userId: string) => `/api/v1/user/${encodeURIComponent(userId)}/status`,
+    /** POST — Deactivates the authenticated user's account. */
+    deactivate: "/api/v1/user/deactivate",
+    /** PUT — Updates callback URLs for the authenticated merchant/user. */
+    callbacks: "/api/v1/user/callbacks",
+    /** GET — Returns detailed info for a user (admin). */
+    info: (userId: string) => `/api/v1/user/info/${encodeURIComponent(userId)}`,
+    /** POST — Marks or updates verification info for a user (admin). */
+    verifyInfo: (userId: string) => `/api/v1/user/verify-info/${encodeURIComponent(userId)}`,
+    /** PUT — Suspends a user (admin). */
+    suspend: (userId: string) => `/api/v1/user/suspend/${encodeURIComponent(userId)}`,
+    /** PUT — Reactivates a suspended user (admin). */
+    activate: (userId: string) => `/api/v1/user/activate/${encodeURIComponent(userId)}`,
+  },
+
+  /** Roles (`/api/v1/roles`) — all Bearer */
+  roles: {
+    /** POST — Creates a new role (e.g. for a merchant). */
+    create: "/api/v1/roles",
+    /** GET — Returns roles for the current context (e.g. merchant). */
+    list: "/api/v1/roles",
+    /** GET — Returns the list of available permissions for roles. */
+    permissions: "/api/v1/roles/permissions",
+  },
+
+  /** Invitations (`/api/v1/invitations`) */
+  invitations: {
+    /** POST — Bearer. Creates an invitation (e.g. merchant invites user by email and role). */
+    create: "/api/v1/invitations",
+    /** GET — Bearer. Lists invitations for the authenticated merchant. */
+    list: "/api/v1/invitations",
+    /** GET — Public. Validates an invitation token and returns invitation details (for the invitee). */
+    validate: (token: string) => `/api/v1/invitations/validate/${encodeURIComponent(token)}`,
+    /** POST — Public. Accepts an invitation: creates user account and optionally sets password (invitee). */
+    accept: "/api/v1/invitations/accept",
+  },
+
+  /** Sessions (`/api/v1/sessions`) — all Bearer */
+  sessions: {
+    /** GET — Returns the authenticated user's active sessions (e.g. devices, IPs, last activity). */
+    list: "/api/v1/sessions",
+    /** DELETE — Revokes a specific session (logs out that device). */
+    revoke: (sessionId: string) => `/api/v1/sessions/${encodeURIComponent(sessionId)}`,
+  },
+
+  /** Verify email (`/verify-email`) — public */
+  verifyEmail: {
+    /** GET — Verifies email using a token from the verification link (e.g. in email). */
+    verifyEmail: "/verify-email/verify-email",
+  },
+
+  /**
+   * Compliance / KYC microservice (compliance-ms.fly.dev).
+   * Path suffixes only; base URL is NEXT_PUBLIC_COMPLIANCE_API_URL or https://compliance-ms.fly.dev.
+   */
+  kyc: {
+    /** Individual KYC */
+    individual: {
+      submit: "/api/v1/kyc/individual/submit",
+      message: "/api/v1/kyc/individual/message",
+      messages: "/api/v1/kyc/individual/messages",
+    },
+    /** KYC document upload (multipart/form-data, field: file) */
+    upload: "/api/v1/kyc/upload",
+    /** Business KYC */
+    business: {
+      submit: "/api/v1/kyc/business/submit",
+      businessInfo: "/api/v1/kyc/business/business-info",
+      businessSurvey: "/api/v1/kyc/business/business-survey",
+      status: "/api/v1/kyc/business/status",
+      documents: "/api/v1/kyc/business/documents",
+      document: (documentId: string) =>
+        `/api/v1/kyc/business/document/${encodeURIComponent(documentId)}`,
+      businessTypeOptions: "/api/v1/kyc/business/business-type-options",
+      industryTypeOptions: "/api/v1/kyc/business/industry-type-options",
+      businessModelOptions: "/api/v1/kyc/business/business-model-options",
+      beneficialOwners: (merchantId: string) =>
+        `/api/v1/kyc/business/${encodeURIComponent(merchantId)}/beneficial-owners`,
+      beneficialOwnersPut: "/api/v1/kyc/business/beneficial-owners",
+      riskAssessment: "/api/v1/kyc/business/risk-assessment",
+      enhancedDueDiligence: "/api/v1/kyc/business/enhanced-due-diligence",
+      corporateStructure: "/api/v1/kyc/business/corporate-structure",
+      nonProfitVerification: "/api/v1/kyc/business/non-profit-verification",
+      governmentVerification: "/api/v1/kyc/business/government-verification",
+      message: "/api/v1/kyc/business/message",
+      messages: "/api/v1/kyc/business/messages",
+    },
+    /** KYC status */
+    status: (userId: string) => `/api/v1/kyc/status/${encodeURIComponent(userId)}`,
+    /** Admin — view */
+    admin: {
+      users: "/api/v1/kyc/admin/users",
+      documents: "/api/v1/kyc/admin/documents",
+      profiles: "/api/v1/kyc/admin/profiles",
+      profilesPendingReview: "/api/v1/kyc/admin/profiles/pending-review",
+      profilesHighRisk: "/api/v1/kyc/admin/profiles/high-risk",
+      businesses: (userId: string) => `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}`,
+      businessesBeneficialOwners: (userId: string) =>
+        `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}/beneficial-owners`,
+      businessesCorporateStructure: (userId: string) =>
+        `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}/corporate-structure`,
+      document: (documentId: string) => `/api/v1/kyc/admin/document/${encodeURIComponent(documentId)}`,
+      documentApprove: (documentId: string) =>
+        `/api/v1/kyc/admin/document/${encodeURIComponent(documentId)}/approve`,
+      documentStatus: (documentId: string) =>
+        `/api/v1/kyc/admin/document/${encodeURIComponent(documentId)}/status`,
+      documentVerifyAml: (documentId: string) =>
+        `/api/v1/kyc/admin/document/${encodeURIComponent(documentId)}/verify-aml`,
+      individuals: (userId: string) => `/api/v1/kyc/admin/individuals/${encodeURIComponent(userId)}`,
+      businessesApprove: (userId: string) =>
+        `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}/approve`,
+      businessesReview: (userId: string) =>
+        `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}/review`,
+      businessesRiskLevel: (userId: string) =>
+        `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}/risk-level`,
+      businessesVerifyCertificate: (userId: string) =>
+        `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}/verify-certificate`,
+      businessesMessage: (userId: string) =>
+        `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}/message`,
+      businessesBlock: (userId: string) =>
+        `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}/block`,
+      businessesUnblock: (userId: string) =>
+        `/api/v1/kyc/admin/businesses/${encodeURIComponent(userId)}/unblock`,
+      individualsApprove: (userId: string) =>
+        `/api/v1/kyc/admin/individuals/${encodeURIComponent(userId)}/approve`,
+      individualsReview: (userId: string) =>
+        `/api/v1/kyc/admin/individuals/${encodeURIComponent(userId)}/review`,
+      individualsRiskLevel: (userId: string) =>
+        `/api/v1/kyc/admin/individuals/${encodeURIComponent(userId)}/risk-level`,
+      individualsMessage: (userId: string) =>
+        `/api/v1/kyc/admin/individuals/${encodeURIComponent(userId)}/message`,
+      individualsBlock: (userId: string) =>
+        `/api/v1/kyc/admin/individuals/${encodeURIComponent(userId)}/block`,
+      individualsUnblock: (userId: string) =>
+        `/api/v1/kyc/admin/individuals/${encodeURIComponent(userId)}/unblock`,
+      workflowStatus: (kycId: string) =>
+        `/api/v1/kyc/admin/workflow/${encodeURIComponent(kycId)}/status`,
+      workflowsPending: "/api/v1/kyc/admin/workflows/pending",
+      checkSanctions: "/api/v1/kyc/admin/check-sanctions",
+      reportsRiskSummary: "/api/v1/kyc/admin/reports/risk-summary",
+      reportsComplianceMetrics: "/api/v1/kyc/admin/reports/compliance-metrics",
+      reportsDocumentStatus: "/api/v1/kyc/admin/reports/document-status",
+    },
+  },
+} as const
+
+// ─── Frontend paths (relative to baseURL /api) for Next.js API proxy routes ───
+// Auth + password + OTP handled by /api/v1/auth/[...path] (shows v1 in request path)
+// Compliance (KYC) handled by single catch-all: /api/compliance/[...path]
+const AUTH_BASE = "/v1/auth"
+const OTP_BASE = "/otp"
+const USER_BASE = "/user"
+const COMPLIANCE_BASE = "/compliance"
+
+export const ENDPOINTS = {
+  auth: {
+    login: `${AUTH_BASE}/login`,
+    signup: {
+      merchant: `${AUTH_BASE}/register/merchant`,
+      user: `${AUTH_BASE}/register`,
+      admin: `${AUTH_BASE}/register/admin`,
+    },
+    verify: {
+      account: `${AUTH_BASE}/verify-account`,
+      token: `${AUTH_BASE}/verify-token`,
+      // Frontend verify-email uses OTP verify endpoint: POST /api/v1/otp/verify
+      emailOtp: '/v1/otp/verify',
+    },
+    otp: {
+      resendEmail: `${AUTH_BASE}/resend-email-otp`,
+      generate: `${OTP_BASE}/generate`,
+      verify: `${OTP_BASE}/verify`,
+    },
+    password: {
+      forgot: `${AUTH_BASE}/password/forgot`,
+      reset: `${AUTH_BASE}/password/reset`,
+      change: `${AUTH_BASE}/password/change`,
+    },
+    me: `${AUTH_BASE}/me`,
+    logout: `${AUTH_BASE}/logout`,
+    emailExists: (email: string) => `${AUTH_BASE}/email-exists/${encodeURIComponent(email)}`,
+    sessions: {
+      list: "/sessions",
+      byId: (sessionId: string) => `/sessions/${encodeURIComponent(sessionId)}`,
+    },
+  },
+  user: {
+    list: `${USER_BASE}/list`,
+    profile: `${USER_BASE}/profile`,
+    info: (userId: string) => `${USER_BASE}/info/${encodeURIComponent(userId)}`,
+    getUser: (userId: string) => `${USER_BASE}/info/${encodeURIComponent(userId)}`,
+  },
+  /** Compliance (KYC) — proxy to compliance-ms. Use ENDPOINTS.compliance.*; paths go through /api/compliance/[...path]. */
+  compliance: {
+    individual: {
+      submit: `${COMPLIANCE_BASE}/individual/submit`,
+      message: `${COMPLIANCE_BASE}/individual/message`,
+      messages: `${COMPLIANCE_BASE}/individual/messages`,
+    },
+    upload: `${COMPLIANCE_BASE}/upload`,
+    business: {
+      submit: `${COMPLIANCE_BASE}/business/submit`,
+      businessInfo: `${COMPLIANCE_BASE}/business/business-info`,
+      businessSurvey: `${COMPLIANCE_BASE}/business/business-survey`,
+      status: `${COMPLIANCE_BASE}/business/status`,
+      documents: `${COMPLIANCE_BASE}/business/documents`,
+      document: (documentId: string) =>
+        `${COMPLIANCE_BASE}/business/document/${encodeURIComponent(documentId)}`,
+      businessTypeOptions: `${COMPLIANCE_BASE}/business/business-type-options`,
+      industryTypeOptions: `${COMPLIANCE_BASE}/business/industry-type-options`,
+      businessModelOptions: `${COMPLIANCE_BASE}/business/business-model-options`,
+      beneficialOwners: (merchantId: string) =>
+        `${COMPLIANCE_BASE}/business/${encodeURIComponent(merchantId)}/beneficial-owners`,
+      beneficialOwnersPut: `${COMPLIANCE_BASE}/business/beneficial-owners`,
+      riskAssessment: `${COMPLIANCE_BASE}/business/risk-assessment`,
+      enhancedDueDiligence: `${COMPLIANCE_BASE}/business/enhanced-due-diligence`,
+      corporateStructure: `${COMPLIANCE_BASE}/business/corporate-structure`,
+      nonProfitVerification: `${COMPLIANCE_BASE}/business/non-profit-verification`,
+      governmentVerification: `${COMPLIANCE_BASE}/business/government-verification`,
+      message: `${COMPLIANCE_BASE}/business/message`,
+      messages: `${COMPLIANCE_BASE}/business/messages`,
+    },
+    status: (userId: string) => `${COMPLIANCE_BASE}/status/${encodeURIComponent(userId)}`,
+    admin: {
+      users: `${COMPLIANCE_BASE}/admin/users`,
+      documents: `${COMPLIANCE_BASE}/admin/documents`,
+      profiles: `${COMPLIANCE_BASE}/admin/profiles`,
+      profilesPendingReview: `${COMPLIANCE_BASE}/admin/profiles/pending-review`,
+      profilesHighRisk: `${COMPLIANCE_BASE}/admin/profiles/high-risk`,
+      businesses: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}`,
+      businessesBeneficialOwners: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}/beneficial-owners`,
+      businessesCorporateStructure: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}/corporate-structure`,
+      document: (documentId: string) =>
+        `${COMPLIANCE_BASE}/admin/document/${encodeURIComponent(documentId)}`,
+      documentApprove: (documentId: string) =>
+        `${COMPLIANCE_BASE}/admin/document/${encodeURIComponent(documentId)}/approve`,
+      documentStatus: (documentId: string) =>
+        `${COMPLIANCE_BASE}/admin/document/${encodeURIComponent(documentId)}/status`,
+      documentVerifyAml: (documentId: string) =>
+        `${COMPLIANCE_BASE}/admin/document/${encodeURIComponent(documentId)}/verify-aml`,
+      individuals: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/individuals/${encodeURIComponent(userId)}`,
+      businessesApprove: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}/approve`,
+      businessesReview: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}/review`,
+      businessesRiskLevel: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}/risk-level`,
+      businessesVerifyCertificate: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}/verify-certificate`,
+      businessesMessage: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}/message`,
+      businessesBlock: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}/block`,
+      businessesUnblock: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/businesses/${encodeURIComponent(userId)}/unblock`,
+      individualsApprove: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/individuals/${encodeURIComponent(userId)}/approve`,
+      individualsReview: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/individuals/${encodeURIComponent(userId)}/review`,
+      individualsRiskLevel: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/individuals/${encodeURIComponent(userId)}/risk-level`,
+      individualsMessage: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/individuals/${encodeURIComponent(userId)}/message`,
+      individualsBlock: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/individuals/${encodeURIComponent(userId)}/block`,
+      individualsUnblock: (userId: string) =>
+        `${COMPLIANCE_BASE}/admin/individuals/${encodeURIComponent(userId)}/unblock`,
+      workflowStatus: (kycId: string) =>
+        `${COMPLIANCE_BASE}/admin/workflow/${encodeURIComponent(kycId)}/status`,
+      workflowsPending: `${COMPLIANCE_BASE}/admin/workflows/pending`,
+      checkSanctions: `${COMPLIANCE_BASE}/admin/check-sanctions`,
+      reportsRiskSummary: `${COMPLIANCE_BASE}/admin/reports/risk-summary`,
+      reportsComplianceMetrics: `${COMPLIANCE_BASE}/admin/reports/compliance-metrics`,
+      reportsDocumentStatus: `${COMPLIANCE_BASE}/admin/reports/document-status`,
+    },
+  },
+} as const
