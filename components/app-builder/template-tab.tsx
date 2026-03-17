@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Check, ArrowRight, Rocket, Briefcase, Layers, Eye, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { PREDEFINED_TEMPLATES, PredefinedTemplate } from "@/lib/appService"
+import { PREDEFINED_TEMPLATES, PredefinedTemplate } from "@/lib/services/appService"
 import { MobileTemplatePreview } from "./mobile-template-preview"
 
 interface TemplateTabProps {

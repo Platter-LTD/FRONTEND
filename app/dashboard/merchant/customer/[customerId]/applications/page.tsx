@@ -13,7 +13,7 @@ import CommodityPurchaseDrawer from "@/components/drawers/commodity-purchase-dra
 import ApplicationSuccessDrawer from "@/components/drawers/application-success-drawer"
 import NewApplicationDrawer from "@/components/drawers/new-application-drawer"
 import CustomerAccountsTab from "@/components/customer-accounts-tab"
-import { accountService, Customer, ProductApplication } from "@/lib/accountService"
+import { accountService, Customer, ProductApplication } from "@/lib/services/accountService"
 import { toast } from "sonner"
 
 interface Application {

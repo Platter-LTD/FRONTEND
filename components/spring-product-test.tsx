@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { springProductService } from "@/lib/springProductService"
+import { springProductService } from "@/lib/services/springProductService"
 import { debugJWT } from "@/lib/debugJWT"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"

@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
 import { FaCircleArrowRight } from "react-icons/fa6";
 import { MdOutlineAddCard } from "react-icons/md";
 import { CardAddedDrawer } from "@/components/CardAddedDrawer";
-import paymentService from "@/lib/paymentService";
+import paymentService from "@/lib/services/paymentService";
 import { billingService } from "@/lib/services/billing-service";
 import { toast } from "react-toastify";
 

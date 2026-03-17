@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react'
 import { Drawer } from '@/components/drawer'
 import { Button } from '@/components/ui/button'
 import { ArrowRight, Loader2 } from 'lucide-react'
-import paymentService from '@/lib/paymentService'
-import type { PaymentMethod } from '@/lib/paymentService'
+import paymentService from '@/lib/services/paymentService'
+import type { PaymentMethod } from '@/lib/services/paymentService'
 
 interface SelectCardDrawerProps {
     isOpen: boolean

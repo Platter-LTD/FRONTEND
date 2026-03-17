@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import TextInput from "@/components/text-input"
 import InputGroup from "@/components/input-group"
-import { loanApi, pricingApi } from "@/lib/accountService"
+import { loanApi, pricingApi } from "@/lib/services/accountService"
 import { Loader2 } from "lucide-react"
 
 interface LoanApplicationDrawerProps {

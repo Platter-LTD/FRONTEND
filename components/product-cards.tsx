@@ -5,7 +5,7 @@ import Image from "next/image"
 import { Switch } from "@/components/ui/switch"
 import { Clock, Globe, Loader2 } from "lucide-react"
 import { ProductDetailModal } from "@/components/product-detail-modal"
-import { springProductService } from "@/lib/springProductService"
+import { springProductService } from "@/lib/services/springProductService"
 import { toast } from "sonner"
 
 interface Product {

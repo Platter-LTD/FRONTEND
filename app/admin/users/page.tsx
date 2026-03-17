@@ -5,7 +5,7 @@ import { Search, ChevronDown, Loader2, RefreshCw, UserX } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
-import { adminUsersApi, AdminUser } from "@/lib/adminService"
+import { adminUsersApi, AdminUser } from "@/lib/services/adminService"
 import { toast } from "sonner"
 
 const STATUS_STYLES: Record<string, string> = {

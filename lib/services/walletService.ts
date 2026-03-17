@@ -1,16 +1,9 @@
 // Wallet Service - Comprehensive API wrapper for wallet operations
+// Uses fetchWithAuth so 401 triggers silent refresh then retry (no logout on first 401).
 
-import { getAccessToken } from '@/lib/cookieAuth';
+import { fetchWithAuth } from '@/lib/fetchWithAuth';
 
-const WALLET_API_BASE = process.env.NEXT_PUBLIC_WALLET_SERVICE_URL || 'https://wallet-ms.fly.dev';
-
-const getAuthHeaders = () => {
-  const token = typeof window !== 'undefined' ? getAccessToken() : null;
-  return {
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
-  };
-};
+const WALLET_API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
 
 // Types
 export interface Wallet {
@@ -67,9 +60,8 @@ export const merchantWalletApi = {
    * Create a merchant wallet
    */
   async createMerchantWallet(merchantId: string, walletType: 'TREASURY' | 'OPERATION' | 'KYC') {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/merchant`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/merchant`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ merchantId, walletType }),
     });
 
@@ -86,9 +78,8 @@ export const merchantWalletApi = {
    * Create all merchant wallets (Treasury, Operation, KYC)
    */
   async createAllMerchantWallets(merchantId: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/merchant/all`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/merchant/all`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ merchantId }),
     });
 
@@ -105,9 +96,8 @@ export const merchantWalletApi = {
    * Get specific merchant wallet by type
    */
   async getMerchantWallet(merchantId: string, walletType: 'TREASURY' | 'OPERATION' | 'KYC') {
-    const response = await fetch(
-      `${WALLET_API_BASE}/api/v1/wallets/merchant/${merchantId}/type/${walletType}`,
-      { headers: getAuthHeaders() }
+    const response = await fetchWithAuth(
+      `${WALLET_API_BASE}/api/v1/wallets/merchant/${merchantId}/type/${walletType}`
     );
 
     const data = await response.json();
@@ -133,8 +123,7 @@ export const merchantWalletApi = {
    * Get all merchant wallets
    */
   async getAllMerchantWallets(merchantId: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/merchant/${merchantId}/all`, {
-      headers: getAuthHeaders(),
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/merchant/${merchantId}/all`, {
     });
 
     const data = await response.json();
@@ -150,9 +139,8 @@ export const merchantWalletApi = {
    * Update merchant wallet balance
    */
   async updateMerchantWalletBalance(merchantId: string, walletType: string, amount: number) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/merchant/balance`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/merchant/balance`, {
       method: 'PUT',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ merchantId, walletType, amount }),
     });
 
@@ -172,9 +160,8 @@ export const userWalletApi = {
    * Create a user wallet
    */
   async createUserWallet(userId: string, merchantId: string, description?: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/user`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/user`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ userId, merchantId, description }),
     });
 
@@ -191,8 +178,7 @@ export const userWalletApi = {
    * Get user wallet
    */
   async getUserWallet(userId: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/user/${userId}`, {
-      headers: getAuthHeaders(),
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/user/${userId}`, {
     });
 
     const data = await response.json();
@@ -208,9 +194,8 @@ export const userWalletApi = {
    * Update user wallet balance
    */
   async updateUserWalletBalance(userId: string, amount: number, description?: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/user/${userId}/balance`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/user/${userId}/balance`, {
       method: 'PUT',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ amount, description }),
     });
 
@@ -247,7 +232,7 @@ export const userWalletApi = {
     }
 
     const url = `${WALLET_API_BASE}/api/v1/wallets/user/${userId}/transactions?${queryParams.toString()}`;
-    const response = await fetch(url, { headers: getAuthHeaders() });
+    const response = await fetchWithAuth(url, {});
 
     const data = await response.json();
     
@@ -269,9 +254,8 @@ export const userWalletApi = {
       description: string;
     }
   ) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/user/${userId}/transfer`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/user/${userId}/transfer`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify(transferData),
     });
 
@@ -299,9 +283,8 @@ export const userWalletApi = {
       apiKey?: string;
     }
   ) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/user/${userId}/api-call`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/user/${userId}/api-call`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify(apiCallData),
     });
 
@@ -318,8 +301,7 @@ export const userWalletApi = {
    * Get all user wallets for a merchant
    */
   async getUserWalletsByMerchant(merchantId: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/merchant/${merchantId}/users`, {
-      headers: getAuthHeaders(),
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/merchant/${merchantId}/users`, {
     });
 
     const data = await response.json();
@@ -338,9 +320,8 @@ export const walletTransferApi = {
    * Transfer from Operation wallet to KYC wallet
    */
   async transferOperationToKyc(merchantId: string, amount: number, description: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/operation-to-kyc`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/operation-to-kyc`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ merchantId, amount, description }),
     });
 
@@ -361,9 +342,8 @@ export const walletTransferApi = {
    * Transfer from KYC wallet to Operation wallet
    */
   async transferKycToOperation(merchantId: string, amount: number, description: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/kyc-to-operation`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/kyc-to-operation`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ merchantId, amount, description }),
     });
 
@@ -407,7 +387,7 @@ export const transactionApi = {
     }
 
     const url = `${WALLET_API_BASE}/api/v1/wallets/operation/${merchantId}/transactions?${queryParams.toString()}`;
-    const response = await fetch(url, { headers: getAuthHeaders() });
+    const response = await fetchWithAuth(url, {});
 
     const data = await response.json();
     
@@ -452,7 +432,7 @@ export const transactionApi = {
     }
 
     const url = `${WALLET_API_BASE}/api/v1/wallets/kyc/${merchantId}/transactions?${queryParams.toString()}`;
-    const response = await fetch(url, { headers: getAuthHeaders() });
+    const response = await fetchWithAuth(url, {});
 
     const data = await response.json();
     
@@ -470,9 +450,8 @@ export const billingApi = {
    * Debit Operation wallet
    */
   async debitOperationWallet(merchantId: string, amount: number, description: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/operation/debit`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/operation/debit`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ merchantId, amount, description }),
     });
 
@@ -489,9 +468,8 @@ export const billingApi = {
    * Debit KYC wallet
    */
   async debitKycWallet(merchantId: string, amount: number, description: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/kyc/debit`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/kyc/debit`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ merchantId, amount, description }),
     });
 
@@ -508,9 +486,8 @@ export const billingApi = {
    * Process KYC fee
    */
   async processKycFee(merchantId: string, amount: number, description?: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/kyc/fee`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/kyc/fee`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ merchantId, amount, description: description || 'KYC Fee' }),
     });
 
@@ -527,9 +504,8 @@ export const billingApi = {
    * Debit user wallet (for billing)
    */
   async debitUserWallet(userId: string, amount: number, description: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/treasury/debit`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/treasury/debit`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ userId, amount, description }),
     });
 
@@ -546,9 +522,8 @@ export const billingApi = {
    * Debit Treasury wallet
    */
   async debitTreasuryWallet(merchantId: string, amount: number, description: string) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/treasury/debit-merchant`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/treasury/debit-merchant`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify({ merchantId, amount, description }),
     });
 
@@ -575,9 +550,8 @@ export const fundingApi = {
     provider: string;
     metadata?: any;
   }) {
-    const response = await fetch(`${WALLET_API_BASE}/api/v1/wallets/funding/callback`, {
+    const response = await fetchWithAuth(`${WALLET_API_BASE}/api/v1/wallets/funding/callback`, {
       method: 'POST',
-      headers: getAuthHeaders(),
       body: JSON.stringify(callbackData),
     });
 
@@ -594,9 +568,9 @@ export const fundingApi = {
    * Check funding status
    */
   async checkFundingStatus(transactionId: string) {
-    const response = await fetch(
+    const response = await fetchWithAuth(
       `${WALLET_API_BASE}/api/v1/wallets/funding/status/${transactionId}`,
-      { headers: getAuthHeaders() }
+      {}
     );
 
     const data = await response.json();

@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { CreditCard, Plus, Loader2, Building2, Wallet } from "lucide-react"
-import paymentService from "@/lib/paymentService"
-import type { PaymentMethod } from "@/lib/paymentService"
+import paymentService from "@/lib/services/paymentService"
+import type { PaymentMethod } from "@/lib/services/paymentService"
 
 export function BillingPaymentMethodsTab() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])

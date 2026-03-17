@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { useAppBuilder } from "@/contexts/AppBuilderContext"
 import { useState, useEffect } from "react"
-import { appConfigurationApi, type AppConfiguration } from "@/lib/appService"
+import { appConfigurationApi, type AppConfiguration } from "@/lib/services/appService"
 import { toast } from "sonner"
 import { format, formatDistanceToNow } from "date-fns"
 

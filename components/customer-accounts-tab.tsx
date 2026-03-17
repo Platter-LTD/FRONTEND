@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Account, accountService } from "@/lib/accountService"
+import { Account, accountService } from "@/lib/services/accountService"
 import {
     RefreshCw,
     DollarSign,

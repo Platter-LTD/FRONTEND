@@ -15,7 +15,7 @@ import {
     AlertCircle,
     Timer
 } from "lucide-react"
-import { accountService, ProductApplication } from "@/lib/accountService"
+import { accountService, ProductApplication } from "@/lib/services/accountService"
 import ApplicationDetailDrawer from "@/components/drawers/application-detail-drawer"
 import { toast } from "sonner"
 

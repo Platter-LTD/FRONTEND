@@ -11,7 +11,7 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { accountService, Customer } from "@/lib/accountService"
+import { accountService, Customer } from "@/lib/services/accountService"
 import { toast } from "sonner"
 
 // Fallback mock customers data - used when API is unavailable

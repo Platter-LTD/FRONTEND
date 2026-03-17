@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Check, ArrowRight, Building2, Wallet, FilePlus2, Rocket, Briefcase, Layers, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { PREDEFINED_TEMPLATES, PredefinedTemplate } from "@/lib/appService"
+import { PREDEFINED_TEMPLATES, PredefinedTemplate } from "@/lib/services/appService"
 
 interface TemplateSelectionPageProps {
     onTemplateSelected: (template: PredefinedTemplate) => void

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Search, Loader2, RefreshCw, WalletCards, Copy } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { adminWalletApi, AdminWalletTransaction } from "@/lib/adminService"
+import { adminWalletApi, AdminWalletTransaction } from "@/lib/services/adminService"
 import WalletHistoryDrawer from "@/components/drawers/wallet-history-drawer"
 import { toast } from "sonner"
 

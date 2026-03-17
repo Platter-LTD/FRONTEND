@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
-import { Account, accountService } from "@/lib/accountService"
+import { Account, accountService } from "@/lib/services/accountService"
 import {
     Loader2,
     DollarSign,

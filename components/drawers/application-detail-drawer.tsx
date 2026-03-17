@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
-import { accountService, ProductApplication } from "@/lib/accountService"
+import { accountService, ProductApplication } from "@/lib/services/accountService"
 import {
     Loader2,
     CheckCircle2,
