@@ -24,11 +24,7 @@ const SECURITY_OPTIONS = [
   { id: "mixed-security", label: "Mixed Security" },
 ]
 
-const CURRENCY_OPTIONS = ["NGN - Nigerian Naira", "USD - US Dollar", "GBP - British Pound", "EUR - Euro", "GHS - Ghanaian Cedi", "KES - Kenyan Shilling"]
-const AMORTIZATION_OPTIONS = ["Equal installments", "Equal principal payment"]
 const CHARGES_OPTIONS = ["Disbursement fee by transfer", "Initiation fee", "Insurance fee", "Interest charge", "Processing fee"]
-const DEFAULT_REPAYMENT_CYCLES = ["Daily", "Weekly", "Monthly", "Quarterly", "Annually"]
-const DEFAULT_MORATORIUM_OPTIONS = ["None", "1 month", "3 months", "6 months", "12 months"]
 
 function normalizeOptions(data: unknown): string[] {
   if (data && typeof data === 'object' && 'data' in data) return normalizeOptions((data as { data: unknown }).data)
@@ -43,8 +39,11 @@ function normalizeOptions(data: unknown): string[] {
 
 export default function ConfigureMortgageDrawer({ isOpen, onClose, onSubmit, mortgageData }: ConfigureMortgageDrawerProps) {
   const [step, setStep] = useState(1)
-  const [repaymentCycleOptions, setRepaymentCycleOptions] = useState<string[]>(DEFAULT_REPAYMENT_CYCLES)
+  const [repaymentCycleOptions, setRepaymentCycleOptions] = useState<string[]>([])
   const [moratoriumOptions, setMoratoriumOptions] = useState<string[]>([])
+  const [mortgageTenureOptions, setMortgageTenureOptions] = useState<string[]>([])
+  const [currencyOptions, setCurrencyOptions] = useState<string[]>([])
+  const [amortizationOptions, setAmortizationOptions] = useState<string[]>([])
   const [purpose, setPurpose] = useState(mortgageData?.description || "")
   const [repaymentCycle, setRepaymentCycle] = useState("")
   const [mortgageTenure, setMortgageTenure] = useState("")
@@ -70,7 +69,6 @@ export default function ConfigureMortgageDrawer({ isOpen, onClose, onSubmit, mor
   const [npa, setNpa] = useState("")
   const [charges, setCharges] = useState("")
 
-  // Fetch moratorium and repayment-cycle options from API when drawer opens
   useEffect(() => {
     if (!isOpen) return
     const token = typeof window !== 'undefined' ? getAccessToken() : null
@@ -78,11 +76,15 @@ export default function ConfigureMortgageDrawer({ isOpen, onClose, onSubmit, mor
     Promise.all([
       fetch('/api/configurations/options/repayment-cycle', { credentials: 'include', headers }).then((r) => r.json()),
       fetch('/api/configurations/options/moratorium', { credentials: 'include', headers }).then((r) => r.json()),
-    ]).then(([repRes, morRes]) => {
-      const cycles = normalizeOptions(repRes?.data ?? repRes)
-      if (cycles.length) setRepaymentCycleOptions(cycles)
-      const mor = normalizeOptions(morRes?.data ?? morRes)
-      setMoratoriumOptions(mor.length ? mor : DEFAULT_MORATORIUM_OPTIONS)
+      fetch('/api/configurations/options/loan-tenure', { credentials: 'include', headers }).then((r) => r.json()),
+      fetch('/api/configurations/options/amortization', { credentials: 'include', headers }).then((r) => r.json()),
+      fetch('/api/configurations/options/currency', { credentials: 'include', headers }).then((r) => r.json()),
+    ]).then(([repRes, morRes, tenureRes, amortRes, currencyRes]) => {
+      setRepaymentCycleOptions(normalizeOptions(repRes?.data ?? repRes))
+      setMoratoriumOptions(normalizeOptions(morRes?.data ?? morRes))
+      setMortgageTenureOptions(normalizeOptions(tenureRes?.data ?? tenureRes))
+      setAmortizationOptions(normalizeOptions(amortRes?.data ?? amortRes))
+      setCurrencyOptions(normalizeOptions(currencyRes?.data ?? currencyRes))
     }).catch(() => {})
   }, [isOpen])
 
@@ -227,7 +229,7 @@ export default function ConfigureMortgageDrawer({ isOpen, onClose, onSubmit, mor
           <InputGroup
             label="Currency"
             placeholder="Select Currency"
-            options={CURRENCY_OPTIONS}
+            options={currencyOptions}
             value={currency}
             onChange={setCurrency}
             accentColor="#9A813F"
@@ -245,7 +247,7 @@ export default function ConfigureMortgageDrawer({ isOpen, onClose, onSubmit, mor
           <InputGroup
             label="Mortgage Tenure"
             placeholder="Mortgage Tenure"
-            options={["5 years", "10 years", "15 years", "20 years", "25 years", "30 years"]}
+            options={mortgageTenureOptions}
             value={mortgageTenure}
             onChange={setMortgageTenure}
             accentColor="#9A813F"
@@ -254,7 +256,7 @@ export default function ConfigureMortgageDrawer({ isOpen, onClose, onSubmit, mor
           <InputGroup
             label="Amortization"
             placeholder="Select Amortization Method"
-            options={AMORTIZATION_OPTIONS}
+            options={amortizationOptions}
             value={amortization}
             onChange={setAmortization}
             accentColor="#9A813F"

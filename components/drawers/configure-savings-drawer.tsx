@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Upload } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,8 @@ export default function ConfigureSavingsDrawer({ isOpen, onClose, onSubmit, savi
   const [purpose, setPurpose] = useState(savingsData?.description || "")
   const [depositCycle, setDepositCycle] = useState("")
   const [savingsTenure, setSavingsTenure] = useState("")
+  const [depositCycleOptions, setDepositCycleOptions] = useState<string[]>([])
+  const [savingsTenureOptions, setSavingsTenureOptions] = useState<string[]>([])
   const [securityRequirements, setSecurityRequirements] = useState<string[]>([])
   const [minDepositAmount, setMinDepositAmount] = useState("")
   const [maxDepositAmount, setMaxDepositAmount] = useState("")
@@ -37,6 +39,45 @@ export default function ConfigureSavingsDrawer({ isOpen, onClose, onSubmit, savi
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const fetchOptions = async () => {
+      try {
+        const [tenureRes, depRes] = await Promise.all([
+          fetch("/api/configurations/options/savings-tenure", { credentials: "include" }),
+          fetch("/api/configurations/options/savings-deposit-cycle", { credentials: "include" }),
+        ])
+
+        const tenureJson = await tenureRes.json().catch(() => ({}))
+        const depJson = await depRes.json().catch(() => ({}))
+
+        const tenureList = (tenureJson?.data ?? []) as { value?: string | number; label?: string }[]
+        const depList = (depJson?.data ?? []) as { value?: string; label?: string }[]
+
+        const tenure =
+          Array.isArray(tenureList) && tenureList.length
+            ? tenureList
+                .map((x) => x.label || String(x.value ?? ""))
+                .filter((v): v is string => typeof v === "string" && v.length > 0)
+            : []
+        const dep =
+          Array.isArray(depList) && depList.length
+            ? depList
+                .map((x) => x.label || x.value)
+                .filter((v): v is string => typeof v === "string" && v.length > 0)
+            : []
+
+        if (tenure.length) setSavingsTenureOptions(tenure)
+        if (dep.length) setDepositCycleOptions(dep)
+      } catch {
+        // keep defaults
+      }
+    }
+
+    fetchOptions()
+  }, [isOpen])
 
   // Format number with commas
   const formatWithCommas = (value: string) => {
@@ -169,7 +210,7 @@ export default function ConfigureSavingsDrawer({ isOpen, onClose, onSubmit, savi
           <InputGroup
             label="Deposit Cycle"
             placeholder="Deposit Cycle"
-            options={["Daily", "Weekly", "Monthly", "Quarterly", "Annually"]}
+            options={depositCycleOptions}
             value={depositCycle}
             onChange={setDepositCycle}
             accentColor="#9A813F"
@@ -178,7 +219,7 @@ export default function ConfigureSavingsDrawer({ isOpen, onClose, onSubmit, savi
           <InputGroup
             label="Savings Tenure"
             placeholder="Savings Tenure"
-            options={["3 months", "6 months", "12 months", "24 months", "36 months", "No fixed tenure"]}
+            options={savingsTenureOptions}
             value={savingsTenure}
             onChange={setSavingsTenure}
             accentColor="#9A813F"

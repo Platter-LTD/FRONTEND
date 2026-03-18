@@ -50,6 +50,7 @@ export function ProductsTab() {
   // Processing state
   const [isProcessingOpen, setIsProcessingOpen] = useState(false)
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
+  const [currentProductType, setCurrentProductType] = useState<string>("")
 
   const [products, setProducts] = useState([
     {
@@ -99,6 +100,7 @@ export function ProductsTab() {
   }
 
   const handleProductSelect = (productType: string) => {
+    setCurrentProductType(productType)
     setIsCreateProductOpen(false)
     if (productType === "loan") {
       setIsCreateLoanOpen(true)
@@ -107,6 +109,8 @@ export function ProductsTab() {
     } else if (productType === "savings") {
       setIsCreateSavingsOpen(true)
     } else if (productType === "commodity") {
+      setIsCreateCommodityOpen(true)
+    } else if (productType === "investment") {
       setIsCreateCommodityOpen(true)
     }
   }
@@ -365,6 +369,7 @@ export function ProductsTab() {
         onClose={() => setIsCreateCommodityOpen(false)}
         onSubmit={handleCreateCommodity}
         onBack={handleBackToProductSelection}
+        variant={currentProductType === "investment" ? "investment" : "commodity"}
       />
       
       {/* Configuration Drawers */}
@@ -391,6 +396,7 @@ export function ProductsTab() {
         onClose={() => setIsConfigureCommodityOpen(false)}
         onSubmit={handleConfigureCommodity}
         commodityData={commodityData}
+        variant={currentProductType === "investment" ? "investment" : "commodity"}
       />
       
       {/* Processing Drawer */}
@@ -400,7 +406,14 @@ export function ProductsTab() {
       <LoanCreatedSuccessDrawer isOpen={isLoanSuccessOpen} onClose={() => setIsLoanSuccessOpen(false)} />
       <MortgageCreatedSuccessDrawer isOpen={isMortgageSuccessOpen} onClose={() => setIsMortgageSuccessOpen(false)} />
       <SavingsCreatedSuccessDrawer isOpen={isSavingsSuccessOpen} onClose={() => setIsSavingsSuccessOpen(false)} />
-      <CommodityCreatedSuccessDrawer isOpen={isCommoditySuccessOpen} onClose={() => setIsCommoditySuccessOpen(false)} />
+      <CommodityCreatedSuccessDrawer
+        isOpen={isCommoditySuccessOpen}
+        onClose={() => {
+          setIsCommoditySuccessOpen(false)
+          setCurrentProductType("")
+        }}
+        variant={currentProductType === "investment" ? "investment" : "commodity"}
+      />
     </>
   )
 }

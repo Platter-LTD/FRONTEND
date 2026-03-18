@@ -50,11 +50,12 @@ export default function ProductsPage() {
   const [isSavingsSuccessOpen, setIsSavingsSuccessOpen] = useState(false)
   const [savingsData, setSavingsData] = useState<any>(null)
 
-  // Commodity states
+  // Commodity / Investment creation uses the same drawer & flow
   const [isCreateCommodityOpen, setIsCreateCommodityOpen] = useState(false)
   const [isConfigureCommodityOpen, setIsConfigureCommodityOpen] = useState(false)
   const [isCommoditySuccessOpen, setIsCommoditySuccessOpen] = useState(false)
   const [commodityData, setCommodityData] = useState<any>(null)
+  const [currentCreateType, setCurrentCreateType] = useState<string | null>(null)
 
   // Processing state
   const [isProcessingOpen, setIsProcessingOpen] = useState(false)
@@ -92,6 +93,7 @@ export default function ProductsPage() {
 
   const handleProductSelect = (productType: string) => {
     setIsCreateProductOpen(false)
+    setCurrentCreateType(productType)
     if (productType === "loan") {
       setIsCreateLoanOpen(true)
     } else if (productType === "mortgage") {
@@ -99,6 +101,9 @@ export default function ProductsPage() {
     } else if (productType === "savings") {
       setIsCreateSavingsOpen(true)
     } else if (productType === "commodity") {
+      setIsCreateCommodityOpen(true)
+    } else if (productType === "investment") {
+      // Reuse the same creation drawer & flow as commodity
       setIsCreateCommodityOpen(true)
     }
   }
@@ -191,8 +196,8 @@ export default function ProductsPage() {
     try {
       // Create product with incomplete status
       const result = await productApi.createProduct({
-        name: data?.productName || "Mortgage Product",
-        description: data?.description || "Mortgage product",
+        name: data?.productName,
+        description: data?.description,
         type: "Mortgage",
         appId: appId,
         status: 'complete',
@@ -325,11 +330,12 @@ export default function ProductsPage() {
     setIsProcessingOpen(true)
 
     try {
-      // Create product with incomplete status
+      // Create product with incomplete status; use Investment type when selected
+      const isInvestment = currentCreateType === "investment"
       const result = await productApi.createProduct({
-        name: data?.productName || "Commodity Product",
-        description: data?.description || "Commodity product",
-        type: "Commodity",
+        name: data?.productName || (isInvestment ? "Investment Product" : "Commodity Product"),
+        description: data?.description || (isInvestment ? "Investment product" : "Commodity product"),
+        type: isInvestment ? "Investment" : "Commodity",
         appId: appId,
         status: 'complete',
         isActive: true
@@ -362,8 +368,10 @@ export default function ProductsPage() {
 
     try {
       if (configuringProductId) {
-        // Save configuration and update status to complete
-        await productApi.saveProductConfiguration(configuringProductId, 'Commodity', configData)
+        // Save configuration and update status to complete.
+        // Investment uses same form/flow but different productType on the backend.
+        const configType = (configuringProductType || "").toLowerCase() === "investment" ? "Investment" : "Commodity"
+        await productApi.saveProductConfiguration(configuringProductId, configType, configData)
         await productApi.updateProduct(configuringProductId, { status: 'complete' })
 
         // Refetch products to ensure we have the latest data
@@ -398,6 +406,8 @@ export default function ProductsPage() {
     } else if (type === 'savings') {
       setIsConfigureSavingsOpen(true)
     } else if (type === 'commodity') {
+      setIsConfigureCommodityOpen(true)
+    } else if (type === 'investment') {
       setIsConfigureCommodityOpen(true)
     }
   }
@@ -591,12 +601,14 @@ export default function ProductsPage() {
         onClose={() => setIsCreateCommodityOpen(false)}
         onSubmit={handleCreateCommodity}
         onBack={handleBackToProductSelection}
+        variant={currentCreateType === "investment" ? "investment" : "commodity"}
       />
       <ConfigureCommodityDrawer
         isOpen={isConfigureCommodityOpen}
         onClose={() => setIsConfigureCommodityOpen(false)}
         onSubmit={handleConfigureCommodity}
         commodityData={commodityData}
+        variant={configuringProductType?.toLowerCase() === "investment" ? "investment" : "commodity"}
       />
 
       {/* Processing Drawer */}
@@ -630,6 +642,7 @@ export default function ProductsPage() {
           setIsCommoditySuccessOpen(false)
           setCommodityData(null)
         }}
+        variant={currentCreateType === "investment" ? "investment" : "commodity"}
       />
     </div>
   )

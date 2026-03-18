@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Upload } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,20 @@ export default function ConfigureInvestmentDrawer({ isOpen, onClose, onSubmit, i
   const [purpose, setPurpose] = useState(investmentData?.description || "")
   const [payoutCycle, setPayoutCycle] = useState("")
   const [investmentTenure, setInvestmentTenure] = useState("")
+  const [tradingCycleOptions, setTradingCycleOptions] = useState<string[]>([
+    "Daily",
+    "Weekly",
+    "Monthly",
+    "Quarterly",
+    "Seasonally",
+  ])
+  const [investmentTenureOptions, setInvestmentTenureOptions] = useState<string[]>([
+    "3 months",
+    "6 months",
+    "12 months",
+    "24 months",
+    "Open-ended",
+  ])
   const [securityRequirements, setSecurityRequirements] = useState<string[]>([])
   const [minInvestmentAmount, setMinInvestmentAmount] = useState("")
   const [maxInvestmentAmount, setMaxInvestmentAmount] = useState("")
@@ -43,6 +57,45 @@ export default function ConfigureInvestmentDrawer({ isOpen, onClose, onSubmit, i
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const fetchOptions = async () => {
+      try {
+        const [tradingRes, tenureRes] = await Promise.all([
+          fetch("/api/configurations/options/investment-trading-cycle", { credentials: "include" }),
+          fetch("/api/configurations/options/investment-tenure", { credentials: "include" }),
+        ])
+
+        const tradingJson = await tradingRes.json().catch(() => ({}))
+        const tenureJson = await tenureRes.json().catch(() => ({}))
+
+        const tradingList = (tradingJson?.data ?? []) as { value?: string; label?: string }[]
+        const tenureList = (tenureJson?.data ?? []) as { value?: string; label?: string }[]
+
+        const trading =
+          Array.isArray(tradingList) && tradingList.length
+            ? tradingList
+                .map((x) => x.label || x.value)
+                .filter((v): v is string => typeof v === "string" && v.length > 0)
+            : []
+        const tenure =
+          Array.isArray(tenureList) && tenureList.length
+            ? tenureList
+                .map((x) => x.label || x.value)
+                .filter((v): v is string => typeof v === "string" && v.length > 0)
+            : []
+
+        if (trading.length) setPayoutCycle(trading[0])
+        if (tenure.length) setInvestmentTenureOptions(tenure)
+      } catch {
+        // keep defaults
+      }
+    }
+
+    fetchOptions()
+  }, [isOpen])
 
   // Format number with commas
   const formatWithCommas = (value: string) => {
@@ -184,7 +237,7 @@ export default function ConfigureInvestmentDrawer({ isOpen, onClose, onSubmit, i
           <InputGroup
             label="Payout Cycle"
             placeholder="Select payout cycle"
-            options={PAYOUT_OPTIONS}
+            options={tradingCycleOptions}
             value={payoutCycle}
             onChange={setPayoutCycle}
             accentColor={accentColor}

@@ -8,9 +8,16 @@ interface CommodityCreatedSuccessDrawerProps {
   isOpen: boolean
   onClose: () => void
   accentColor?: string
+  variant?: "commodity" | "investment"
 }
 
-export default function CommodityCreatedSuccessDrawer({ isOpen, onClose, accentColor = "#9A813F" }: CommodityCreatedSuccessDrawerProps) {
+export default function CommodityCreatedSuccessDrawer({
+  isOpen,
+  onClose,
+  accentColor = "#9A813F",
+  variant = "commodity",
+}: CommodityCreatedSuccessDrawerProps) {
+  const isInvestment = variant === "investment"
   return (
     <Drawer open={isOpen} onOpenChange={onClose} title="" subtitle="">
       <div className="flex flex-col items-center justify-center text-center py-12">
@@ -18,7 +25,9 @@ export default function CommodityCreatedSuccessDrawer({ isOpen, onClose, accentC
           <CheckCircle className="text-green-600" size={32} />
         </div>
 
-        <h2 className="text-2xl font-semibold text-gray-900 mb-2">Commodity created successfully</h2>
+        <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+          {isInvestment ? "Investment created successfully" : "Commodity created successfully"}
+        </h2>
         <p className="text-sm text-gray-600 mb-8">Your product has been created</p>
 
         <Button 

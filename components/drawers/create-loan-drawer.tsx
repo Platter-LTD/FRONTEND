@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import TextInput from "@/components/text-input"
@@ -18,6 +18,39 @@ export default function CreateLoanDrawer({ isOpen, onClose, onSubmit, onBack, ac
   const [productName, setProductName] = useState("")
   const [description, setDescription] = useState("")
   const [productType, setProductType] = useState("")
+  const [subtypeOptions, setSubtypeOptions] = useState<string[]>([
+    "Personal Loan",
+    "Business Loan",
+    "Mortgage",
+    "Auto Loan",
+  ])
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const fetchSubtypes = async () => {
+      try {
+        const res = await fetch("/api/v1/products/types/loan/subtypes", {
+          credentials: "include",
+        })
+        const json = await res.json()
+        const list = (json?.data ?? []) as { value?: string; label?: string }[]
+        const normalized =
+          Array.isArray(list) && list.length
+            ? list
+                .map((x) => x.label || x.value)
+                .filter((v): v is string => typeof v === "string" && v.length > 0)
+            : []
+        if (normalized.length) {
+          setSubtypeOptions(normalized)
+        }
+      } catch {
+        // keep default options on failure
+      }
+    }
+
+    fetchSubtypes()
+  }, [isOpen])
 
   const handleSubmit = () => {
     onSubmit({ productName, description, productType })
@@ -54,7 +87,7 @@ export default function CreateLoanDrawer({ isOpen, onClose, onSubmit, onBack, ac
         <InputGroup
           label="Product Type"
           placeholder="Product Type"
-          options={["Personal Loan", "Business Loan", "Mortgage", "Auto Loan"]}
+          options={subtypeOptions}
           value={productType}
           onChange={setProductType}
           accentColor={accentColor}

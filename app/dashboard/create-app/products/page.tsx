@@ -124,6 +124,9 @@ export default function ProductsPage() {
       setIsCreateSavingsOpen(true)
     } else if (productType === "commodity") {
       setIsCreateCommodityOpen(true)
+    } else if (productType === "investment") {
+      // Reuse the same creation flow and form as Commodity
+      setIsCreateCommodityOpen(true)
     }
   }
 
@@ -453,6 +456,7 @@ export default function ProductsPage() {
         onClose={() => setIsCreateCommodityOpen(false)}
         onSubmit={handleCreateCommodity}
         onBack={handleBackToProductSelection}
+        variant={currentProductType === "investment" ? "investment" : "commodity"}
       />
       
       {/* Configuration Drawers */}
@@ -482,6 +486,7 @@ export default function ProductsPage() {
         onClose={() => setIsConfigureCommodityOpen(false)}
         onSubmit={handleConfigureCommodity}
         commodityData={commodityData}
+        variant={currentProductType === "investment" ? "investment" : "commodity"}
       />
       
       {/* Processing Drawer */}
@@ -519,6 +524,7 @@ export default function ProductsPage() {
           setCommodityData(null)
           setCurrentProductType("")
         }}
+        variant={currentProductType === "investment" ? "investment" : "commodity"}
       />
     </div>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Upload } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,7 @@ interface ConfigureCommodityDrawerProps {
   onClose: () => void
   onSubmit: (data: any) => void
   commodityData: any
+  variant?: "commodity" | "investment"
 }
 
 const SECURITY_OPTIONS = [
@@ -23,11 +24,32 @@ const SECURITY_OPTIONS = [
   { id: "none", label: "None" },
 ]
 
-export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, commodityData }: ConfigureCommodityDrawerProps) {
+export default function ConfigureCommodityDrawer({
+  isOpen,
+  onClose,
+  onSubmit,
+  commodityData,
+  variant = "commodity",
+}: ConfigureCommodityDrawerProps) {
+  const isInvestment = variant === "investment"
   const [step, setStep] = useState(1)
   const [purpose, setPurpose] = useState(commodityData?.description || "")
   const [tradingCycle, setTradingCycle] = useState("")
-  const [commodityTenure, setCommodityTenure] = useState("")
+  const [tenureSelection, setTenureSelection] = useState("")
+  const [tradingCycleOptions, setTradingCycleOptions] = useState<string[]>([
+    "Daily",
+    "Weekly",
+    "Monthly",
+    "Quarterly",
+    "Seasonally",
+  ])
+  const [tenureOptions, setTenureOptions] = useState<string[]>([
+    "3 months",
+    "6 months",
+    "12 months",
+    "24 months",
+    "Open-ended",
+  ])
   const [securityRequirements, setSecurityRequirements] = useState<string[]>([])
   const [minInvestmentAmount, setMinInvestmentAmount] = useState("")
   const [maxInvestmentAmount, setMaxInvestmentAmount] = useState("")
@@ -37,6 +59,51 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!isOpen) return
+
+    const fetchOptions = async () => {
+      try {
+        const tradingUrl = isInvestment
+          ? "/api/configurations/options/investment-trading-cycle"
+          : "/api/configurations/options/commodity-trading-cycle"
+        const tenureUrl = isInvestment
+          ? "/api/configurations/options/investment-tenure"
+          : "/api/configurations/options/commodity-tenure"
+        const [tradingRes, tenureRes] = await Promise.all([
+          fetch(tradingUrl, { credentials: "include" }),
+          fetch(tenureUrl, { credentials: "include" }),
+        ])
+
+        const tradingJson = await tradingRes.json().catch(() => ({}))
+        const tenureJson = await tenureRes.json().catch(() => ({}))
+
+        const tradingList = (tradingJson?.data ?? []) as { value?: string; label?: string }[]
+        const tenureList = (tenureJson?.data ?? []) as { value?: string; label?: string }[]
+
+        const trading =
+          Array.isArray(tradingList) && tradingList.length
+            ? tradingList
+                .map((x) => x.label || x.value)
+                .filter((v): v is string => typeof v === "string" && v.length > 0)
+            : []
+        const tenure =
+          Array.isArray(tenureList) && tenureList.length
+            ? tenureList
+                .map((x) => x.label || x.value)
+                .filter((v): v is string => typeof v === "string" && v.length > 0)
+            : []
+
+        if (trading.length) setTradingCycleOptions(trading)
+        if (tenure.length) setTenureOptions(tenure)
+      } catch {
+        // keep defaults
+      }
+    }
+
+    fetchOptions()
+  }, [isOpen, isInvestment])
 
   // Format number with commas
   const formatWithCommas = (value: string) => {
@@ -113,18 +180,35 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
         return
       }
       
-      onSubmit({
-        ...commodityData,
-        purpose,
-        tradingCycle,
-        commodityTenure,
-        securityRequirements,
-        minInvestmentAmount: removeCommas(minInvestmentAmount),
-        maxInvestmentAmount: removeCommas(maxInvestmentAmount),
-        managementFee,
-        minWithdrawalAmount: removeCommas(minWithdrawalAmount),
-        expectedReturn,
-      })
+      if (isInvestment) {
+        onSubmit({
+          ...commodityData,
+          purpose,
+          tradingCycle,
+          investmentTenure: tenureSelection,
+          investmentType:
+            commodityData?.investmentType ?? commodityData?.productType ?? commodityData?.productSubtype,
+          securityRequirements,
+          minimumOrderQuantity: removeCommas(minInvestmentAmount),
+          price: removeCommas(maxInvestmentAmount),
+          managementFeePercent: managementFee,
+          minimumRedemptionAmount: removeCommas(minWithdrawalAmount),
+          expectedAnnualReturn: expectedReturn,
+        })
+      } else {
+        onSubmit({
+          ...commodityData,
+          purpose,
+          tradingCycle,
+          commodityTenure: tenureSelection,
+          securityRequirements,
+          minInvestmentAmount: removeCommas(minInvestmentAmount),
+          maxInvestmentAmount: removeCommas(maxInvestmentAmount),
+          managementFee,
+          minWithdrawalAmount: removeCommas(minWithdrawalAmount),
+          expectedReturn,
+        })
+      }
     }
   }
 
@@ -148,8 +232,16 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
     <Drawer
       open={isOpen}
       onOpenChange={onClose}
-      title="Configure commodity product"
-      subtitle={step === 1 ? "Create the product you want" : "Product amount details"}
+      title={isInvestment ? "Configure investment product" : "Configure commodity product"}
+      subtitle={
+        step === 1
+          ? isInvestment
+            ? "Investment purpose and schedule"
+            : "Create the product you want"
+          : isInvestment
+            ? "Commitment and return details"
+            : "Product amount details"
+      }
     >
       <div className="mb-4">{breadcrumb}</div>
 
@@ -167,20 +259,20 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
           </div>
 
           <InputGroup
-            label="Trading Cycle"
-            placeholder="Trading Cycle"
-            options={["Daily", "Weekly", "Monthly", "Quarterly", "Seasonally"]}
+            label={isInvestment ? "Investment trading cycle" : "Trading cycle"}
+            placeholder={isInvestment ? "Select cycle" : "Trading cycle"}
+            options={tradingCycleOptions}
             value={tradingCycle}
             onChange={setTradingCycle}
             accentColor="#9A813F"
           />
 
           <InputGroup
-            label="Commodity Tenure"
-            placeholder="Commodity Tenure"
-            options={["3 months", "6 months", "12 months", "24 months", "Open-ended"]}
-            value={commodityTenure}
-            onChange={setCommodityTenure}
+            label={isInvestment ? "Investment tenure" : "Commodity tenure"}
+            placeholder={isInvestment ? "Investment tenure" : "Commodity tenure"}
+            options={tenureOptions}
+            value={tenureSelection}
+            onChange={setTenureSelection}
             accentColor="#9A813F"
           />
 
@@ -232,7 +324,7 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
 
           <Button
             onClick={handleNext}
-            disabled={!purpose || !tradingCycle || !commodityTenure || securityRequirements.length === 0}
+            disabled={!purpose || !tradingCycle || !tenureSelection || securityRequirements.length === 0}
             className="w-full bg-black text-white hover:bg-gray-800 h-12 mt-6"
           >
             Next
@@ -243,7 +335,9 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
       {step === 2 && (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Investment Amount (₦)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {isInvestment ? "Minimum order quantity (₦)" : "Minimum investment amount (₦)"}
+            </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">₦</span>
               <input
@@ -257,7 +351,9 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Maximum Investment Amount (₦)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {isInvestment ? "Reference price / max commitment (₦)" : "Maximum investment amount (₦)"}
+            </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">₦</span>
               <input
@@ -275,7 +371,9 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Management Fee (%)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {isInvestment ? "Management fee (%)" : "Management fee (%)"}
+            </label>
             <div className="relative">
               <input
                 type="text"
@@ -290,7 +388,9 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Withdrawal Amount (₦)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {isInvestment ? "Minimum redemption amount (₦)" : "Minimum withdrawal amount (₦)"}
+            </label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">₦</span>
               <input
@@ -304,7 +404,9 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Expected Return (% per annum)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {isInvestment ? "Expected annual return (% p.a.)" : "Expected return (% per annum)"}
+            </label>
             <div className="relative">
               <input
                 type="text"
@@ -327,7 +429,7 @@ export default function ConfigureCommodityDrawer({ isOpen, onClose, onSubmit, co
               disabled={!minInvestmentAmount || !maxInvestmentAmount || !managementFee || !minWithdrawalAmount || !expectedReturn}
               className="flex-1 bg-black text-white hover:bg-gray-800 h-12"
             >
-              Save Configuration
+              {isInvestment ? "Save investment configuration" : "Save configuration"}
             </Button>
           </div>
         </div>
