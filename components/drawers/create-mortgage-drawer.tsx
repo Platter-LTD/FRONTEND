@@ -18,19 +18,14 @@ export default function CreateMortgageDrawer({ isOpen, onClose, onSubmit, onBack
   const [productName, setProductName] = useState("")
   const [description, setDescription] = useState("")
   const [productType, setProductType] = useState("")
-  const [subtypeOptions, setSubtypeOptions] = useState<string[]>([
-    "Fixed Rate Mortgage",
-    "Adjustable Rate Mortgage",
-    "FHA Loan",
-    "VA Loan",
-  ])
+  const [subtypeOptions, setSubtypeOptions] = useState<string[]>([])
 
   useEffect(() => {
     if (!isOpen) return
 
     const fetchSubtypes = async () => {
       try {
-        const res = await fetch("/api/v1/products/types/mortgage/subtypes", {
+        const res = await fetch("/api/v1/products/types/Mortgage/subtypes", {
           credentials: "include",
         })
         const json = await res.json()

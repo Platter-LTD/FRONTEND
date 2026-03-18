@@ -18,19 +18,14 @@ export default function CreateInvestmentDrawer({ isOpen, onClose, onSubmit, onBa
   const [productName, setProductName] = useState("")
   const [description, setDescription] = useState("")
   const [productType, setProductType] = useState("")
-  const [subtypeOptions, setSubtypeOptions] = useState<string[]>([
-    "Agricultural Commodity",
-    "Energy Commodity",
-    "Metal Commodity",
-    "Precious Metal",
-  ])
+  const [subtypeOptions, setSubtypeOptions] = useState<string[]>([])
 
   useEffect(() => {
     if (!isOpen) return
 
     const fetchSubtypes = async () => {
       try {
-        const res = await fetch("/api/v1/products/types/investment/subtypes", {
+        const res = await fetch("/api/v1/products/types/Investment/subtypes", {
           credentials: "include",
         })
         const json = await res.json()

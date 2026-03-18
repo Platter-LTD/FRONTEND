@@ -16,12 +16,7 @@ interface CreateCommodityDrawerProps {
   variant?: "commodity" | "investment"
 }
 
-const COMMODITY_SUBTYPE_DEFAULTS = [
-  "Agricultural Commodity",
-  "Energy Commodity",
-  "Metal Commodity",
-  "Precious Metal",
-]
+const COMMODITY_SUBTYPE_DEFAULTS: string[] = []
 
 export default function CreateCommodityDrawer({
   isOpen,
@@ -41,7 +36,7 @@ export default function CreateCommodityDrawer({
     if (!isOpen) return
 
     const fetchSubtypes = async () => {
-      const path = isInvestment ? "investment" : "commodity"
+      const path = isInvestment ? "Investment" : "Commodity"
       const defaults = isInvestment ? [...COMMODITY_SUBTYPE_DEFAULTS] : COMMODITY_SUBTYPE_DEFAULTS
       try {
         const res = await fetch(`/api/v1/products/types/${path}/subtypes`, {

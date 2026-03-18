@@ -18,19 +18,14 @@ export default function CreateSavingsDrawer({ isOpen, onClose, onSubmit, onBack,
   const [productName, setProductName] = useState("")
   const [description, setDescription] = useState("")
   const [productType, setProductType] = useState("")
-  const [subtypeOptions, setSubtypeOptions] = useState<string[]>([
-    "Fixed Deposit",
-    "Regular Savings",
-    "Target Savings",
-    "Group Savings",
-  ])
+  const [subtypeOptions, setSubtypeOptions] = useState<string[]>([])
 
   useEffect(() => {
     if (!isOpen) return
 
     const fetchSubtypes = async () => {
       try {
-        const res = await fetch("/api/v1/products/types/savings/subtypes", {
+        const res = await fetch("/api/v1/products/types/Savings/subtypes", {
           credentials: "include",
         })
         const json = await res.json()
