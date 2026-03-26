@@ -7,8 +7,7 @@ import { FiEyeOff, FiEye } from "react-icons/fi"
 import { IoIosCopy } from "react-icons/io"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getAccessToken } from "@/lib/cookieAuth"
-import { fetchWithAuth } from "@/lib/fetchWithAuth"
-import { merchantWalletApi, type MerchantWallet, type Transaction } from "@/lib/services/walletService"
+import { merchantWalletApi, transactionApi, type MerchantWallet, type Transaction } from "@/lib/services/walletService"
 
 interface WalletRecord {
   amount: string
@@ -39,7 +38,6 @@ export default function TreasuryWalletPage() {
   const appId = params.id as string
   
   const [wallet, setWallet] = useState<MerchantWallet | null>(null)
-  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [walletRecords, setWalletRecords] = useState<WalletRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -66,22 +64,14 @@ export default function TreasuryWalletPage() {
         setError(null)
         
         // Fetch treasury wallet using merchantId from token
-        const walletResponse = await merchantWalletApi.getMerchantWallet(merchantId, 'TREASURY')
+        const walletResponse = await merchantWalletApi.getMerchantWallet(merchantId, 'TREASURY', appId)
         if (walletResponse.success && walletResponse.data) {
           setWallet(walletResponse.data)
         }
 
-        // Fetch treasury transactions (fetchWithAuth does 401 → refresh → retry)
-        const WALLET_API_BASE = process.env.NEXT_PUBLIC_WALLET_SERVICE_URL || 'https://wallet-ms.fly.dev'
-        const transactionsResponse = await fetchWithAuth(
-          `${WALLET_API_BASE}/api/v1/wallets/treasury/${merchantId}/transactions`
-        )
-        
-        const transactionsData = await transactionsResponse.json()
-        // Handle nested response: { data: { transactions: [...] } }
-        const txArray = transactionsData.data?.transactions || transactionsData.data || []
-        if (transactionsData.success && Array.isArray(txArray)) {
-          setTransactions(txArray)
+        const transactionsResponse = await transactionApi.getTreasuryTransactions(merchantId)
+        const txArray = Array.isArray(transactionsResponse.data) ? transactionsResponse.data : []
+        if (transactionsResponse.success) {
           // Transform transactions to wallet records format
           const records = txArray.map((tx: Transaction) => ({
             amount: `$${Math.abs(tx.amount).toFixed(2)}`,
@@ -112,7 +102,7 @@ export default function TreasuryWalletPage() {
     if (merchantId) {
       fetchWalletData()
     }
-  }, [merchantId])
+  }, [merchantId, appId])
 
   const handleCopyRef = (ref: string) => {
     navigator.clipboard.writeText(ref)

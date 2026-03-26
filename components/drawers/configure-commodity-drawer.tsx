@@ -1,12 +1,20 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
-import { Upload } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import TextInput from "@/components/text-input"
-import InputGroup from "@/components/input-group"
+import { Switch } from "@/components/ui/switch"
+import { fileToBase64 } from "@/lib/fileUtils"
+import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
+import type { CommodityConfigurePrefetched } from "@/lib/productConfigurePrefetch"
+import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
+import {
+  ProductConfigInput,
+  ProductConfigSelect,
+  ProductConfigTabs,
+  ProductConfigToggle,
+} from "@/components/drawers/product-config-form-fields"
 
 interface ConfigureCommodityDrawerProps {
   isOpen: boolean
@@ -14,15 +22,40 @@ interface ConfigureCommodityDrawerProps {
   onSubmit: (data: any) => void
   commodityData: any
   variant?: "commodity" | "investment"
+  prefetchedOptions?: CommodityConfigurePrefetched | null
 }
 
-const SECURITY_OPTIONS = [
-  { id: "market-insurance", label: "Market Insurance" },
-  { id: "storage-insurance", label: "Storage Insurance" },
-  { id: "quality-assurance", label: "Quality Assurance" },
-  { id: "delivery-guarantee", label: "Delivery Guarantee" },
-  { id: "none", label: "None" },
-]
+const DEFAULT_TENURE: string[] = []
+const DEFAULT_YIELD_METHOD_OPTIONS: string[] = []
+const DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS: string[] = []
+const DEFAULT_FEE_TYPE_OPTIONS: string[] = []
+const DEFAULT_PENALTY_TYPE_OPTIONS: string[] = []
+const TRIGGER_DURATION_OPTIONS: string[] = []
+
+interface TypeRow {
+  name: string
+  description: string
+}
+
+interface FeeItem {
+  name: string
+  feeType: string
+  value: string
+}
+
+interface PenaltyItem {
+  name: string
+  type: string
+  value: string
+  triggerDuration: string
+}
+
+interface PriceRow {
+  id: string
+  price: string
+  date: string
+  source: string
+}
 
 export default function ConfigureCommodityDrawer({
   isOpen,
@@ -30,410 +63,650 @@ export default function ConfigureCommodityDrawer({
   onSubmit,
   commodityData,
   variant = "commodity",
+  prefetchedOptions = null,
 }: ConfigureCommodityDrawerProps) {
   const isInvestment = variant === "investment"
+
+  const steps = useMemo(
+    () =>
+      isInvestment
+        ? (["About Product", "Structure", "Fees & Charges", "Unit Price"] as const)
+        : (["About Product", "Structure", "Fees & Charges", "Commodity Price"] as const),
+    [isInvestment],
+  )
+
   const [step, setStep] = useState(1)
-  const [purpose, setPurpose] = useState(commodityData?.description || "")
-  const [tradingCycle, setTradingCycle] = useState("")
-  const [tenureSelection, setTenureSelection] = useState("")
-  const [tradingCycleOptions, setTradingCycleOptions] = useState<string[]>([
-    "Daily",
-    "Weekly",
-    "Monthly",
-    "Quarterly",
-    "Seasonally",
-  ])
-  const [tenureOptions, setTenureOptions] = useState<string[]>([
-    "3 months",
-    "6 months",
-    "12 months",
-    "24 months",
-    "Open-ended",
-  ])
-  const [securityRequirements, setSecurityRequirements] = useState<string[]>([])
-  const [minInvestmentAmount, setMinInvestmentAmount] = useState("")
-  const [maxInvestmentAmount, setMaxInvestmentAmount] = useState("")
-  const [managementFee, setManagementFee] = useState("")
-  const [minWithdrawalAmount, setMinWithdrawalAmount] = useState("")
-  const [expectedReturn, setExpectedReturn] = useState("")
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [tenureOptions, setTenureOptions] = useState<string[]>(DEFAULT_TENURE)
+  const [yieldMethodOptions, setYieldMethodOptions] = useState<string[]>(DEFAULT_YIELD_METHOD_OPTIONS)
+  const [withdrawalFlexibilityOptions, setWithdrawalFlexibilityOptions] = useState<string[]>(DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS)
+  const [feeTypeOptions, setFeeTypeOptions] = useState<string[]>(DEFAULT_FEE_TYPE_OPTIONS)
+  const [penaltyTypeOptions, setPenaltyTypeOptions] = useState<string[]>(DEFAULT_PENALTY_TYPE_OPTIONS)
+  const [triggerDurationOptions, setTriggerDurationOptions] = useState<string[]>(TRIGGER_DURATION_OPTIONS)
+
+  const [name, setName] = useState(commodityData?.name || "")
+  const [duration, setDuration] = useState("")
+  const [description, setDescription] = useState(commodityData?.description || "")
+  const [typeNameDraft, setTypeNameDraft] = useState("")
+  const [typeDescDraft, setTypeDescDraft] = useState("")
+  const [typeRows, setTypeRows] = useState<TypeRow[]>([])
+  const [previewImage, setPreviewImage] = useState<File | null>(null)
+
+  const [yieldMethod, setYieldMethod] = useState("")
+  const [offerYieldOn, setOfferYieldOn] = useState(true)
+  const [offerYieldValue, setOfferYieldValue] = useState("")
+  const [withdrawalFlexibility, setWithdrawalFlexibility] = useState("")
+  const [unitAmount, setUnitAmount] = useState("")
+  const [minQuantityPurchase, setMinQuantityPurchase] = useState("")
+  const [maxAmount, setMaxAmount] = useState("")
+  const [termsAndConditions, setTermsAndConditions] = useState("")
+  const [moratoriumEnabled, setMoratoriumEnabled] = useState(true)
+  const [moratoriumDays, setMoratoriumDays] = useState("")
+  const [contractId, setContractId] = useState("")
+  const [airSignSecretKey, setAirSignSecretKey] = useState("")
+  const [airSignUid, setAirSignUid] = useState("")
+
+  const [chargeName, setChargeName] = useState("")
+  const [chargeFeeType, setChargeFeeType] = useState("")
+  const [chargeValue, setChargeValue] = useState("")
+  const [charges, setCharges] = useState<FeeItem[]>([])
+  const [forcefulWithdrawal, setForcefulWithdrawal] = useState(true)
+  const [penaltyName, setPenaltyName] = useState("")
+  const [penaltyType, setPenaltyType] = useState("")
+  const [penaltyValue, setPenaltyValue] = useState("")
+  const [penaltyTriggerDuration, setPenaltyTriggerDuration] = useState("")
+  const [penalties, setPenalties] = useState<PenaltyItem[]>([])
+
+  const isPercentType = (value: string) => value.toLowerCase().includes("percent")
+  const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
+  const normalizePercentInput = (raw: string) => {
+    const numeric = cleanNumeric(raw)
+    if (!numeric) return ""
+    return `${numeric}%`
+  }
+  const normalizeTypedValue = (raw: string, type: string) => {
+    const numeric = cleanNumeric(raw)
+    if (!numeric) return ""
+    return isPercentType(type) ? `${numeric}%` : numeric
+  }
+  const handleChargeFeeTypeChange = (nextType: string) => {
+    setChargeFeeType(nextType)
+    setChargeValue((prev) => normalizeTypedValue(prev, nextType))
+  }
+  const handlePenaltyTypeChange = (nextType: string) => {
+    setPenaltyType(nextType)
+    setPenaltyValue((prev) => normalizeTypedValue(prev, nextType))
+  }
+  const handleChargeValueChange = (value: string) => {
+    setChargeValue(normalizeTypedValue(value, chargeFeeType))
+  }
+  const handlePenaltyValueChange = (value: string) => {
+    setPenaltyValue(normalizeTypedValue(value, penaltyType))
+  }
+  const handleOfferYieldValueChange = (value: string) => {
+    setOfferYieldValue(normalizePercentInput(value))
+  }
+
+  const [priceDraft, setPriceDraft] = useState("")
+  const [priceDate, setPriceDate] = useState("")
+  const [priceSource, setPriceSource] = useState("")
+  const [priceRows, setPriceRows] = useState<PriceRow[]>([])
+
+  const resetForm = useCallback(() => {
+    setStep(1)
+    setName(commodityData?.name || "")
+    setDuration("")
+    setDescription(commodityData?.description || "")
+    setTypeRows([])
+    setPreviewImage(null)
+    setYieldMethod("")
+    setOfferYieldOn(true)
+    setOfferYieldValue("")
+    setWithdrawalFlexibility("")
+    setUnitAmount("")
+    setMinQuantityPurchase("")
+    setMaxAmount("")
+    setTermsAndConditions("")
+    setMoratoriumEnabled(true)
+    setMoratoriumDays("")
+    setContractId("")
+    setAirSignSecretKey("")
+    setAirSignUid("")
+    setCharges([])
+    setForcefulWithdrawal(true)
+    setPenalties([])
+    setPriceRows([])
+  }, [commodityData?.name, commodityData?.description])
+
+  useEffect(() => {
+    if (isOpen) resetForm()
+  }, [isOpen, resetForm])
 
   useEffect(() => {
     if (!isOpen) return
-
-    const fetchOptions = async () => {
+    if (prefetchedOptions) {
+      setTenureOptions(prefetchedOptions.tenure.length ? prefetchedOptions.tenure : DEFAULT_TENURE)
+      setYieldMethodOptions(prefetchedOptions.yieldMethod)
+      setWithdrawalFlexibilityOptions(prefetchedOptions.withdrawalFlexibility)
+      setFeeTypeOptions(prefetchedOptions.feeType)
+      setPenaltyTypeOptions(prefetchedOptions.penaltyType)
+      setTriggerDurationOptions(prefetchedOptions.triggerDuration)
+      return
+    }
+    const url = isInvestment
+      ? "/api/configurations/options/investment-tenure"
+      : "/api/configurations/options/commodity-tenure"
+    const fetchTenure = async () => {
       try {
-        const tradingUrl = isInvestment
-          ? "/api/configurations/options/investment-trading-cycle"
-          : "/api/configurations/options/commodity-trading-cycle"
-        const tenureUrl = isInvestment
-          ? "/api/configurations/options/investment-tenure"
-          : "/api/configurations/options/commodity-tenure"
-        const [tradingRes, tenureRes] = await Promise.all([
-          fetch(tradingUrl, { credentials: "include" }),
-          fetch(tenureUrl, { credentials: "include" }),
-        ])
-
-        const tradingJson = await tradingRes.json().catch(() => ({}))
-        const tenureJson = await tenureRes.json().catch(() => ({}))
-
-        const tradingList = (tradingJson?.data ?? []) as { value?: string; label?: string }[]
-        const tenureList = (tenureJson?.data ?? []) as { value?: string; label?: string }[]
-
-        const trading =
-          Array.isArray(tradingList) && tradingList.length
-            ? tradingList
-                .map((x) => x.label || x.value)
-                .filter((v): v is string => typeof v === "string" && v.length > 0)
+        const res = await fetch(url, { credentials: "include", cache: "no-store" })
+        const json = await res.json().catch(() => ({}))
+        const list = (json?.data ?? []) as { value?: string; label?: string }[]
+        const opts =
+          Array.isArray(list) && list.length
+            ? list.map((x) => x.label || x.value).filter((v): v is string => typeof v === "string" && v.length > 0)
             : []
-        const tenure =
-          Array.isArray(tenureList) && tenureList.length
-            ? tenureList
-                .map((x) => x.label || x.value)
-                .filter((v): v is string => typeof v === "string" && v.length > 0)
-            : []
-
-        if (trading.length) setTradingCycleOptions(trading)
-        if (tenure.length) setTenureOptions(tenure)
+        if (opts.length) setTenureOptions(opts)
       } catch {
-        // keep defaults
+        setTenureOptions(DEFAULT_TENURE)
       }
+      const [withdrawalFlexibility, feeTypes, penaltyTypes, triggerDuration] = await Promise.all([
+        fetchOptionLabels("withdrawal-flexibility", DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS),
+        fetchOptionLabels("fee-type", DEFAULT_FEE_TYPE_OPTIONS),
+        fetchOptionLabels("penalty-type", DEFAULT_PENALTY_TYPE_OPTIONS),
+        fetchProductOptionLabels("trigger-duration", TRIGGER_DURATION_OPTIONS),
+      ])
+      setWithdrawalFlexibilityOptions(withdrawalFlexibility)
+      setFeeTypeOptions(feeTypes)
+      setPenaltyTypeOptions(penaltyTypes)
+      setTriggerDurationOptions(triggerDuration)
+
+      const yieldOptions = await fetchOptionLabels(
+        isInvestment ? "investment-trading-cycle" : "commodity-trading-cycle",
+        DEFAULT_YIELD_METHOD_OPTIONS,
+      )
+      setYieldMethodOptions(yieldOptions)
     }
+    fetchTenure()
+  }, [isOpen, isInvestment, prefetchedOptions])
 
-    fetchOptions()
-  }, [isOpen, isInvestment])
+  useEffect(() => {
+    if (!moratoriumEnabled) setMoratoriumDays("")
+  }, [moratoriumEnabled])
 
-  // Format number with commas
   const formatWithCommas = (value: string) => {
-    const numericValue = value.replace(/[^0-9.]/g, '')
-    const parts = numericValue.split('.')
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-    return parts.join('.')
+    const numericValue = value.replace(/[^0-9.]/g, "")
+    const parts = numericValue.split(".")
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+    return parts.join(".")
   }
 
-  // Remove commas for storage
-  const removeCommas = (value: string) => {
-    return value.replace(/,/g, '')
-  }
+  const removeCommas = (value: string) => value.replace(/,/g, "")
 
-  // Handle currency input change
   const handleCurrencyChange = (value: string, setter: (val: string) => void) => {
-    const rawValue = removeCommas(value)
-    if (rawValue === '' || /^\d*\.?\d{0,2}$/.test(rawValue)) {
-      setter(formatWithCommas(rawValue))
+    const raw = removeCommas(value)
+    if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) {
+      setter(formatWithCommas(raw))
     }
   }
 
-  // Handle percentage input change with max 100 validation
-  const handlePercentageChange = (value: string, setter: (val: string) => void, fieldName: string) => {
-    const rawValue = value.replace(/[^0-9.]/g, '')
-    if (rawValue === '' || /^\d*\.?\d{0,2}$/.test(rawValue)) {
-      const numValue = parseFloat(rawValue)
-      if (rawValue === '' || numValue <= 100) {
-        setter(rawValue)
-        setErrors(prev => ({ ...prev, [fieldName]: '' }))
-      } else {
-        setErrors(prev => ({ ...prev, [fieldName]: 'Percentage cannot exceed 100%' }))
-      }
-    }
+  const addTypeRow = () => {
+    if (!typeNameDraft.trim() || !typeDescDraft.trim()) return
+    setTypeRows((prev) => [...prev, { name: typeNameDraft.trim(), description: typeDescDraft.trim() }])
+    setTypeNameDraft("")
+    setTypeDescDraft("")
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (file.type !== 'application/pdf') {
-        alert('Please upload a PDF file')
-        return
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        alert('File size must be less than 5MB')
-        return
-      }
-      setUploadedFile(file)
-    }
+  const addCharge = () => {
+    if (!chargeName.trim() || !chargeFeeType || !chargeValue.trim()) return
+    setCharges((prev) => [...prev, { name: chargeName.trim(), feeType: chargeFeeType, value: chargeValue.trim() }])
+    setChargeName("")
+    setChargeFeeType("")
+    setChargeValue("")
   }
 
-  const handleSecurityChange = (optionId: string, checked: boolean) => {
-    if (checked) {
-      setSecurityRequirements(prev => [...prev, optionId])
-    } else {
-      setSecurityRequirements(prev => prev.filter(id => id !== optionId))
-    }
+  const addPenalty = () => {
+    if (!penaltyName.trim() || !penaltyType || !penaltyValue.trim() || !penaltyTriggerDuration) return
+    setPenalties((prev) => [
+      ...prev,
+      {
+        name: penaltyName.trim(),
+        type: penaltyType,
+        value: penaltyValue.trim(),
+        triggerDuration: penaltyTriggerDuration,
+      },
+    ])
+    setPenaltyName("")
+    setPenaltyType("")
+    setPenaltyValue("")
+    setPenaltyTriggerDuration("")
   }
 
-  const handleNext = () => {
-    if (step === 1) {
-      setStep(2)
-    } else if (step === 2) {
-      // Validate before submit
-      const minAmount = parseFloat(removeCommas(minInvestmentAmount))
-      const maxAmount = parseFloat(removeCommas(maxInvestmentAmount))
-      
-      if (maxAmount < minAmount) {
-        setErrors(prev => ({ ...prev, maxAmount: 'Maximum must be greater than minimum' }))
-        return
-      }
-      
-      if (errors.managementFee || errors.expectedReturn) {
-        return
-      }
-      
-      if (isInvestment) {
-        onSubmit({
-          ...commodityData,
-          purpose,
-          tradingCycle,
-          investmentTenure: tenureSelection,
-          investmentType:
-            commodityData?.investmentType ?? commodityData?.productType ?? commodityData?.productSubtype,
-          securityRequirements,
-          minimumOrderQuantity: removeCommas(minInvestmentAmount),
-          price: removeCommas(maxInvestmentAmount),
-          managementFeePercent: managementFee,
-          minimumRedemptionAmount: removeCommas(minWithdrawalAmount),
-          expectedAnnualReturn: expectedReturn,
-        })
-      } else {
-        onSubmit({
-          ...commodityData,
-          purpose,
-          tradingCycle,
-          commodityTenure: tenureSelection,
-          securityRequirements,
-          minInvestmentAmount: removeCommas(minInvestmentAmount),
-          maxInvestmentAmount: removeCommas(maxInvestmentAmount),
-          managementFee,
-          minWithdrawalAmount: removeCommas(minWithdrawalAmount),
-          expectedReturn,
-        })
-      }
-    }
+  const addPriceRow = () => {
+    if (!priceDraft.trim() || !priceDate || !priceSource.trim()) return
+    setPriceRows((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        price: priceDraft.trim(),
+        date: priceDate,
+        source: priceSource.trim(),
+      },
+    ])
+    setPriceDraft("")
+    setPriceDate("")
+    setPriceSource("")
+  }
+
+  const formatPriceTableDate = (iso: string) => {
+    if (!iso) return "—"
+    const d = new Date(iso + "T12:00:00")
+    if (Number.isNaN(d.getTime())) return iso
+    return d.toLocaleString(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
   }
 
   const handleBack = () => {
-    if (step === 2) {
-      setStep(1)
+    if (step > 1) setStep((s) => s - 1)
+  }
+
+  const handleNext = async () => {
+    if (step < steps.length) {
+      setStep((s) => s + 1)
+      return
+    }
+
+    const previewPayload = previewImage
+      ? {
+          fileName: previewImage.name,
+          fileType: previewImage.type,
+          fileSize: previewImage.size,
+          fileBase64: await fileToBase64(previewImage),
+        }
+      : null
+
+    const payload = {
+      ...commodityData,
+      name,
+      description,
+      duration,
+      typeRows,
+      commodityTypes: !isInvestment ? typeRows : undefined,
+      investmentTypes: isInvestment ? typeRows : undefined,
+      previewImage: previewPayload,
+      yieldMethod,
+      offerYieldOn,
+      offerYieldValue,
+      withdrawalFlexibility,
+      unitAmount: removeCommas(unitAmount),
+      minQuantityPurchase,
+      maxAmount: removeCommas(maxAmount),
+      termsAndConditions,
+      moratoriumEnabled,
+      moratoriumDays,
+      contractId,
+      airSignSecretKey,
+      airSignUid,
+      charges,
+      forcefulWithdrawal,
+      penalties,
+      commodityPrices: !isInvestment ? priceRows : undefined,
+      unitPrices: isInvestment ? priceRows : undefined,
+      priceHistory: priceRows,
+    }
+
+    if (isInvestment) {
+      onSubmit({
+        ...payload,
+        purpose: description,
+        tradingCycle: yieldMethod,
+        investmentTenure: duration,
+        investmentType: commodityData?.investmentType ?? commodityData?.productType ?? commodityData?.productSubtype,
+        securityRequirements: [],
+        minimumOrderQuantity: minQuantityPurchase,
+        price: removeCommas(maxAmount),
+        managementFeePercent: "",
+        minimumRedemptionAmount: "",
+        expectedAnnualReturn: offerYieldOn ? offerYieldValue : "",
+        additionalRequirements: [],
+        minInvestmentAmount: removeCommas(unitAmount),
+        maxInvestmentAmount: removeCommas(maxAmount),
+        expectedReturn: offerYieldOn ? offerYieldValue : "",
+      })
+    } else {
+      onSubmit({
+        ...payload,
+        purpose: description,
+        tradingCycle: yieldMethod,
+        commodityTenure: duration,
+        securityRequirements: [],
+        minInvestmentAmount: removeCommas(unitAmount),
+        maxInvestmentAmount: removeCommas(maxAmount),
+        managementFee: "",
+        minWithdrawalAmount: minQuantityPurchase,
+        expectedReturn: offerYieldOn ? offerYieldValue : "",
+        additionalRequirements: [],
+      })
     }
   }
 
-  const breadcrumb = (
-    <div className="flex items-center gap-2 text-sm text-gray-500">
-      <span className={step === 1 ? "text-[#9A813F] font-medium" : ""}>Purpose</span>
-      <span>/</span>
-      <span className={step === 2 ? "text-[#9A813F] font-medium" : ""}>Amount</span>
-      <span>/</span>
-      <span>Timeline</span>
-    </div>
-  )
+  const title = isInvestment ? "Configure Investment Product" : "Configure Commodity Product"
+  const subtitle = isInvestment
+    ? "Configure the parameters of this investment product"
+    : "Configure the parameters of this Commodity product"
+
+  const nameLabel = isInvestment ? "Name of Investment" : "Name of Commodity"
+  const durationLabel = isInvestment ? "Duration of Investment" : "Duration of Commodity"
+  const typeSectionLabel = isInvestment ? "Investment Type" : "Commodity Type"
+  const offerYieldLabel = isInvestment ? "Offer Yield on Investment" : "Offer Yield on Commodity"
+  const termsLabel = isInvestment ? "Investment Terms & Condition" : "Commodity Terms & Condition"
 
   return (
     <Drawer
       open={isOpen}
       onOpenChange={onClose}
-      title={isInvestment ? "Configure investment product" : "Configure commodity product"}
-      subtitle={
-        step === 1
-          ? isInvestment
-            ? "Investment purpose and schedule"
-            : "Create the product you want"
-          : isInvestment
-            ? "Commitment and return details"
-            : "Product amount details"
-      }
+      title={title}
+      subtitle={subtitle}
+      className="w-full min-w-0 rounded-none sm:w-[92%] md:w-[78%] lg:w-[62%] xl:w-[52%] 2xl:w-[45%] sm:min-w-[400px] sm:rounded-bl-[40px] sm:rounded-tl-[40px]"
     >
-      <div className="mb-4">{breadcrumb}</div>
+      <div className="mx-auto w-full">
+        <ProductConfigTabs steps={[...steps]} activeStep={step} onStepChange={setStep} />
 
-      {step === 1 && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Purpose/Description</label>
-            <textarea
-              value={purpose}
-              onChange={(e) => setPurpose(e.target.value)}
-              placeholder="Purpose/Description"
-              rows={4}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9A813F] focus:border-transparent resize-none"
-            />
-          </div>
-
-          <InputGroup
-            label={isInvestment ? "Investment trading cycle" : "Trading cycle"}
-            placeholder={isInvestment ? "Select cycle" : "Trading cycle"}
-            options={tradingCycleOptions}
-            value={tradingCycle}
-            onChange={setTradingCycle}
-            accentColor="#9A813F"
+        {step === 1 && (
+          <ProductConfigAboutStep
+            idPrefix={isInvestment ? "investment-commodity" : "commodity"}
+            nameLabel={nameLabel}
+            name={name}
+            onNameChange={setName}
+            durationLabel={durationLabel}
+            durationPlaceholder="Select"
+            durationValue={duration}
+            durationOptions={tenureOptions}
+            onDurationChange={setDuration}
+            description={description}
+            onDescriptionChange={setDescription}
+            typeSectionLabel={typeSectionLabel}
+            typeNameDraft={typeNameDraft}
+            typeDescDraft={typeDescDraft}
+            onTypeNameDraftChange={setTypeNameDraft}
+            onTypeDescDraftChange={setTypeDescDraft}
+            onAddType={addTypeRow}
+            typeRows={typeRows}
+            previewFile={previewImage}
+            onPreviewFileChange={setPreviewImage}
           />
+        )}
 
-          <InputGroup
-            label={isInvestment ? "Investment tenure" : "Commodity tenure"}
-            placeholder={isInvestment ? "Investment tenure" : "Commodity tenure"}
-            options={tenureOptions}
-            value={tenureSelection}
-            onChange={setTenureSelection}
-            accentColor="#9A813F"
-          />
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">Security Requirements (select all that apply)</label>
-            <div className="grid grid-cols-2 gap-3">
-              {SECURITY_OPTIONS.map((option) => (
-                <div key={option.id} className="flex items-center gap-3">
-                  <Checkbox
-                    id={`security-${option.id}`}
-                    checked={securityRequirements.includes(option.id)}
-                    onCheckedChange={(checked) => handleSecurityChange(option.id, checked as boolean)}
-                    className="rounded-full data-[state=checked]:bg-[#9A813F] data-[state=checked]:border-[#9A813F]"
-                  />
-                  <label htmlFor={`security-${option.id}`} className="text-sm text-gray-700 cursor-pointer">
-                    {option.label}
+        {step === 2 && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <ProductConfigSelect
+                label="Yield Method"
+                placeholder="Select Section"
+                value={yieldMethod}
+                options={yieldMethodOptions}
+                onChange={setYieldMethod}
+              />
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <label htmlFor="offer-yield" className="text-sm font-medium text-gray-700">
+                    {offerYieldLabel}
                   </label>
+                  <Switch
+                    id="offer-yield"
+                    checked={offerYieldOn}
+                    onCheckedChange={setOfferYieldOn}
+                    className="h-5 w-9 shrink-0 data-[state=checked]:bg-[#9A813F] data-[state=unchecked]:bg-slate-200"
+                  />
                 </div>
-              ))}
+                {offerYieldOn ? (
+                  <ProductConfigInput
+                    label=""
+                    placeholder="e.g 10%"
+                    value={offerYieldValue}
+                    onChange={handleOfferYieldValueChange}
+                    numericOnly
+                  />
+                ) : null}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <ProductConfigSelect
+                label="Withdrawal Flexibility"
+                placeholder="Select"
+                value={withdrawalFlexibility}
+                options={withdrawalFlexibilityOptions}
+                onChange={setWithdrawalFlexibility}
+              />
+              <ProductConfigInput
+                label="Unit Amount"
+                placeholder="e.g N10,000"
+                value={unitAmount}
+                onChange={(v) => handleCurrencyChange(v, setUnitAmount)}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <ProductConfigInput label="Min Quantity Purchase" placeholder="Min Quantity" value={minQuantityPurchase} onChange={setMinQuantityPurchase} numericOnly />
+              <ProductConfigInput
+                label="Max Amount"
+                placeholder="Max Amount"
+                value={maxAmount}
+                onChange={(v) => handleCurrencyChange(v, setMaxAmount)}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">{termsLabel}</label>
+              <textarea
+                value={termsAndConditions}
+                onChange={(e) => setTermsAndConditions(e.target.value)}
+                placeholder="Enter Terms"
+                rows={5}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+              />
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="commodity-moratorium"
+                  checked={moratoriumEnabled}
+                  onCheckedChange={setMoratoriumEnabled}
+                  className="h-5 w-9 shrink-0 data-[state=checked]:bg-[#9A813F] data-[state=unchecked]:bg-slate-200"
+                />
+                <label htmlFor="commodity-moratorium" className="text-sm font-medium text-gray-700">
+                  Moratorium
+                </label>
+              </div>
+              <div className="w-full sm:max-w-xs">
+                <ProductConfigInput
+                  label=""
+                  placeholder="Enter days"
+                  value={moratoriumDays}
+                  onChange={setMoratoriumDays}
+                  numericOnly
+                  disabled={!moratoriumEnabled}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <ProductConfigInput label="Contract ID" placeholder="Enter Contract ID" value={contractId} onChange={setContractId} />
+              <ProductConfigInput label="AirSign Secret Key" placeholder="Enter secret key" value={airSignSecretKey} onChange={setAirSignSecretKey} />
+              <ProductConfigInput label="AirSign UID" placeholder="Enter UID" value={airSignUid} onChange={setAirSignUid} />
             </div>
           </div>
+        )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Additional requirement</label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-              <Upload className="mx-auto mb-2 text-gray-400" size={24} />
-              {uploadedFile ? (
-                <p className="text-sm text-green-600 mb-1">{uploadedFile.name}</p>
-              ) : (
-                <p className="text-sm text-gray-600 mb-1">Additional requirement</p>
-              )}
-              <p className="text-xs text-gray-400">PDF format • Max. 5MB</p>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                accept=".pdf"
-                className="hidden"
+        {step === 3 && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+              <ProductConfigInput label="Name of Charge or Fee" placeholder="e.g Processing Fee" value={chargeName} onChange={setChargeName} />
+              <ProductConfigSelect
+                label="Fee Type"
+                placeholder="Select Section"
+                value={chargeFeeType}
+                  options={feeTypeOptions}
+                  onChange={handleChargeFeeTypeChange}
               />
-              <Button 
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-3 bg-[#9A813F] text-white hover:bg-[#8A7335]"
-              >
-                {uploadedFile ? 'Change File' : 'Upload'}
+              <ProductConfigInput label="Value" placeholder="Enter Value" value={chargeValue} onChange={handleChargeValueChange} numericOnly />
+              <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+                Add
               </Button>
             </div>
-          </div>
 
-          <Button
-            onClick={handleNext}
-            disabled={!purpose || !tradingCycle || !tenureSelection || securityRequirements.length === 0}
-            className="w-full bg-black text-white hover:bg-gray-800 h-12 mt-6"
-          >
-            Next
-          </Button>
-        </div>
-      )}
+            {charges.length > 0 && (
+              <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
+                <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+                  <span>Name</span>
+                  <span>Type</span>
+                  <span>Value</span>
+                  <span className="text-right" />
+                </div>
+                {charges.map((c, i) => (
+                  <div key={`${c.name}-${i}`} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0">
+                    <span className="pr-2">{c.name}</span>
+                    <span>{c.feeType}</span>
+                    <span>{c.value}</span>
+                    <div className="flex justify-end">
+                      <button type="button" onClick={() => setCharges((p) => p.filter((_, j) => j !== i))} className="text-red-600" aria-label="Remove">
+                        <X size={18} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
-      {step === 2 && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {isInvestment ? "Minimum order quantity (₦)" : "Minimum investment amount (₦)"}
-            </label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">₦</span>
-              <input
-                type="text"
-                placeholder="0.00"
-                value={minInvestmentAmount}
-                onChange={(e) => handleCurrencyChange(e.target.value, setMinInvestmentAmount)}
-                className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9A813F] focus:border-transparent"
-              />
-            </div>
-          </div>
+            <ProductConfigToggle id="commodity-forceful" label="Charge for Forceful Withdrawal" checked={forcefulWithdrawal} onChange={setForcefulWithdrawal} />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {isInvestment ? "Reference price / max commitment (₦)" : "Maximum investment amount (₦)"}
-            </label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">₦</span>
-              <input
-                type="text"
-                placeholder="0.00"
-                value={maxInvestmentAmount}
-                onChange={(e) => handleCurrencyChange(e.target.value, setMaxInvestmentAmount)}
-                className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9A813F] focus:border-transparent"
-              />
-            </div>
-            {removeCommas(minInvestmentAmount) && removeCommas(maxInvestmentAmount) && 
-             parseFloat(removeCommas(maxInvestmentAmount)) < parseFloat(removeCommas(minInvestmentAmount)) && (
-              <p className="text-red-500 text-xs mt-1">Maximum must be greater than minimum</p>
+            {forcefulWithdrawal && (
+              <>
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_0.9fr_0.85fr_1.25fr_auto]">
+                  <ProductConfigInput label="Name of Penalty" placeholder="e.g Processing Fee" value={penaltyName} onChange={setPenaltyName} />
+                  <ProductConfigSelect
+                    label="Type"
+                    placeholder="Select Section"
+                    value={penaltyType}
+                    options={penaltyTypeOptions}
+                    onChange={handlePenaltyTypeChange}
+                  />
+                  <ProductConfigInput label="Value" placeholder="Enter Value" value={penaltyValue} onChange={handlePenaltyValueChange} numericOnly />
+                  <ProductConfigSelect
+                    label="Duration Before Trigger"
+                    placeholder="Select Section"
+                    value={penaltyTriggerDuration}
+                    options={triggerDurationOptions}
+                    onChange={setPenaltyTriggerDuration}
+                  />
+                  <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+                    Add
+                  </Button>
+                </div>
+
+                {penalties.length > 0 && (
+                  <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
+                    <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+                      <span>Name</span>
+                      <span>Value</span>
+                      <span>Trigger Duration</span>
+                      <span className="text-right" />
+                    </div>
+                    {penalties.map((p, i) => (
+                      <div key={`${p.name}-${i}`} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0">
+                        <span className="pr-2">{p.name}</span>
+                        <span>{p.value}</span>
+                        <span>{p.triggerDuration}</span>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => setPenalties((prev) => prev.filter((_, j) => j !== i))}
+                            className="text-red-600"
+                            aria-label="Remove penalty"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
+        )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {isInvestment ? "Management fee (%)" : "Management fee (%)"}
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="0.00"
-                value={managementFee}
-                onChange={(e) => handlePercentageChange(e.target.value, setManagementFee, 'managementFee')}
-                className={`w-full pl-4 pr-8 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9A813F] focus:border-transparent ${errors.managementFee ? 'border-red-500' : 'border-gray-300'}`}
+        {step === 4 && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
+              <ProductConfigInput
+                label={isInvestment ? "Enter Unit Price" : "Enter Commodity Price"}
+                placeholder="e.g N12,000.44"
+                value={priceDraft}
+                onChange={setPriceDraft}
+                numericOnly
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500">%</span>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Select Date</label>
+                <input
+                  type="date"
+                  value={priceDate}
+                  onChange={(e) => setPriceDate(e.target.value)}
+                  className="h-10 w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+                />
+              </div>
+              <ProductConfigInput label="Source" placeholder="Enter Value" value={priceSource} onChange={setPriceSource} />
+              <Button type="button" onClick={addPriceRow} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+                Add
+              </Button>
             </div>
-            {errors.managementFee && <p className="text-red-500 text-xs mt-1">{errors.managementFee}</p>}
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {isInvestment ? "Minimum redemption amount (₦)" : "Minimum withdrawal amount (₦)"}
-            </label>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500">₦</span>
-              <input
-                type="text"
-                placeholder="0.00"
-                value={minWithdrawalAmount}
-                onChange={(e) => handleCurrencyChange(e.target.value, setMinWithdrawalAmount)}
-                className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9A813F] focus:border-transparent"
-              />
-            </div>
+            {priceRows.length > 0 && (
+              <div className="overflow-x-auto rounded-md border border-dashed border-[#cdbf8b] p-3">
+                <div className="grid min-w-[520px] grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+                  <span>Price</span>
+                  <span>Date</span>
+                  <span>Source</span>
+                  <span className="text-right" />
+                </div>
+                {priceRows.map((row) => (
+                  <div
+                    key={row.id}
+                    className="grid min-w-[520px] grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                  >
+                    <span className="pr-2 font-medium">{row.price}</span>
+                    <span>{formatPriceTableDate(row.date)}</span>
+                    <span>{row.source}</span>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setPriceRows((p) => p.filter((r) => r.id !== row.id))}
+                        className="text-red-600"
+                        aria-label="Remove"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+        )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {isInvestment ? "Expected annual return (% p.a.)" : "Expected return (% per annum)"}
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="0.00"
-                value={expectedReturn}
-                onChange={(e) => handlePercentageChange(e.target.value, setExpectedReturn, 'expectedReturn')}
-                className={`w-full pl-4 pr-16 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9A813F] focus:border-transparent ${errors.expectedReturn ? 'border-red-500' : 'border-gray-300'}`}
-              />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500">% p.a.</span>
-            </div>
-            {errors.expectedReturn && <p className="text-red-500 text-xs mt-1">{errors.expectedReturn}</p>}
-          </div>
-
-          <div className="flex gap-4 mt-6">
-            <Button onClick={handleBack} variant="outline" className="flex-1 h-12 bg-transparent">
-              Back
-            </Button>
-            <Button
-              onClick={handleNext}
-              disabled={!minInvestmentAmount || !maxInvestmentAmount || !managementFee || !minWithdrawalAmount || !expectedReturn}
-              className="flex-1 bg-black text-white hover:bg-gray-800 h-12"
-            >
-              {isInvestment ? "Save investment configuration" : "Save configuration"}
-            </Button>
-          </div>
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <Button onClick={handleBack} variant="outline" className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent">
+            Back
+          </Button>
+          <Button onClick={handleNext} className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335]">
+            {step === steps.length ? "Submit" : "Next"}
+          </Button>
         </div>
-      )}
+      </div>
     </Drawer>
   )
 }

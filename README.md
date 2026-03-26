@@ -589,13 +589,6 @@ All services run on **Fly.dev** and use **SQLite** with **better-sqlite3**. Sour
 | Service | Base URL | Purpose |
 |---------|----------|---------|
 | `account-ms-plata` | `https://account-ms-plata.fly.dev` | Login, signup, OTP, email verify, token refresh |
-| `create-app-ms` | `https://create-app-ms.fly.dev` | App CRUD, App Builder config, Special API |
-| `product-ms` | `https://product-ms.fly.dev` | Product CRUD, configurations, toggle |
-| `account-ms` | `https://account-ms.fly.dev` | User accounts, KYC, loan/savings/mortgage/commodity applications, customers |
-| `wallet-ms` | `https://wallet-ms.fly.dev` | Wallet balances, transaction history |
-| `payment-ms` | `https://payment-ms.fly.dev` | Payment initiation & verification |
-| `billing-ms` | `https://billing-ms.fly.dev` | Merchant billing, subscriptions, invoices |
-| `compliance-ms` | `https://compliance-ms.fly.dev` | KYC submission, document compliance |
 
 ### Key API Endpoints
 

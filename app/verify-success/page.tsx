@@ -5,6 +5,7 @@ import Image from "next/image"
 import { EmailVerificationSuccess } from "@/components/email-verification-success"
 import { useRouter } from "next/navigation"
 import { clearSecureTokens } from "@/lib/tokenManager"
+import { ProductAuthShell } from "@/components/product-auth-shell"
 
 export default function VerifySuccessPage() {
   const router = useRouter()
@@ -30,11 +31,8 @@ export default function VerifySuccessPage() {
   }
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen px-6 py-12 relative">
-      <div className="absolute top-8 left-0 right-0 flex justify-center">
-        <span className="text-2xl font-bold text-[#9A813F]">Product Builder</span>
-      </div>
+    <ProductAuthShell contentClassName="max-w-md">
       <EmailVerificationSuccess onContinue={handleContinue} />
-    </main>
+    </ProductAuthShell>
   )
 }

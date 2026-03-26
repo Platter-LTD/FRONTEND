@@ -4,9 +4,24 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutGrid, User, ShieldCheck, Code2, Settings, Search, LogOut } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { useAuth } from "@/hooks/useAuth"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { getUserFromToken } from "@/lib/tokenManager"
 
 export default function MerchantAppsSidebar() {
   const pathname = usePathname()
+  const { user } = useAuth()
+  const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
+  const effectiveUser = user ?? tokenUser
+
+  const displayName = effectiveUser
+    ? [effectiveUser.firstName, effectiveUser.lastName].filter(Boolean).join(" ").trim()
+    : ""
+  const displayEmail = effectiveUser?.email ?? ""
+  const initialsFromName = effectiveUser
+    ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
+    : ""
+  const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
 
   const navItems = [
     { icon: <LayoutGrid size={20} />, label: "Apps", href: "/dashboard/merchant" },
@@ -70,16 +85,14 @@ export default function MerchantAppsSidebar() {
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center gap-3 group cursor-pointer">
             <div className="relative">
-                <img
-                    src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop"
-                    alt="User"
-                    className="w-10 h-10 rounded-full border-2 border-white shadow-sm object-cover"
-                />
+                <Avatar className="w-10 h-10 border-2 border-white shadow-sm">
+                  <AvatarFallback className="text-sm font-semibold text-gray-900">{initials}</AvatarFallback>
+                </Avatar>
                 <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
             </div>
             <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-gray-900 truncate">Grace Ayo</p>
-                <p className="text-xs text-gray-500 truncate">grace.yo@spring.td</p>
+                <p className="text-sm font-bold text-gray-900 truncate">{displayName}</p>
+                <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
             </div>
             <LogOut size={18} className="text-gray-400 group-hover:text-gray-600" />
         </div>

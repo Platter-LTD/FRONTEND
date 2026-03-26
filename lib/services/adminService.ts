@@ -9,11 +9,11 @@
  */
 
 const ADMIN_ACCOUNT_BASE =
-    process.env.NEXT_PUBLIC_SPRING_ACCOUNT_SERVICE_URL || 'https://account-ms.fly.dev';
+    process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
 const ADMIN_WALLET_BASE =
-    process.env.NEXT_PUBLIC_WALLET_SERVICE_URL || 'https://wallet-ms.fly.dev';
+    process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
 const ADMIN_PRODUCT_BASE =
-    process.env.NEXT_PUBLIC_SPRING_PRODUCT_SERVICE_URL || 'https://product-ms.fly.dev';
+    process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
 
 import { getAccessToken } from '@/lib/cookieAuth';
 

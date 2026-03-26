@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(/\/$/, '');
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)); 
 
 // GET - Get product by ID
 export async function GET(
@@ -68,17 +69,34 @@ export async function PUT(
       );
     }
 
-    const response = await fetch(
-      `${BASE_URL}/api/v1/products/${id}`,
-      {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': authHeader,
-        },
-        body: JSON.stringify(body),
+    const targetUrl = `${BASE_URL}/api/v1/products/${id}`;
+    const maxAttempts = 3;
+    let response: Response | null = null;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        response = await fetch(targetUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': authHeader,
+          },
+          body: JSON.stringify(body),
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxAttempts) {
+          await sleep(attempt * 300);
+          continue;
+        }
       }
-    );
+    }
+
+    if (!response) {
+      throw lastError instanceof Error ? lastError : new Error('Failed to update product');
+    }
 
     const data = await response.json();
 

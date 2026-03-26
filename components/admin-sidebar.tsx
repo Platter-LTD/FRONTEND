@@ -4,6 +4,9 @@ import type React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutGrid, Plus, DollarSign, Users, Briefcase, Package, Wallet, Settings, LogOut } from "lucide-react"
+import { useAuth } from "@/hooks/useAuth"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { getUserFromToken } from "@/lib/tokenManager"
 
 interface NavItem {
   icon: React.ReactNode
@@ -17,6 +20,18 @@ interface AdminSidebarProps {
 
 const AdminSidebar: React.FC<AdminSidebarProps> = ({ className = "" }) => {
   const pathname = usePathname()
+  const { user } = useAuth()
+  const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
+  const effectiveUser = user ?? tokenUser
+
+  const displayName = effectiveUser
+    ? [effectiveUser.firstName, effectiveUser.lastName].filter(Boolean).join(" ").trim()
+    : ""
+  const displayEmail = effectiveUser?.email ?? ""
+  const initialsFromName = effectiveUser
+    ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
+    : ""
+  const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
 
   const navItems: NavItem[] = [
     { icon: <LayoutGrid size={20} />, label: "Overview", href: "/admin/overview" },
@@ -88,16 +103,16 @@ const AdminSidebar: React.FC<AdminSidebarProps> = ({ className = "" }) => {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="relative">
-              <img
-                src="https://www.shutterstock.com/image-photo/portrait-black-woman-smile-arms-600nw-2329488115.jpg"
-                alt="Grace Ayo"
-                className="w-9 h-9 rounded-full object-cover"
-              />
+              <Avatar className="w-9 h-9">
+                <AvatarFallback className="text-sm font-semibold text-white bg-[#1E2130]">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
               <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#1E2130]" />
             </div>
             <div>
-              <p className="text-sm font-medium text-white">Grace Ayo</p>
-              <p className="text-xs text-gray-400">grace.yo@spring.td</p>
+              <p className="text-sm font-medium text-white">{displayName}</p>
+              <p className="text-xs text-gray-400">{displayEmail}</p>
             </div>
           </div>
           <LogOut size={20} className="text-gray-400 cursor-pointer hover:text-gray-300" />

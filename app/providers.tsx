@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext"
 import { ToastContainer } from "react-toastify"
 import "react-toastify/dist/ReactToastify.css"
 import { Toaster } from "@/components/ui/toaster"
+import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
@@ -15,6 +16,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
         {children}
         <ToastContainer position="top-right" autoClose={3000} />
         <Toaster />
+        <SonnerToaster position="top-right" richColors closeButton />
       </AuthProvider>
     </ReduxProvider>
   )

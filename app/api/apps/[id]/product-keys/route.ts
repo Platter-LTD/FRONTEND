@@ -3,14 +3,16 @@ import axios from 'axios';
 
 export const dynamic = 'force-dynamic';
 
-const CREATE_APP_URL = process.env.NEXT_PUBLIC_CREATE_APP_SERVICE_URL?.replace(/\/$/, '') || 'https://create-app-ms.fly.dev';
+const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
+const APPS_BASE_URL = AUTH_SERVICE_URL.replace(/\/$/, '');
 
 // GET - Get product keys
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
     const authHeader = request.headers.get('authorization');
 
     if (!authHeader) {
@@ -21,7 +23,7 @@ export async function GET(
     }
 
     const response = await axios.get(
-      `${CREATE_APP_URL}/api/v1/apps/${params.id}/product-keys`,
+      `${APPS_BASE_URL}/api/v1/apps/${id}/product-keys`,
       {
         headers: {
           'Authorization': authHeader,

@@ -10,6 +10,10 @@ import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { ChevronDown, ChevronUp } from "lucide-react"
 import { useState } from "react"
+import { ShieldCheck } from "lucide-react"
+import { useAuth } from "@/hooks/useAuth"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { getUserFromToken } from "@/lib/tokenManager"
 
 interface NavItem {
   icon: React.ReactNode
@@ -25,11 +29,29 @@ interface AppSidebarProps {
 
 const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
   const pathname = usePathname()
+  const { user } = useAuth()
+
   const [isWalletsOpen, setIsWalletsOpen] = useState(true)
   const [isProductsOpen, setIsProductsOpen] = useState(false)
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
+  const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
+  const effectiveUser = user ?? tokenUser
+
+  const displayName = effectiveUser
+    ? [effectiveUser.firstName, effectiveUser.lastName].filter(Boolean).join(" ").trim()
+    : ""
+  const displayEmail = effectiveUser?.email ?? ""
+  const initialsFromName = effectiveUser
+    ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
+    : ""
+  const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
 
   const navItems: NavItem[] = [
+    {
+      icon: <ShieldCheck size={20} />,
+      label: "Admin",
+      href: `/dashboard/create-app/all-apps/${appId}/admin`,
+    },
     {
       icon: <FaWallet size={20} />,
       label: "Wallets",
@@ -171,14 +193,12 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <img
-              src="https://www.shutterstock.com/image-photo/portrait-black-woman-smile-arms-600nw-2329488115.jpg"
-              alt="Grace Ayo"
-              className="w-9 h-9 rounded-full object-cover justify-center items-center"
-            />
+            <Avatar className="w-9 h-9">
+              <AvatarFallback className="text-sm font-semibold text-gray-900">{initials}</AvatarFallback>
+            </Avatar>
             <div>
-              <p className="text-sm font-medium text-gray-900">Grace Ayo</p>
-              <p className="text-xs text-gray-500">grace.yo@spring.td</p>
+              <p className="text-sm font-medium text-gray-900">{displayName}</p>
+              <p className="text-xs text-gray-500">{displayEmail}</p>
             </div>
           </div>
           <FiLogOut size={20} className="text-gray-500 cursor-pointer" />

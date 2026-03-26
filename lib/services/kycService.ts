@@ -4,7 +4,7 @@ import { getAccessToken } from "@/lib/cookieAuth"
 
 // dedicated client for compliance service
 const kycApi = axiosDefault.create({
-  baseURL: (process.env.NEXT_PUBLIC_COMPLIANCE_URL || "https://compliance-ms.fly.dev") + "/api/v1",
+  baseURL: (process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev") + "/api/v1",
   withCredentials: false,
 })
 

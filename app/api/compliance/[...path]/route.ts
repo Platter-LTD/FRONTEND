@@ -4,9 +4,8 @@ export const dynamic = 'force-dynamic';
 
 function getComplianceOrigin(): string {
   const raw =
-    process.env.NEXT_PUBLIC_COMPLIANCE_API_URL ||
-    process.env.COMPLIANCE_API_URL ||
-    'https://compliance-ms.fly.dev';
+    process.env.NEXT_PUBLIC_API_URL ||
+    'https://account-ms-plata.fly.dev';
   const url = raw.replace(/\/+$/, '').trim();
   try {
     const withProtocol = url.startsWith('http') ? url : `https://${url}`;

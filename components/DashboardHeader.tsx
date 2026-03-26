@@ -32,9 +32,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const pathname = usePathname()
   const router = useRouter()
 
+  const isAppAdmin = typeof pathname === "string" && pathname.includes("/dashboard/create-app/all-apps/") && pathname.endsWith("/admin")
+
   const { title, subtitle } = customTitle
     ? { title: customTitle, subtitle: customSubtitle || "" }
-    : routeTitles[pathname] || { title: "Dashboard", subtitle: "Welcome to your dashboard" }
+    : isAppAdmin
+      ? { title: "Admin", subtitle: "Manage app staff and roles" }
+      : routeTitles[pathname] || { title: "Dashboard", subtitle: "Welcome to your dashboard" }
 
   const handleBack = () => {
     if (onBack) {
