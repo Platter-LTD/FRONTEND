@@ -36,7 +36,7 @@ export default function MerchantDeveloperDashboard() {
     return (
         <div className="flex flex-col h-full">
             <div className="px-8 py-4">
-                <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} activeTabClassName="border-[#7C3AED] text-[#7C3AED]" />
+                <Tabs tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} activeTabClassName="border-[#2563EB] text-[#2563EB]" />
             </div>
 
             <div className="flex-1 overflow-y-auto px-8 py-6">{renderTabContent()}</div>

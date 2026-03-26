@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Drawer } from "@/components/drawer"
 import { Loader2 } from "lucide-react"
 import { WEBSITE_URL_PREFIX } from "@/lib/websiteUrl"
+import walletService from "@/lib/services/walletService"
 
 interface CreateAppDrawerProps {
   isOpen: boolean
@@ -98,11 +99,27 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
       console.log('API response:', result);
 
       if (result.success && result.data) {
-        // AppController returns { app, wallets } structure
-        onSuccess(result.data.app || result.data);
-        setFormData({ name: "", websiteUrl: WEBSITE_URL_PREFIX, alias: "", description: "" });
-        setErrors({});
-        onClose();
+        const createdApp = result.data.app || result.data
+        const createdAppId = createdApp.appId || createdApp.id
+
+        // Wallets are expected to exist as soon as an app is created.
+        // Call the wallet creation endpoint (idempotent on backend if implemented).
+        if (merchantId && createdAppId) {
+          try {
+            await walletService.merchant.createAllMerchantWallets(merchantId, createdAppId)
+          } catch (walletErr) {
+            console.error("Failed to create merchant wallets:", walletErr)
+            setErrors({
+              submit: "App created, but failed to create wallets. Please try again.",
+            })
+            return
+          }
+        }
+
+        onSuccess(createdApp)
+        setFormData({ name: "", websiteUrl: WEBSITE_URL_PREFIX, alias: "", description: "" })
+        setErrors({})
+        onClose()
       } else {
         // Show more detailed error message
         const errorMessage = result.error || result.message || result.details?.message || "Failed to create app";
@@ -159,7 +176,7 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
               handleInputChange("websiteUrl", next)
             }}
             placeholder="example.com"
-            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9A813F] focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-colors"
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-colors"
           />
           {errors.websiteUrl && <p className="text-red-500 text-xs mt-2">{errors.websiteUrl}</p>}
         </div>
@@ -173,7 +190,7 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
             value={formData.alias}
             onChange={(e) => handleInputChange("alias", e.target.value)}
             placeholder="Enter application alias"
-            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9A813F] focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-colors"
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-colors"
           />
           {errors.alias && <p className="text-red-500 text-xs mt-2">{errors.alias}</p>}
         </div>
@@ -187,7 +204,7 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
             onChange={(e) => handleInputChange("description", e.target.value)}
             placeholder="Brief description of your application"
             rows={4}
-            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#9A813F] focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-colors resize-none"
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-colors resize-none"
           />
         </div>
 

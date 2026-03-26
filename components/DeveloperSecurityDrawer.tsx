@@ -109,13 +109,13 @@ export const DeveloperSecurityDrawer: React.FC<DeveloperSecurityDrawerProps> = (
                       value={digit}
                       onChange={(e) => handleCodeChange(index, e.target.value)}
                       onKeyDown={(e) => handleKeyDown(index, e)}
-                      className="w-12 h-14 text-center text-lg font-semibold border-2 border-gray-300 rounded-lg focus:border-[#7C3AED] focus:outline-none bg-[#F5F5F0]"
+                      className="w-12 h-14 text-center text-lg font-semibold border-2 border-gray-300 rounded-lg focus:border-[#2563EB] focus:outline-none bg-[#F5F5F0]"
                     />
                   ))}
                 </div>
 
                 {/* Full-width button like in your example */}
-                <Button className="w-full bg-[#7C3AED] text-white py-6 rounded-md font-medium hover:bg-[#6D28D9] transition-colors mt-8">
+                <Button className="w-full bg-[#2563EB] text-white py-6 rounded-md font-medium hover:bg-[#1D4ED8] transition-colors mt-8">
                   Continue
                 </Button>
               </div>

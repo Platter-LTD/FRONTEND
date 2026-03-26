@@ -143,7 +143,7 @@ export default function MerchantDashboardPage() {
       </div>
 
       {/* Banner */}
-      <div className="bg-[#48229F] rounded-2xl p-8 text-white mb-10 shadow-lg relative overflow-hidden">
+      <div className="bg-[#2563EB] rounded-2xl p-8 text-white mb-10 shadow-lg relative overflow-hidden">
         <div className="relative z-10">
           <h2 className="text-xl font-bold mb-2">Manage Your Products</h2>
           <p className="text-white/80 text-sm">Click on an app to view and toggle products for your customers.</p>
@@ -172,7 +172,7 @@ export default function MerchantDashboardPage() {
           <Button
             size="sm"
             onClick={() => setIsCreateAppOpen(true)}
-            className="gap-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white"
+            className="gap-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white"
           >
             <Plus className="h-4 w-4" />
             Create App
@@ -206,7 +206,7 @@ export default function MerchantDashboardPage() {
           <div className="flex flex-col items-center justify-center py-20 text-gray-500">
             <p className="text-center">
               No apps available yet.<br />
-              <span className="text-sm">Apps are created in the Product Builder dashboard.</span>
+              <span className="text-sm">Create an app using the "Create App" button above.</span>
             </p>
           </div>
         ) : (
@@ -237,7 +237,7 @@ export default function MerchantDashboardPage() {
                 <div>
                   <span
                     className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${app.status === "Active"
-                      ? "bg-purple-100 text-purple-700"
+                      ? "bg-blue-100 text-blue-700"
                       : "bg-gray-100 text-gray-600"
                       }`}
                   >
@@ -256,6 +256,7 @@ export default function MerchantDashboardPage() {
         isOpen={isCreateAppOpen}
         onClose={() => setIsCreateAppOpen(false)}
         onSuccess={handleAppCreated}
+        accentColor="#2563EB"
       />
     </div>
   )

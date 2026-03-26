@@ -227,7 +227,7 @@ export const CreateShareholderDrawer: React.FC = () => {
                 </div>
                 <label
                   className="px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors shrink-0 cursor-pointer"
-                  style={{ backgroundColor: "#9A813F", color: "#fff" }}
+                  style={{ backgroundColor: "#2563EB", color: "#fff" }}
                 >
                   <input ref={uboInputRef} type="file" className="hidden" accept="application/pdf,image/*" onChange={handleUboSelect} />
                   {uboFile ? "Change file" : "Upload"}
@@ -306,7 +306,7 @@ export const CreateShareholderDrawer: React.FC = () => {
                 </div>
                 <label
                   className="px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors shrink-0 cursor-pointer"
-                  style={{ backgroundColor: "#9A813F", color: "#fff" }}
+                  style={{ backgroundColor: "#2563EB", color: "#fff" }}
                 >
                   <input ref={bankInputRef} type="file" className="hidden" accept="application/pdf,image/*" onChange={handleBankSelect} />
                   {bankFile ? "Change file" : "Upload"}
@@ -316,7 +316,8 @@ export const CreateShareholderDrawer: React.FC = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-black text-white py-3 rounded-md font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
+                className="w-full text-white py-3 rounded-md font-medium hover:opacity-90 transition-colors disabled:opacity-50"
+                style={{ backgroundColor: "#2563EB" }}
               >
                 {loading ? "Saving..." : "Save Shareholder"}
               </button>

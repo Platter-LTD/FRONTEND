@@ -74,7 +74,7 @@ export function ShareholderInfo() {
       {loading && <div className="text-center py-4">Loading shareholders...</div>}
 
       <div className="flex justify-end">
-        <Button onClick={() => setShareholderDrawerOpen(true)} className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white">
+        <Button onClick={() => setShareholderDrawerOpen(true)} className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
           <Copy className="w-4 h-4 mr-2" />
           Create shareholder
         </Button>
@@ -104,12 +104,12 @@ export function ShareholderInfo() {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.phone}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.date}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <Button variant="ghost" size="sm" className="text-[#7C3AED] hover:text-[#6D28D9]">
+                  <Button variant="ghost" size="sm" className="text-[#2563EB] hover:text-[#1D4ED8]">
                     {row.kyc}
                   </Button>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <Button variant="ghost" size="sm" className="text-[#7C3AED] hover:text-[#6D28D9]">
+                  <Button variant="ghost" size="sm" className="text-[#2563EB] hover:text-[#1D4ED8]">
                     Upload
                   </Button>
                 </td>

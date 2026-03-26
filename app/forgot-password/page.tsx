@@ -10,6 +10,7 @@ import { toast } from "react-toastify"
 import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { ArrowLeft } from "lucide-react"
+import { ProductAuthShell } from "@/components/product-auth-shell"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -34,12 +35,8 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 relative">
-      <div className="absolute top-8 left-0 right-0 flex justify-center">
-        <span className="text-2xl font-bold text-[#9A813F]">Product Builder</span>
-      </div>
-
-      <div className="w-full max-w-lg px-4">
+    <ProductAuthShell>
+      <div className="w-full px-4">
         {isSubmitted ? (
           <div className="bg-white p-8 rounded-xl shadow-sm border border-gray-100 text-center space-y-6">
             <div className="flex justify-center">
@@ -120,6 +117,6 @@ export default function ForgotPasswordPage() {
           </div>
         )}
       </div>
-    </div>
+    </ProductAuthShell>
   )
 }

@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, Loader2, RefreshCw, WalletCards, Copy } from "lucide-react"
+import { Search, RefreshCw, WalletCards, Copy } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { adminWalletApi, AdminWalletTransaction } from "@/lib/services/adminService"
 import WalletHistoryDrawer from "@/components/drawers/wallet-history-drawer"
 import { toast } from "sonner"
+import { Skeleton } from "@/components/ui/skeleton"
 
 const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text).then(() => toast.success("Copied!"))
@@ -92,7 +93,14 @@ export default function AdminWalletPage() {
             <h2 className="text-2xl mb-1">Platform Overview</h2>
             <p className="text-white/70 text-sm mb-6">All wallets • Live data from wallet-ms</p>
             {loading ? (
-              <Loader2 className="w-8 h-8 animate-spin text-white/60" />
+              <div className="space-y-3">
+                <Skeleton className="h-12 w-64 bg-white/25" />
+                <div className="flex gap-3">
+                  <Skeleton className="h-4 w-24 bg-white/20" />
+                  <Skeleton className="h-4 w-14 bg-white/20" />
+                  <Skeleton className="h-4 w-20 bg-white/20" />
+                </div>
+              </div>
             ) : (
               <>
                 <p className="text-5xl font-bold tracking-tight mb-4">
@@ -141,8 +149,19 @@ export default function AdminWalletPage() {
         {/* Table */}
         <div className="bg-gray-50 rounded-lg overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-7 gap-4">
+                {Array.from({ length: 7 }).map((_, i) => (
+                  <Skeleton key={`head-${i}`} className="h-4 w-24" />
+                ))}
+              </div>
+              {Array.from({ length: 8 }).map((_, row) => (
+                <div key={`row-${row}`} className="grid grid-cols-7 gap-4">
+                  {Array.from({ length: 7 }).map((_, col) => (
+                    <Skeleton key={`cell-${row}-${col}`} className="h-4 w-24" />
+                  ))}
+                </div>
+              ))}
             </div>
           ) : filteredTx.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">

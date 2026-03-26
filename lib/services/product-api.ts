@@ -10,6 +10,124 @@ const getAuthHeaders = () => {
   };
 };
 
+const compactObject = (value: any): any => {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value).filter(([, v]) => v !== undefined)
+  );
+};
+
+const toEnum = (value: any) =>
+  typeof value === 'string'
+    ? value
+        .trim()
+        .toLowerCase()
+        .replace(/[%]/g, '')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+    : '';
+
+const mapMoratoriumType = (value: any) => {
+  const normalized = toEnum(value);
+  if (!normalized) return '';
+  if (normalized.includes('principal') && normalized.includes('interest')) return 'grace_on_both';
+  if (normalized.includes('principal')) return 'grace_on_principal';
+  if (normalized.includes('interest')) return 'grace_on_interest';
+  if (['grace_on_principal', 'grace_on_interest', 'grace_on_both'].includes(normalized)) return normalized;
+  return '';
+};
+
+const mapRepaymentWorkflow = (value: any) => {
+  const normalized = toEnum(value);
+  if (!normalized) return '';
+  const aliases: Record<string, string> = {
+    principal_interest_charges: 'principal_interest_charges',
+    charges_principal_interest: 'charges_principal_interest',
+    interest_charges_principal: 'interest_charges_principal',
+    principal_then_interest_then_charges: 'principal_interest_charges',
+    charges_then_principal_then_interest: 'charges_principal_interest',
+    interest_then_charges_then_principal: 'interest_charges_principal',
+  };
+  return aliases[normalized] || '';
+};
+
+const buildConfigurationPayload = (productType: string, configuration: any) => {
+  const normalizedType = String(productType || '').toLowerCase();
+
+  const common = compactObject({
+    name: configuration?.name,
+    description: configuration?.description,
+    previewImage: configuration?.previewImage,
+  });
+
+  const about = compactObject({
+    tenure: configuration?.tenure ?? configuration?.duration ?? configuration?.durationOfSavings,
+    loanTypes: configuration?.loanTypes,
+    mortgageTypes: configuration?.mortgageTypes,
+    savingsTypes: configuration?.savingsTypes,
+    commodityTypes: configuration?.commodityTypes ?? (!normalizedType.includes('investment') ? configuration?.typeRows : undefined),
+    investmentTypes: configuration?.investmentTypes ?? (normalizedType.includes('investment') ? configuration?.typeRows : undefined),
+  });
+
+  const structure = compactObject({
+    interestRate: configuration?.interestRate,
+    interestMethod: configuration?.interestMethod,
+    allowMoratorium: configuration?.allowMoratorium ?? configuration?.moratoriumEnabled,
+    moratoriumDuration: configuration?.moratoriumDuration ?? configuration?.moratoriumDays,
+    moratoriumType: mapMoratoriumType(configuration?.moratoriumType),
+    repaymentWorkflow: mapRepaymentWorkflow(configuration?.repaymentWorkflow),
+    repaymentSchedule: configuration?.repaymentSchedule,
+    amortizationSchedule: configuration?.amortizationSchedule,
+    repaymentFrequency: configuration?.repaymentFrequency,
+    acceptableNpa: configuration?.acceptableNpa,
+    equityRequirement: configuration?.equityRequirement,
+    savingsType: configuration?.savingsType,
+    withdrawalFlexibility: configuration?.withdrawalFlexibility,
+    minLoanAmount: configuration?.minLoanAmount,
+    maxLoanAmount: configuration?.maxLoanAmount,
+    minSavingsAmount: configuration?.minSavingsAmount,
+    maxSavingsAmount: configuration?.maxSavingsAmount,
+    minInvestmentAmount: configuration?.minInvestmentAmount ?? configuration?.unitAmount,
+    maxInvestmentAmount: configuration?.maxInvestmentAmount ?? configuration?.maxAmount,
+    minQuantityPurchase: configuration?.minQuantityPurchase,
+    yieldMethod: configuration?.yieldMethod,
+    offerYieldOn: configuration?.offerYieldOn,
+    offerYieldValue: configuration?.offerYieldValue,
+    termsAndConditions: configuration?.termsAndConditions,
+    contractId: configuration?.contractId,
+    airSignSecretKey: configuration?.airSignSecretKey,
+    airSignUid: configuration?.airSignUid,
+  });
+
+  const requirements = compactObject({
+    securityRequirements: configuration?.securityRequirements,
+    documentRequirements: configuration?.documentRequirements,
+    otherRequirements: configuration?.otherRequirements,
+  });
+
+  const feesAndCharges = compactObject({
+    charges: configuration?.charges,
+    penalties: configuration?.penalties ?? configuration?.withdrawalPenalties,
+    chargePaymentMode: configuration?.chargePaymentMode,
+    deductChargesOnLoan: configuration?.deductChargesOnLoan,
+    customerPayChargesBeforeDisbursement: configuration?.customerPayChargesBeforeDisbursement,
+    enableLateRepaymentCharges: configuration?.enableLateRepaymentCharges,
+    chargeForcefulWithdrawal: configuration?.chargeForcefulWithdrawal ?? configuration?.forcefulWithdrawal,
+  });
+
+  const normalizedProperties = Array.isArray(configuration?.properties) ? configuration.properties : [];
+
+  return compactObject({
+    ...common,
+    about,
+    structure,
+    requirements,
+    feesAndCharges,
+    properties: normalizedProperties,
+  });
+};
+
 export const productApi = {
   // Create a new product
   // P2-005 fix: always include isActive:true and status:'active' to prevent type mismatch
@@ -109,13 +227,12 @@ export const productApi = {
 
   // Get product configuration
   async getProductConfiguration(productId: string) {
-    const response = await fetch(`/api/product/${productId}/configuration`, {
+    const response = await fetch(`/api/product/${productId}`, {
       headers: getAuthHeaders(),
     });
 
     const data = await response.json();
 
-    // Don't throw error for 404 - configuration might not exist yet
     if (!response.ok && response.status !== 404) {
       throw new Error(data.error || 'Failed to fetch configuration');
     }
@@ -125,14 +242,11 @@ export const productApi = {
 
   // Create or update product configuration
   async saveProductConfiguration(productId: string, productType: string, configuration: any) {
-    const response = await fetch(`/api/product/${productId}/configuration`, {
-      method: 'POST',
+    const payload = buildConfigurationPayload(productType, configuration);
+    const response = await fetch(`/api/product/${productId}`, {
+      method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify({
-        productId,
-        productType,
-        configuration,
-      }),
+      body: JSON.stringify(payload),
     });
 
     const data = await response.json();

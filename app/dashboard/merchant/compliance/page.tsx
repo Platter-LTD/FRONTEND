@@ -113,7 +113,7 @@ export default function ComplianceDashboard() {
             tabs={tabs} 
             activeTab={activeTab} 
             onTabChange={setActiveTab} 
-            activeTabClassName="border-[#7C3AED] text-[#7C3AED]"
+            activeTabClassName="border-[#2563EB] text-[#2563EB]"
           />
         </div>
 

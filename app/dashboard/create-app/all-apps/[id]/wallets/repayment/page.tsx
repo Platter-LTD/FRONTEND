@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Search } from "lucide-react"
 import { FiEyeOff, FiEye } from "react-icons/fi"
 import { IoIosCopy } from "react-icons/io"
+import { Skeleton } from "@/components/ui/skeleton"
 import { getAccessToken } from "@/lib/cookieAuth"
 import { merchantWalletApi, transactionApi, type MerchantWallet, type Transaction } from "@/lib/services/walletService"
 
@@ -64,7 +65,7 @@ export default function RepaymentWalletPage() {
         setError(null)
         
         // Fetch Operation wallet (used for repayments) using merchantId from token
-        const walletResponse = await merchantWalletApi.getMerchantWallet(merchantId, 'OPERATION')
+        const walletResponse = await merchantWalletApi.getMerchantWallet(merchantId, 'OPERATION', appId)
         if (walletResponse.success && walletResponse.data) {
           setWallet(walletResponse.data)
         }
@@ -106,7 +107,7 @@ export default function RepaymentWalletPage() {
     if (merchantId) {
       fetchWalletData()
     }
-  }, [merchantId])
+  }, [merchantId, appId])
 
   const handleCopyRef = (ref: string) => {
     navigator.clipboard.writeText(ref)
@@ -126,17 +127,6 @@ export default function RepaymentWalletPage() {
 
   const balance = wallet ? formatBalance(wallet.balance) : { dollars: '0', cents: '00' }
 
-  if (loading) {
-    return (
-      <div className="flex-1 bg-white p-8">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-6">Repayment Wallet</h1>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="flex-1 bg-white p-8">
       {/* Repayment Wallet Heading */}
@@ -153,22 +143,31 @@ export default function RepaymentWalletPage() {
         <div className="flex items-start justify-between">
           <div>
             <p className="text-gray-400 text-sm mb-2">Available Balance</p>
-            <div className="flex items-baseline gap-1">
-              {showBalance ? (
-                <>
-                  <span className="text-white text-5xl font-semibold">$ {balance.dollars}</span>
-                  <span className="text-white text-2xl">.{balance.cents}</span>
-                </>
-              ) : (
-                <span className="text-white text-5xl font-semibold">$ ****.**</span>
-              )}
-            </div>
+            {loading ? (
+              <div className="flex items-baseline gap-1">
+                <Skeleton className="h-12 w-32 bg-gray-600" />
+                <Skeleton className="h-8 w-8 bg-gray-600 ml-1" />
+              </div>
+            ) : (
+              <div className="flex items-baseline gap-1">
+                {showBalance ? (
+                  <>
+                    <span className="text-white text-5xl font-semibold">$ {balance.dollars}</span>
+                    <span className="text-white text-2xl">.{balance.cents}</span>
+                  </>
+                ) : (
+                  <span className="text-white text-5xl font-semibold">$ ****.**</span>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={() => setShowBalance(!showBalance)} className="text-gray-400 hover:text-white transition-colors">
-              {showBalance ? <FiEyeOff size={24} /> : <FiEye size={24} />}
-            </button>
-            <Button className="bg-[#8B7355] hover:bg-[#7A6449] text-white">Withdraw</Button>
+            {!loading && (
+              <button onClick={() => setShowBalance(!showBalance)} className="text-gray-400 hover:text-white transition-colors">
+                {showBalance ? <FiEyeOff size={24} /> : <FiEye size={24} />}
+              </button>
+            )}
+            <Button className="bg-[#8B7355] hover:bg-[#7A6449] text-white" disabled={loading}>Withdraw</Button>
           </div>
         </div>
       </div>
@@ -190,7 +189,24 @@ export default function RepaymentWalletPage() {
 
       {/* Records Table */}
       <div className="border border-gray-200 rounded-lg overflow-hidden">
-        {filteredRecords.length === 0 ? (
+        {loading ? (
+          <>
+            <div className="bg-[#F5F5F5] grid grid-cols-8 gap-4 px-6 py-3">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <Skeleton key={i} className="h-4 w-16" />
+              ))}
+            </div>
+            <div className="divide-y divide-gray-200">
+              {[1, 2, 3, 4, 5].map((row) => (
+                <div key={row} className="grid grid-cols-8 gap-4 px-6 py-4">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((col) => (
+                    <Skeleton key={col} className="h-4 w-20" />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        ) : filteredRecords.length === 0 ? (
           <div className="text-center py-12 bg-gray-50">
             <p className="text-gray-500 text-sm">No transaction available yet</p>
           </div>

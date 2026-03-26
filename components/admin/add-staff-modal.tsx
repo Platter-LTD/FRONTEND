@@ -38,8 +38,8 @@ export function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffModalProps
           </button>
 
           <div className="flex flex-col items-center p-8">
-            <div className="w-16 h-16 rounded-full bg-[#7C3AED]/10 flex items-center justify-center mb-4">
-              <UserCircle className="w-8 h-8 text-[#7C3AED]" />
+            <div className="w-16 h-16 rounded-full bg-[#2563EB]/10 flex items-center justify-center mb-4">
+              <UserCircle className="w-8 h-8 text-[#2563EB]" />
             </div>
             <h2 className="text-2xl font-bold mb-8">Add Staff</h2>
 
@@ -97,7 +97,7 @@ export function AddStaffModal({ isOpen, onClose, onSuccess }: AddStaffModalProps
                 Send another invite
               </Button>
 
-              <Button onClick={handleSubmit} className="w-full bg-[#7C3AED] hover:bg-[#6D28D9] text-white">
+              <Button onClick={handleSubmit} className="w-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
                 Invite
               </Button>
             </div>

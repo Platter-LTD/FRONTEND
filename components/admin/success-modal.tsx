@@ -23,7 +23,7 @@ export function SuccessModal({ isOpen, onClose, title, message }: SuccessModalPr
           <h2 className="text-2xl font-bold mb-3">{title}</h2>
           <p className="text-gray-600 mb-8">{message}</p>
 
-          <Button onClick={onClose} className="w-full bg-[#7C3AED] hover:bg-[#6D28D9] text-white">
+          <Button onClick={onClose} className="w-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
             Close
           </Button>
         </div>

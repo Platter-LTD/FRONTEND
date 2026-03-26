@@ -104,25 +104,25 @@ export default function AdminPage() {
         <TabsList className="bg-transparent p-0 h-auto border-b border-gray-200">
           <TabsTrigger
             value="add-staff"
-            className="px-0 py-3 mr-8 rounded-none bg-transparent border-0 border-b-2 border-transparent data-[state=active]:border-[#7C3AED] data-[state=active]:bg-transparent data-[state=active]:text-[#7C3AED] data-[state=inactive]:text-gray-600"
+            className="px-0 py-3 mr-8 rounded-none bg-transparent border-0 border-b-2 border-transparent data-[state=active]:border-[#2563EB] data-[state=active]:bg-transparent data-[state=active]:text-[#2563EB] data-[state=inactive]:text-gray-600"
           >
             Add staff
           </TabsTrigger>
           <TabsTrigger
             value="manage-role"
-            className="px-0 py-3 mr-8 rounded-none bg-transparent border-0 border-b-2 border-transparent data-[state=active]:border-[#7C3AED] data-[state=active]:bg-transparent data-[state=active]:text-[#7C3AED] data-[state=inactive]:text-gray-600"
+            className="px-0 py-3 mr-8 rounded-none bg-transparent border-0 border-b-2 border-transparent data-[state=active]:border-[#2563EB] data-[state=active]:bg-transparent data-[state=active]:text-[#2563EB] data-[state=inactive]:text-gray-600"
           >
             Manage role
           </TabsTrigger>
           <TabsTrigger
             value="suspend-staff"
-            className="px-0 py-3 mr-8 rounded-none bg-transparent border-0 border-b-2 border-transparent data-[state=active]:border-[#7C3AED] data-[state=active]:bg-transparent data-[state=active]:text-[#7C3AED] data-[state=inactive]:text-gray-600"
+            className="px-0 py-3 mr-8 rounded-none bg-transparent border-0 border-b-2 border-transparent data-[state=active]:border-[#2563EB] data-[state=active]:bg-transparent data-[state=active]:text-[#2563EB] data-[state=inactive]:text-gray-600"
           >
             Suspend staff
           </TabsTrigger>
           <TabsTrigger
             value="create-role"
-            className="px-0 py-3 rounded-none bg-transparent border-0 border-b-2 border-transparent data-[state=active]:border-[#7C3AED] data-[state=active]:bg-transparent data-[state=active]:text-[#7C3AED] data-[state=inactive]:text-gray-600"
+            className="px-0 py-3 rounded-none bg-transparent border-0 border-b-2 border-transparent data-[state=active]:border-[#2563EB] data-[state=active]:bg-transparent data-[state=active]:text-[#2563EB] data-[state=inactive]:text-gray-600"
           >
             Create role
           </TabsTrigger>
@@ -132,21 +132,21 @@ export default function AdminPage() {
         <TabsContent value="add-staff" className="mt-6 space-y-6">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-[#7C3AED] rounded-lg p-6 text-white">
+            <div className="bg-[#2563EB] rounded-lg p-6 text-white">
               <div className="flex items-center gap-3 mb-2">
                 <Users className="w-6 h-6" />
                 <span className="text-4xl font-bold">4</span>
               </div>
               <p className="text-white/90">Staff Accounts</p>
             </div>
-            <div className="bg-[#7C3AED] rounded-lg p-6 text-white">
+            <div className="bg-[#2563EB] rounded-lg p-6 text-white">
               <div className="flex items-center gap-3 mb-2">
                 <UserCheck className="w-6 h-6" />
                 <span className="text-4xl font-bold">3</span>
               </div>
               <p className="text-white/90">Active Staff Accounts</p>
             </div>
-            <div className="bg-[#7C3AED] rounded-lg p-6 text-white">
+            <div className="bg-[#2563EB] rounded-lg p-6 text-white">
               <div className="flex items-center gap-3 mb-2">
                 <UserX className="w-6 h-6" />
                 <span className="text-4xl font-bold">1</span>
@@ -284,7 +284,7 @@ export default function AdminPage() {
           <div>
             <h2 className="text-xl font-semibold mb-4">Roles</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] rounded-lg p-6 text-white">
+              <div className="bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] rounded-lg p-6 text-white">
                 <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-4">
                   <svg
                     className="w-6 h-6"
@@ -304,12 +304,12 @@ export default function AdminPage() {
                 <p className="text-white/90 text-sm mb-4">
                   Manage all settings, staff, compliance, and finances.
                 </p>
-                <Button variant="secondary" size="sm" className="bg-white text-[#7C3AED] hover:bg-white/90">
+                <Button variant="secondary" size="sm" className="bg-white text-[#2563EB] hover:bg-white/90">
                   View permission
                 </Button>
               </div>
 
-              <div className="bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] rounded-lg p-6 text-white">
+              <div className="bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] rounded-lg p-6 text-white">
                 <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-4">
                   <svg
                     className="w-6 h-6"
@@ -329,12 +329,12 @@ export default function AdminPage() {
                 <p className="text-white/90 text-sm mb-4">
                   Manage all settings, staff, compliance, and finances.
                 </p>
-                <Button variant="secondary" size="sm" className="bg-white text-[#7C3AED] hover:bg-white/90">
+                <Button variant="secondary" size="sm" className="bg-white text-[#2563EB] hover:bg-white/90">
                   View permission
                 </Button>
               </div>
 
-              <div className="bg-gradient-to-br from-[#7C3AED] to-[#6D28D9] rounded-lg p-6 text-white">
+              <div className="bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] rounded-lg p-6 text-white">
                 <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center mb-4">
                   <svg
                     className="w-6 h-6"
@@ -354,7 +354,7 @@ export default function AdminPage() {
                 <p className="text-white/90 text-sm mb-4">
                   Manage all settings, staff, compliance, and finances.
                 </p>
-                <Button variant="secondary" size="sm" className="bg-white text-[#7C3AED] hover:bg-white/90">
+                <Button variant="secondary" size="sm" className="bg-white text-[#2563EB] hover:bg-white/90">
                   View permission
                 </Button>
               </div>
@@ -529,7 +529,7 @@ export default function AdminPage() {
                     <td className="p-4">{role.name}</td>
                     <td className="p-4">{role.createdBy}</td>
                     <td className="p-4">
-                      <Button variant="outline" size="sm" className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]">
+                      <Button variant="outline" size="sm" className="bg-[#2563EB] text-white hover:bg-[#1D4ED8]">
                         View permission
                       </Button>
                     </td>

@@ -8,8 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Eye, EyeOff, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { toast } from "react-toastify"
+import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
+import { ComplianceService } from "@/lib/services/complianceService"
+import { COMPLIANCE_COMPLETE_KEY } from "@/lib/compliance"
 
 export function SigninForm() {
   const [showPassword, setShowPassword] = useState(false)
@@ -25,15 +27,34 @@ export function SigninForm() {
     password: "",
   })
 
+  const resolvePostLoginRoute = async () => {
+    try {
+      const res = await ComplianceService.getKycStatusForCurrentUser()
+      const status = (res as { data?: { status?: string } })?.data?.status?.toLowerCase()
+      if (status === "approved") {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(COMPLIANCE_COMPLETE_KEY, "true")
+        }
+        return "/dashboard/create-app/all-apps"
+      }
+    } catch {
+      // Fall back to local storage if status API is unavailable.
+    }
+
+    if (typeof window !== "undefined" && window.localStorage.getItem(COMPLIANCE_COMPLETE_KEY) === "true") {
+      return "/dashboard/create-app/all-apps"
+    }
+
+    return "/dashboard/compliance"
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     e.stopPropagation() // Prevent event bubbling
 
     // Check if rate limited
     if (rateLimited) {
-      toast.warning(`Please wait ${retryAfter} seconds before trying again`, {
-        position: "top-center",
-      })
+      toast.warning(`Please wait ${retryAfter} seconds before trying again`)
       return
     }
 
@@ -44,10 +65,10 @@ export function SigninForm() {
       await signin(formData.email, formData.password)
       toast.success("Signin successful 🎉")
 
-      // Only navigate on success
+      const nextRoute = await resolvePostLoginRoute()
       setTimeout(() => {
-        router.push("/dashboard/compliance")
-      }, 500)
+        router.push(nextRoute)
+      }, 1000)
     } catch (err: any) {
       // Check for rate limiting (429 status)
       if (err?.response?.status === 429) {
@@ -55,10 +76,7 @@ export function SigninForm() {
         setRateLimited(true)
         setRetryAfter(retryTime)
 
-        toast.error(`🚫 Too many login attempts. Please wait ${retryTime} seconds before trying again.`, {
-          position: "top-center",
-          autoClose: 10000,
-        })
+        toast.error(`Too many login attempts. Please wait ${retryTime} seconds before trying again.`)
 
         // Auto-reset rate limit after the specified time
         setTimeout(() => {
@@ -76,31 +94,16 @@ export function SigninForm() {
       // Check if it's an email verification or account pending issue
       if (err?.response?.status === 401 || err?.response?.status === 403) {
         if (errorMsg.toLowerCase().includes("pending")) {
-          toast.error("⏳ Your account is pending email verification. Please check your email inbox and verify your account before signing in.", {
-            position: "top-center",
-            autoClose: 8000,
-          })
+          toast.error("Your account is pending email verification. Please check your email inbox and verify before signing in.")
         } else if (errorMsg.toLowerCase().includes("verify") || errorMsg.toLowerCase().includes("verification")) {
-          toast.error("⚠️ Please verify your email before signing in. Check your inbox for the verification link.", {
-            position: "top-center",
-            autoClose: 7000,
-          })
+          toast.error("Please verify your email before signing in. Check your inbox for the verification link.")
         } else if (errorMsg.toLowerCase().includes("invalid") || errorMsg.toLowerCase().includes("incorrect")) {
-          toast.error("❌ Invalid email or password. Please check your credentials.", {
-            position: "top-center",
-            autoClose: 5000,
-          })
+          toast.error("Invalid email or password. Please check your credentials.")
         } else {
-          toast.error(`❌ ${errorMsg}`, {
-            position: "top-center",
-            autoClose: 6000,
-          })
+          toast.error(errorMsg)
         }
       } else {
-        toast.error(errorMsg, {
-          position: "top-center",
-          autoClose: 5000,
-        })
+        toast.error(errorMsg)
       }
 
       // Keep the form state so user can try again

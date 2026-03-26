@@ -11,6 +11,7 @@ import { toast } from "react-toastify"
 import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { Eye, EyeOff } from "lucide-react"
+import { ProductAuthShell } from "@/components/product-auth-shell"
 
 function ResetPasswordForm() {
   const [formData, setFormData] = useState({
@@ -168,12 +169,8 @@ function ResetPasswordForm() {
 
 export default function ResetPasswordPage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 relative">
-      <div className="absolute top-8 left-0 right-0 flex justify-center">
-        <span className="text-2xl font-bold text-[#9A813F]">Product Builder</span>
-      </div>
-
-      <div className="w-full max-w-lg px-4">
+    <ProductAuthShell>
+      <div className="w-full px-4">
         <Suspense fallback={
           <div className="flex justify-center p-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#9A813F]"></div>
@@ -182,6 +179,6 @@ export default function ResetPasswordPage() {
           <ResetPasswordForm />
         </Suspense>
       </div>
-    </div>
+    </ProductAuthShell>
   )
 }

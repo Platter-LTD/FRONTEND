@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Eye, EyeOff, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { toast } from "react-toastify"
+import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
 
 export function SpringSigninForm() {
@@ -42,7 +42,7 @@ export function SpringSigninForm() {
 
             setTimeout(() => {
                 router.push("/dashboard/merchant")
-            }, 500)
+            }, 1000)
         } catch (err: any) {
             // Existing error handling logic preserved...
             if (err?.response?.status === 429) {

@@ -312,7 +312,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
                 id={item.id}
                 title={item.title}
                 hint={item.hint}
-                buttonColor="#7C3AED"
+                buttonColor="#2563EB"
                 onFileSelected={(file) => handleFile(item.id, file)}
                 initialFile={businessFiles[item.id] || null}
               />
@@ -327,7 +327,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
                 id={item.id}
                 title={item.title}
                 hint={item.hint}
-                buttonColor="#7C3AED"
+                buttonColor="#2563EB"
                 onFileSelected={(file) => handleFile(item.id, file)}
                 initialFile={businessFiles[item.id] || null}
               />
@@ -341,7 +341,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
         <button
           type="button"
           className="px-4 py-2 rounded-md text-sm font-medium shadow-sm cursor-pointer disabled:opacity-60"
-          style={{ backgroundColor: "#7C3AED", color: "#fff" }}
+          style={{ backgroundColor: "#2563EB", color: "#fff" }}
           onClick={submit}
           disabled={submitting}
         >

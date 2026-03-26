@@ -7,6 +7,7 @@ import { Plus, ExternalLink, AlertCircle, RefreshCw } from "lucide-react"
 import CreateAppDrawer from "@/components/drawers/create-app-drawer"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
 import { getAccessToken } from "@/lib/cookieAuth"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function AllAppsPage() {
   const router = useRouter()
@@ -14,6 +15,7 @@ export default function AllAppsPage() {
   const [apps, setApps] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState("all")
 
   const fetchApps = useCallback(async () => {
     setLoading(true)
@@ -69,6 +71,25 @@ export default function AllAppsPage() {
     router.push(`/dashboard/create-app/all-apps/${appId}/wallets/treasury`)
   }
 
+  const statusOptions = Array.from(
+    new Set(
+      apps
+        .map((a) => (a?.status ? String(a.status).toLowerCase() : null))
+        .filter((v): v is string => Boolean(v)),
+    ),
+  ).sort((a, b) => a.localeCompare(b))
+
+  const filteredApps =
+    statusFilter === "all" ? apps : apps.filter((app) => String(app?.status ?? "").toLowerCase() === statusFilter)
+
+  const formatDateCreated = (app: any) => {
+    const raw = app?.dateCreated || app?.createdAt || app?.created_at || app?.date_created
+    if (!raw) return "—"
+    const date = new Date(raw)
+    if (Number.isNaN(date.getTime())) return String(raw)
+    return date.toLocaleDateString()
+  }
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -77,13 +98,26 @@ export default function AllAppsPage() {
           <h1 className="text-2xl font-semibold text-gray-900">Applications</h1>
           <p className="text-gray-600 mt-1">Create and manage your microservice applications</p>
         </div>
-        <Button
-          onClick={() => setIsCreateAppOpen(true)}
-          className="bg-[#9A813F] text-white hover:bg-[#8a7435]"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Application
-        </Button>
+        <div className="flex items-center gap-4">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[190px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              {statusOptions.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button onClick={() => setIsCreateAppOpen(true)} className="bg-[#9A813F] text-white hover:bg-[#8a7435]">
+            <Plus className="w-4 h-4 mr-2" />
+            Create Application
+          </Button>
+        </div>
       </div>
 
       {/* Info Banner */}
@@ -127,6 +161,19 @@ export default function AllAppsPage() {
               Create Your First App
             </Button>
           </div>
+        ) : filteredApps.length === 0 ? (
+          <div className="text-center py-12 px-4">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No applications match this status</h3>
+            <p className="text-gray-600 mb-6">Try selecting "All statuses".</p>
+            <Button
+              onClick={() => setStatusFilter("all")}
+              variant="outline"
+              className="gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Clear filter
+            </Button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -142,12 +189,12 @@ export default function AllAppsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {apps.map((app) => (
+                {filteredApps.map((app) => (
                   <tr key={app.id} className="hover:bg-gray-50">
                     <td className="py-3 px-4">
                       <div className="font-medium text-gray-900">{app.name}</div>
                     </td>
-                    <td className="py-3 px-4 text-gray-600">{app.appId}</td>
+                    <td className="py-3 px-4 text-gray-600">{app.appId || app.app_id || app.id || "—"}</td>
                     <td className="py-3 px-4">
                       <a
                         href={app.websiteUrl}
@@ -160,7 +207,7 @@ export default function AllAppsPage() {
                       </a>
                     </td>
                     <td className="py-3 px-4 text-gray-600">{app.alias}</td>
-                    <td className="py-3 px-4 text-gray-600">{app.dateCreated}</td>
+                    <td className="py-3 px-4 text-gray-600">{formatDateCreated(app)}</td>
                     <td className="py-3 px-4">
                       <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">
                         {app.status}

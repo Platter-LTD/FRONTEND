@@ -22,7 +22,7 @@ export function SecurityTab() {
           <TextInput placeholder="Confirm New Password" />
           <TextInput placeholder="Enter new email" type="email" />
           <TextInput placeholder="Confirm email" type="email" />
-          <Button className="w-full bg-[#7C3AED] px-6 py-6 text-white hover:bg-[#6D28D9] mt-6">
+          <Button className="w-full bg-[#2563EB] px-6 py-6 text-white hover:bg-[#1D4ED8] mt-6">
             Update
           </Button>
         </div>
@@ -40,7 +40,7 @@ export function SecurityTab() {
               <span className="text-sm text-gray-600">Activate Two Factor Authentication</span>
               <button
                 onClick={() => setTwoFactorEnabled(!twoFactorEnabled)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${twoFactorEnabled ? "bg-[#7C3AED]" : "bg-gray-200"
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${twoFactorEnabled ? "bg-[#2563EB]" : "bg-gray-200"
                   }`}
               >
                 <span
@@ -65,7 +65,7 @@ export function SecurityTab() {
               </div>
               <button
                 onClick={() => setAuthenticatorEnabled(!authenticatorEnabled)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${authenticatorEnabled ? "bg-[#7C3AED]" : "bg-gray-200"
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${authenticatorEnabled ? "bg-[#2563EB]" : "bg-gray-200"
                   }`}
               >
                 <span
@@ -80,7 +80,7 @@ export function SecurityTab() {
 
           {/* Button */}
           <Button
-            className="w-full bg-[#7C3AED] py-6 px-6 text-white hover:bg-[#6D28D9]"
+            className="w-full bg-[#2563EB] py-6 px-6 text-white hover:bg-[#1D4ED8]"
             onClick={() => setOpenDrawer(true)}
           >
             Proceed with 2FA setup

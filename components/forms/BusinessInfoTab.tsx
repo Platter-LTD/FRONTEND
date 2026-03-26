@@ -29,7 +29,7 @@ const FloatingSelect: React.FC<FloatingSelectProps> = ({
   onChange,
   options = [],
   optionPairs,
-  accentColor = '#7C3AED',
+  accentColor = '#2563EB',
   onSelected,
 }) => {
   const labelClassBase = 'absolute left-4 transition-all pointer-events-none';
@@ -49,7 +49,7 @@ const FloatingSelect: React.FC<FloatingSelectProps> = ({
           onChange(e.target.value);
           if (onSelected && e.target.value) onSelected();
         }}
-        className="w-full rounded-lg border border-gray-300 bg-white px-4 pt-9 pb-2.5 text-gray-900 appearance-none focus:outline-none focus:ring-1 focus:ring-[#7C3AED]"
+        className="w-full rounded-lg border border-gray-300 bg-white px-4 pt-9 pb-2.5 text-gray-900 appearance-none focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
         style={{ outlineColor: accentColor }}
       >
         <option value="" disabled>
@@ -94,7 +94,7 @@ const SimpleInput: React.FC<SimpleInputProps> = ({
   type = 'text',
   value,
   onChange,
-  accentColor = '#7C3AED',
+  accentColor = '#2563EB',
 }) => {
   return (
     <input
@@ -296,7 +296,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
               label="Upload Company Logo"
               description="PDF format • Max. 5MB"
               onFileSelect={(file) => console.log('File selected:', file)}
-              buttonColor="#7C3AED"
+              buttonColor="#2563EB"
             />
           </div>
         </div>
@@ -307,7 +307,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
         <button
           type="button"
           className="px-4 py-2 rounded-md text-sm font-medium shadow-sm cursor-pointer disabled:opacity-60"
-          style={{ backgroundColor: "#7C3AED", color: "#fff" }}
+          style={{ backgroundColor: "#2563EB", color: "#fff" }}
           onClick={() => {
             console.log('Business Info saved:', formData);
             toast.success('✅ Business info saved successfully');

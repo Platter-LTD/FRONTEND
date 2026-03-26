@@ -81,7 +81,7 @@ export function CreateRoleModal({ isOpen, onClose, onSuccess }: CreateRoleModalP
                 </Select>
               </div>
 
-              <Button onClick={handleSubmit} className="w-full bg-[#7C3AED] hover:bg-[#6D28D9] text-white">
+              <Button onClick={handleSubmit} className="w-full bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
                 Create Role
               </Button>
             </div>

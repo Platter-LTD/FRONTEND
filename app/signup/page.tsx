@@ -2,11 +2,11 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import Image from "next/image"
 import { RegistrationForm } from "@/components/registration-form"
 import { toast } from "react-toastify"
 import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
+import { ProductAuthShell } from "@/components/product-auth-shell"
 
 export default function SignupPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -91,13 +91,10 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center bg-gray-50 py-12 relative overflow-y-auto">
-      <div className="flex justify-center w-full mb-8 mt-4">
-        <span className="text-2xl font-bold text-[#9A813F]">Product Builder</span>
-      </div>
-      <div className="w-full max-w-lg px-4">
+    <ProductAuthShell>
+      <div className="w-full px-4">
         <RegistrationForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
       </div>
-    </div>
+    </ProductAuthShell>
   )
 }

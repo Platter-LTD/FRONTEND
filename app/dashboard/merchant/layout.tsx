@@ -42,9 +42,9 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
                 <div className="flex items-center gap-6">
                      <div className="relative">
                         <Bell className="text-gray-500" size={22} />
-                        <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#7C3AED] text-[10px] font-bold text-white border border-white">4</span>
+                        <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#2563EB] text-[10px] font-bold text-white border border-white">4</span>
                      </div>
-                     <div className="h-9 w-9 bg-purple-100 rounded-full flex items-center justify-center text-[#7C3AED]">
+                     <div className="h-9 w-9 bg-blue-100 rounded-full flex items-center justify-center text-[#2563EB]">
                         <User size={18} />
                      </div>
                 </div>

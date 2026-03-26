@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Plus, Package, ExternalLink, AlertCircle, RefreshCw } from "lucide-react"
+import { Plus, Package, ExternalLink, AlertCircle, RefreshCw, Loader2 } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
@@ -20,6 +20,17 @@ import MortgageCreatedSuccessDrawer from "@/components/drawers/mortgage-created-
 import SavingsCreatedSuccessDrawer from "@/components/drawers/savings-created-success-drawer"
 import CommodityCreatedSuccessDrawer from "@/components/drawers/commodity-created-success-drawer"
 import { productApi } from "@/lib/services/product-api"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  prefetchLoanConfigureOptions,
+  prefetchMortgageConfigureOptions,
+  prefetchSavingsConfigureOptions,
+  prefetchCommodityConfigureOptions,
+  type LoanConfigurePrefetched,
+  type MortgageConfigurePrefetched,
+  type SavingsConfigurePrefetched,
+  type CommodityConfigurePrefetched,
+} from "@/lib/productConfigurePrefetch"
 
 export default function ProductsPage() {
   const params = useParams()
@@ -29,6 +40,7 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [typeFilter, setTypeFilter] = useState("all")
 
   // Loan states
   const [isCreateLoanOpen, setIsCreateLoanOpen] = useState(false)
@@ -37,6 +49,11 @@ export default function ProductsPage() {
   const [loanData, setLoanData] = useState<any>(null)
   const [configuringProductId, setConfiguringProductId] = useState<string | null>(null)
   const [configuringProductType, setConfiguringProductType] = useState<string | null>(null)
+  const [prefetchingProductId, setPrefetchingProductId] = useState<string | null>(null)
+  const [loanConfigurePrefetch, setLoanConfigurePrefetch] = useState<LoanConfigurePrefetched | null>(null)
+  const [mortgageConfigurePrefetch, setMortgageConfigurePrefetch] = useState<MortgageConfigurePrefetched | null>(null)
+  const [savingsConfigurePrefetch, setSavingsConfigurePrefetch] = useState<SavingsConfigurePrefetched | null>(null)
+  const [commodityConfigurePrefetch, setCommodityConfigurePrefetch] = useState<CommodityConfigurePrefetched | null>(null)
 
   // Mortgage states
   const [isCreateMortgageOpen, setIsCreateMortgageOpen] = useState(false)
@@ -85,6 +102,19 @@ export default function ProductsPage() {
   useEffect(() => {
     if (appId) fetchProducts()
   }, [appId, fetchProducts])
+
+  const typeOptions = Array.from(
+    new Set(
+      products
+        .map((p) => (p?.type ? String(p.type).toLowerCase() : null))
+        .filter((v): v is string => Boolean(v)),
+    ),
+  ).sort((a, b) => a.localeCompare(b))
+
+  const filteredProducts =
+    typeFilter === "all"
+      ? products
+      : products.filter((product) => String(product?.type ?? "").toLowerCase() === typeFilter.toLowerCase())
 
   const handleProductCreated = (product: any) => {
     // Add the new product to the list (this will be called from the form page)
@@ -159,6 +189,7 @@ export default function ProductsPage() {
 
   const handleConfigureLoan = async (configData: any) => {
     setIsConfigureLoanOpen(false)
+    setLoanConfigurePrefetch(null)
     setIsProcessingOpen(true)
 
     try {
@@ -227,6 +258,7 @@ export default function ProductsPage() {
 
   const handleConfigureMortgage = async (configData: any) => {
     setIsConfigureMortgageOpen(false)
+    setMortgageConfigurePrefetch(null)
     setIsProcessingOpen(true)
 
     try {
@@ -295,6 +327,7 @@ export default function ProductsPage() {
 
   const handleConfigureSavings = async (configData: any) => {
     setIsConfigureSavingsOpen(false)
+    setSavingsConfigurePrefetch(null)
     setIsProcessingOpen(true)
 
     try {
@@ -364,6 +397,7 @@ export default function ProductsPage() {
 
   const handleConfigureCommodity = async (configData: any) => {
     setIsConfigureCommodityOpen(false)
+    setCommodityConfigurePrefetch(null)
     setIsProcessingOpen(true)
 
     try {
@@ -394,21 +428,49 @@ export default function ProductsPage() {
     }
   }
 
-  const handleConfigureProduct = (productId: string, productType: string) => {
-    setConfiguringProductId(productId)
-    setConfiguringProductType(productType)
+  const handleConfigureProduct = async (productId: string, productType: string) => {
+    const row = products.find((p) => p.id === productId)
+    const dataStub = row
+      ? { name: row.name, description: row.description ?? "", productId: row.id }
+      : { productId }
 
-    const type = productType.toLowerCase()
-    if (type === 'loan') {
-      setIsConfigureLoanOpen(true)
-    } else if (type === 'mortgage') {
-      setIsConfigureMortgageOpen(true)
-    } else if (type === 'savings') {
-      setIsConfigureSavingsOpen(true)
-    } else if (type === 'commodity') {
-      setIsConfigureCommodityOpen(true)
-    } else if (type === 'investment') {
-      setIsConfigureCommodityOpen(true)
+    setPrefetchingProductId(productId)
+    try {
+      const type = productType.toLowerCase()
+      if (type === "loan") {
+        const prefetched = await prefetchLoanConfigureOptions()
+        setLoanConfigurePrefetch(prefetched)
+        setLoanData(dataStub)
+        setConfiguringProductId(productId)
+        setConfiguringProductType(productType)
+        setIsConfigureLoanOpen(true)
+      } else if (type === "mortgage") {
+        const prefetched = await prefetchMortgageConfigureOptions()
+        setMortgageConfigurePrefetch(prefetched)
+        setMortgageData(dataStub)
+        setConfiguringProductId(productId)
+        setConfiguringProductType(productType)
+        setIsConfigureMortgageOpen(true)
+      } else if (type === "savings") {
+        const prefetched = await prefetchSavingsConfigureOptions()
+        setSavingsConfigurePrefetch(prefetched)
+        setSavingsData(dataStub)
+        setConfiguringProductId(productId)
+        setConfiguringProductType(productType)
+        setIsConfigureSavingsOpen(true)
+      } else if (type === "commodity" || type === "investment") {
+        const prefetched = await prefetchCommodityConfigureOptions(type === "investment")
+        setCommodityConfigurePrefetch(prefetched)
+        setCommodityData(dataStub)
+        setConfiguringProductId(productId)
+        setConfiguringProductType(productType)
+        setIsConfigureCommodityOpen(true)
+      }
+    } catch (err) {
+      console.error(err)
+      alert("Failed to load configuration options. Please try again.")
+    } finally {
+      setPrefetchingProductId(null)
     }
   }
 
@@ -424,13 +486,29 @@ export default function ProductsPage() {
           <h1 className="text-2xl font-semibold text-gray-900">Products</h1>
           <p className="text-gray-600 mt-1">Create and manage your financial products</p>
         </div>
-        <Button
-          onClick={() => setIsCreateProductOpen(true)}
-          className="bg-[#9A813F] text-white hover:bg-[#8a7435]"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Create Product
-        </Button>
+        <div className="flex items-center gap-4">
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-[190px]">
+              <SelectValue placeholder="Product Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All types</SelectItem>
+              {typeOptions.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button
+            onClick={() => setIsCreateProductOpen(true)}
+            className="bg-[#9A813F] text-white hover:bg-[#8a7435]"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Product
+          </Button>
+        </div>
       </div>
 
       {/* Info Banner */}
@@ -474,6 +552,19 @@ export default function ProductsPage() {
               Create Your First Product
             </Button>
           </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="text-center py-12">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No products match this type</h3>
+            <p className="text-gray-600 mb-6">Try selecting "All types".</p>
+            <Button
+              onClick={() => setTypeFilter("all")}
+              variant="outline"
+              className="gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Clear filter
+            </Button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -488,7 +579,7 @@ export default function ProductsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {products.map((product) => (
+                {filteredProducts.map((product) => (
                   <tr
                     key={product.id}
                     onClick={() => handleProductClick(product.id, product.type)}
@@ -527,13 +618,22 @@ export default function ProductsPage() {
                         </button>
                         {product.status === 'incomplete' && (
                           <button
+                            type="button"
+                            disabled={prefetchingProductId === product.id}
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleConfigureProduct(product.id, product.type)
+                              void handleConfigureProduct(product.id, product.type)
                             }}
-                            className="bg-[#9A813F] text-white px-3 py-1 rounded text-sm font-medium hover:bg-[#8a7435]"
+                            className="bg-[#9A813F] text-white px-3 py-1 rounded text-sm font-medium hover:bg-[#8a7435] disabled:opacity-60 inline-flex items-center gap-2"
                           >
-                            Configure
+                            {prefetchingProductId === product.id ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                Loading…
+                              </>
+                            ) : (
+                              "Configure"
+                            )}
                           </button>
                         )}
                       </div>
@@ -562,9 +662,13 @@ export default function ProductsPage() {
       />
       <ConfigureLoanDrawer
         isOpen={isConfigureLoanOpen}
-        onClose={() => setIsConfigureLoanOpen(false)}
+        onClose={() => {
+          setIsConfigureLoanOpen(false)
+          setLoanConfigurePrefetch(null)
+        }}
         onSubmit={handleConfigureLoan}
         loanData={loanData}
+        prefetchedOptions={loanConfigurePrefetch}
       />
 
       {/* Mortgage Drawers */}
@@ -576,9 +680,13 @@ export default function ProductsPage() {
       />
       <ConfigureMortgageDrawer
         isOpen={isConfigureMortgageOpen}
-        onClose={() => setIsConfigureMortgageOpen(false)}
+        onClose={() => {
+          setIsConfigureMortgageOpen(false)
+          setMortgageConfigurePrefetch(null)
+        }}
         onSubmit={handleConfigureMortgage}
         mortgageData={mortgageData}
+        prefetchedOptions={mortgageConfigurePrefetch}
       />
 
       {/* Savings Drawers */}
@@ -590,9 +698,13 @@ export default function ProductsPage() {
       />
       <ConfigureSavingsDrawer
         isOpen={isConfigureSavingsOpen}
-        onClose={() => setIsConfigureSavingsOpen(false)}
+        onClose={() => {
+          setIsConfigureSavingsOpen(false)
+          setSavingsConfigurePrefetch(null)
+        }}
         onSubmit={handleConfigureSavings}
         savingsData={savingsData}
+        prefetchedOptions={savingsConfigurePrefetch}
       />
 
       {/* Commodity Drawers */}
@@ -605,10 +717,14 @@ export default function ProductsPage() {
       />
       <ConfigureCommodityDrawer
         isOpen={isConfigureCommodityOpen}
-        onClose={() => setIsConfigureCommodityOpen(false)}
+        onClose={() => {
+          setIsConfigureCommodityOpen(false)
+          setCommodityConfigurePrefetch(null)
+        }}
         onSubmit={handleConfigureCommodity}
         commodityData={commodityData}
         variant={configuringProductType?.toLowerCase() === "investment" ? "investment" : "commodity"}
+        prefetchedOptions={commodityConfigurePrefetch}
       />
 
       {/* Processing Drawer */}

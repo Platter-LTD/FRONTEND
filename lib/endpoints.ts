@@ -125,16 +125,64 @@ export const BACKEND = {
     revoke: (sessionId: string) => `/api/v1/sessions/${encodeURIComponent(sessionId)}`,
   },
 
+  /** Wallet (`/api/v1/wallets`) — Bearer except funding callback/status */
+  wallet: {
+    merchant: {
+      create: "/api/v1/wallets/merchant",
+      createAll: "/api/v1/wallets/merchant/all",
+      byType: (merchantId: string, walletType: "TREASURY" | "OPERATION" | "KYC", appId?: string) =>
+        `/api/v1/wallets/merchant/${encodeURIComponent(merchantId)}/type/${encodeURIComponent(walletType)}${appId ? `?appId=${encodeURIComponent(appId)}` : ""}`,
+      all: (merchantId: string, appId?: string) =>
+        `/api/v1/wallets/merchant/${encodeURIComponent(merchantId)}/all${appId ? `?appId=${encodeURIComponent(appId)}` : ""}`,
+      updateBalance: "/api/v1/wallets/merchant/balance",
+      users: (merchantId: string) => `/api/v1/wallets/merchant/${encodeURIComponent(merchantId)}/users`,
+    },
+    operation: {
+      transactions: (merchantId: string) => `/api/v1/wallets/operation/${encodeURIComponent(merchantId)}/transactions`,
+      debit: "/api/v1/wallets/operation/debit",
+      toKyc: "/api/v1/wallets/operation-to-kyc",
+    },
+    kyc: {
+      transactions: (merchantId: string) => `/api/v1/wallets/kyc/${encodeURIComponent(merchantId)}/transactions`,
+      debit: "/api/v1/wallets/kyc/debit",
+      fee: "/api/v1/wallets/kyc/fee",
+      toOperation: "/api/v1/wallets/kyc-to-operation",
+    },
+    treasury: {
+      transactions: (merchantId: string) => `/api/v1/wallets/treasury/${encodeURIComponent(merchantId)}/transactions`,
+      transfer: "/api/v1/wallets/treasury/transfer",
+      debitUser: "/api/v1/wallets/treasury/debit",
+      debitMerchant: "/api/v1/wallets/treasury/debit-merchant",
+    },
+    user: {
+      create: "/api/v1/wallets/user",
+      byId: (userId: string) => `/api/v1/wallets/user/${encodeURIComponent(userId)}`,
+      updateBalance: (userId: string) => `/api/v1/wallets/user/${encodeURIComponent(userId)}/balance`,
+      transactions: (userId: string) => `/api/v1/wallets/user/${encodeURIComponent(userId)}/transactions`,
+      transfer: (userId: string) => `/api/v1/wallets/user/${encodeURIComponent(userId)}/transfer`,
+      apiCall: (userId: string) => `/api/v1/wallets/user/${encodeURIComponent(userId)}/api-call`,
+    },
+    funding: {
+      callback: "/api/v1/wallets/funding/callback",
+      status: (transactionId: string) => `/api/v1/wallets/funding/status/${encodeURIComponent(transactionId)}`,
+    },
+    transactions: {
+      create: "/api/v1/transactions",
+      byWallet: (walletId: string) => `/api/v1/transactions/${encodeURIComponent(walletId)}`,
+    },
+    admin: {
+      summary: "/api/v1/wallets/admin/summary",
+      transactions: "/api/v1/wallets/admin/transactions",
+    },
+  },
+
   /** Verify email (`/verify-email`) — public */
   verifyEmail: {
     /** GET — Verifies email using a token from the verification link (e.g. in email). */
     verifyEmail: "/verify-email/verify-email",
   },
 
-  /**
-   * Compliance / KYC microservice (compliance-ms.fly.dev).
-   * Path suffixes only; base URL is NEXT_PUBLIC_COMPLIANCE_API_URL or https://compliance-ms.fly.dev.
-   */
+ 
   kyc: {
     /** Individual KYC */
     individual: {

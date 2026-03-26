@@ -60,7 +60,7 @@ export function ProductTab() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div></div>
-        <Button className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]" onClick={() => setShowProducts(true)}>
+        <Button className="bg-[#2563EB] text-white hover:bg-[#1D4ED8]" onClick={() => setShowProducts(true)}>
           <Plus className="w-4 h-4 mr-2" />
           Create Product
         </Button>
@@ -73,7 +73,7 @@ export function ProductTab() {
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No Products Created</h3>
           <p className="text-gray-500 mb-6">Create your first product to get started with the API.</p>
-          <Button className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]" onClick={() => setShowProducts(true)}>
+          <Button className="bg-[#2563EB] text-white hover:bg-[#1D4ED8]" onClick={() => setShowProducts(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Create Product
           </Button>

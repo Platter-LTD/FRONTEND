@@ -3,8 +3,10 @@
 import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, Download, Share } from "lucide-react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/hooks/useAuth"
+import { getUserFromToken } from "@/lib/tokenManager"
 
 export interface BillingRecord {
   date: string
@@ -66,6 +68,19 @@ export const TransactionHistoryDrawer = ({
   onDownload,
   onShare,
 }: TransactionHistoryDrawerProps) => {
+  const { user } = useAuth()
+  const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
+  const effectiveUser = user ?? tokenUser
+
+  const displayName = effectiveUser
+    ? [effectiveUser.firstName, effectiveUser.lastName].filter(Boolean).join(" ").trim()
+    : ""
+  const displayEmail = effectiveUser?.email ?? ""
+  const initialsFromName = effectiveUser
+    ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
+    : ""
+  const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
+
   // ESC close
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -152,12 +167,11 @@ export const TransactionHistoryDrawer = ({
                 value={
                   <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src="/avatars/grace.png" alt="Grace Ayo" />
-                      <AvatarFallback className="bg-primary/10 text-primary text-xs">GA</AvatarFallback>
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs">{initials}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium text-transaction-value">Grace Ayo</span>
-                      <span className="text-xs text-transaction-label">grace.yo@spring.td</span>
+                      <span className="text-sm font-medium text-transaction-value">{displayName}</span>
+                      <span className="text-xs text-transaction-label">{displayEmail}</span>
                     </div>
                   </div>
                 }

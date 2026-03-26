@@ -19,7 +19,7 @@ export function CallbacksTab() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div></div>
-        <Button className="bg-[#7C3AED] text-white hover:bg-[#6D28D9]">
+        <Button className="bg-[#2563EB] text-white hover:bg-[#1D4ED8]">
           <Plus className="w-4 h-4 mr-2" />
           Add Callback
         </Button>

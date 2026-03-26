@@ -2,7 +2,9 @@
 
 import { Drawer } from "@/components/drawer"
 import { Badge } from "@/components/ui/badge"
-import Image from "next/image"
+import { useAuth } from "@/hooks/useAuth"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { getUserFromToken } from "@/lib/tokenManager"
 
 interface ProductDetailModalProps {
   open: boolean
@@ -11,6 +13,19 @@ interface ProductDetailModalProps {
 }
 
 export function ProductDetailModal({ open, onOpenChange, product }: ProductDetailModalProps) {
+  const { user } = useAuth()
+  const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
+  const effectiveUser = user ?? tokenUser
+
+  const displayName = effectiveUser
+    ? [effectiveUser.firstName, effectiveUser.lastName].filter(Boolean).join(" ").trim()
+    : ""
+  const displayEmail = effectiveUser?.email ?? ""
+  const initialsFromName = effectiveUser
+    ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
+    : ""
+  const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
+
   if (!product) return null
 
   return (
@@ -84,14 +99,14 @@ export function ProductDetailModal({ open, onOpenChange, product }: ProductDetai
               <div className="flex justify-between items-center">
                  <span className="text-xs text-gray-400">Initiated by</span>
                  <div className="flex items-center gap-2">
-                    <img 
-                        src="https://www.shutterstock.com/image-photo/portrait-black-woman-smile-arms-600nw-2329488115.jpg" 
-                        alt="Grace Ayo" 
-                        className="w-6 h-6 rounded-full object-cover"
-                    />
+                    <Avatar className="w-6 h-6">
+                      <AvatarFallback className="text-[10px] font-semibold text-gray-900 bg-muted">
+                        {initials}
+                      </AvatarFallback>
+                    </Avatar>
                     <div>
-                        <p className="text-xs font-semibold text-gray-900">Grace Ayo</p>
-                        <p className="text-[10px] text-gray-500">grace.yo@spring.td</p>
+                        <p className="text-xs font-semibold text-gray-900">{displayName}</p>
+                        <p className="text-[10px] text-gray-500">{displayEmail}</p>
                     </div>
                  </div>
               </div>
