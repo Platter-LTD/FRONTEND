@@ -62,7 +62,7 @@ export function EmailVerificationInstruction({ email, onResend, message, isResen
             onClick={handleResend}
             disabled={isResending}
             className="hover:underline disabled:opacity-50"
-            style={{ color: "#74612F" }}
+            style={{ color: "#7C3AED" }}
           >
             {isResending ? "Sending..." : "Click to resend"}
           </button>

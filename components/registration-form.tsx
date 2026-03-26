@@ -211,11 +211,11 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
             />
             <p className="text-[13px] font-medium leading-relaxed text-muted-foreground">
               I accept the SpringTD{" "}
-              <Link href="#" className="hover:underline" style={{ color: "#74612F" }}>
+              <Link href="#" className="hover:underline" style={{ color: "#7C3AED" }}>
                 Merchant Service Agreement
               </Link>{" "}
               and the use of my personal data as outlined in the SpringTD{" "}
-              <Link href="#" className="hover:underline" style={{ color: "#74612F" }}>
+              <Link href="#" className="hover:underline" style={{ color: "#7C3AED" }}>
                 Privacy Notice
               </Link>
               .
@@ -224,7 +224,7 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
 
           <div className="text-center text-sm">
             <span className="text-muted-foreground">Already have an account? </span>
-            <Link href="/signin" className="hover:underline font-medium" style={{ color: "#74612F" }}>
+            <Link href="/signin" className="hover:underline font-medium" style={{ color: "#7C3AED" }}>
               Sign in
             </Link>
           </div>

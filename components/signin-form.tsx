@@ -173,7 +173,7 @@ export function SigninForm() {
             <Link
               href="/forgot-password"
               className="text-sm font-medium hover:underline"
-              style={{ color: "#74612F" }}
+              style={{ color: "#7C3AED" }}
             >
               Forgot password?
             </Link>
@@ -182,7 +182,7 @@ export function SigninForm() {
           <Button
             type="submit"
             className="w-full h-12 text-white hover:opacity-90"
-            style={{ backgroundColor: rateLimited ? "#9CA3AF" : "#74612F" }}
+            style={{ backgroundColor: rateLimited ? "#9CA3AF" : "#7C3AED" }}
             disabled={isSubmitting || rateLimited}
           >
             {rateLimited ? `Wait ${retryAfter}s...` : isSubmitting ? "Signing in..." : "Sign in"}
@@ -190,7 +190,7 @@ export function SigninForm() {
 
           <div className="text-center text-sm">
             <span className="text-muted-foreground">If you don't have an account </span>
-            <Link href="/signup" className="hover:underline" style={{ color: "#74612F" }}>
+            <Link href="/signup" className="hover:underline" style={{ color: "#7C3AED" }}>
               Sign Up
             </Link>
           </div>

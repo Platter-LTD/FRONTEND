@@ -171,7 +171,7 @@ function VerifyEmailContent() {
                 onKeyDown={(e) => handleKeyDown(index, e)}
                 disabled={isVerifying}
                 className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-300 dark:border-gray-600 rounded-lg 
-                         focus:border-[#74612F] focus:ring-2 focus:ring-[#74612F]/20 focus:outline-none
+                         focus:border-[#7C3AED] focus:ring-2 focus:ring-[#7C3AED]/20 focus:outline-none
                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                          disabled:opacity-50 disabled:cursor-not-allowed
                          transition-all duration-200"
@@ -183,7 +183,7 @@ function VerifyEmailContent() {
             onClick={() => handleVerifyOTP()}
             disabled={isVerifying || otp.some(digit => digit === "")}
             className="w-full h-12 text-white hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: "#74612F" }}
+            style={{ backgroundColor: "#7C3AED" }}
           >
             {isVerifying ? "Verifying..." : "Verify Email"}
           </Button>
@@ -193,7 +193,7 @@ function VerifyEmailContent() {
             <button
               onClick={handleResend}
               disabled={isResending}
-              className="text-[#74612F] hover:underline font-medium disabled:opacity-50"
+              className="text-[#7C3AED] hover:underline font-medium disabled:opacity-50"
             >
               {isResending ? "Sending..." : "Resend Code"}
             </button>

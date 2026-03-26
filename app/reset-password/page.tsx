@@ -89,7 +89,7 @@ function ResetPasswordForm() {
         <Link href="/signin">
           <Button 
             className="w-full h-12 text-white hover:opacity-90"
-            style={{ backgroundColor: "#74612F" }}
+            style={{ backgroundColor: "#7C3AED" }}
           >
             Sign in
           </Button>
@@ -157,7 +157,7 @@ function ResetPasswordForm() {
         <Button
           type="submit"
           className="w-full h-12 text-white hover:opacity-90"
-          style={{ backgroundColor: "#74612F" }}
+          style={{ backgroundColor: "#7C3AED" }}
           disabled={isSubmitting}
         >
           {isSubmitting ? "Resetting password..." : "Reset password"}
@@ -173,7 +173,7 @@ export default function ResetPasswordPage() {
       <div className="w-full px-4">
         <Suspense fallback={
           <div className="flex justify-center p-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#9A813F]"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7C3AED]"></div>
           </div>
         }>
           <ResetPasswordForm />

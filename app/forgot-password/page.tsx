@@ -59,7 +59,7 @@ export default function ForgotPasswordPage() {
                 <button 
                   onClick={handleSubmit} 
                   disabled={isSubmitting}
-                  className="text-[#74612F] font-medium hover:underline disabled:opacity-50"
+                  className="text-[#7C3AED] font-medium hover:underline disabled:opacity-50"
                 >
                   resend email
                 </button>
@@ -98,7 +98,7 @@ export default function ForgotPasswordPage() {
               <Button
                 type="submit"
                 className="w-full h-12 text-white hover:opacity-90"
-                style={{ backgroundColor: "#74612F" }}
+                style={{ backgroundColor: "#7C3AED" }}
                 disabled={isSubmitting}
               >
                 {isSubmitting ? "Sending link..." : "Send reset link"}
