@@ -79,7 +79,7 @@ export default function SettingsPage() {
 
     const faqs = [
         {
-            question: "Why is SpringTD",
+            question: "Why is PLATA",
             answer: "Lorem ipsum dolor sit amet consectetur. Rhoncus purus sed vestibulum dignissim libero tellus. Et vitae in eget dui id lectus parturient magna. Et vitae in eget dui id lectus parturient magna. Et vitae in eget dui id lectus parturient magna."
         },
         {
@@ -531,7 +531,7 @@ export default function SettingsPage() {
                     <div className="max-w-5xl">
                         <div className="mb-6">
                             <h2 className="text-lg font-semibold text-gray-900">Frequently Asked Questions</h2>
-                            <p className="text-sm text-gray-500">Find answers to common questions about Spring TD</p>
+                            <p className="text-sm text-gray-500">Find answers to common questions about PLATA</p>
                         </div>
 
                         {/* Search Section */}
@@ -626,7 +626,7 @@ export default function SettingsPage() {
 
                                 <div className="space-y-1">
                                     <p className="font-bold text-gray-900">1. Introduction</p>
-                                    <p>Welcome to SpringTD. By using our mobile application or website, you agree to these Terms and Conditions. Please read them carefully.</p>
+                                    <p>Welcome to PLATA. By using our mobile application or website, you agree to these Terms and Conditions. Please read them carefully.</p>
                                 </div>
 
                                 <div className="space-y-1">

@@ -210,11 +210,11 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
               className="mt-1 rounded-full"
             />
             <p className="text-[13px] font-medium leading-relaxed text-muted-foreground">
-              I accept the SpringTD{" "}
+              I accept the PLATA{" "}
               <Link href="#" className="hover:underline" style={{ color: "#74612F" }}>
                 Merchant Service Agreement
               </Link>{" "}
-              and the use of my personal data as outlined in the SpringTD{" "}
+              and the use of my personal data as outlined in the PLATA{" "}
               <Link href="#" className="hover:underline" style={{ color: "#74612F" }}>
                 Privacy Notice
               </Link>

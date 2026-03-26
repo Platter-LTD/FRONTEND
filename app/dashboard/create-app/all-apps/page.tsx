@@ -51,7 +51,7 @@ export default function AllAppsPage() {
       const keysToRemove: string[] = []
       for (let i = 0; i < window.localStorage.length; i++) {
         const key = window.localStorage.key(i)
-        if (key?.startsWith('springtd-apps-')) keysToRemove.push(key)
+        if (key?.startsWith('plata-apps-')) keysToRemove.push(key)
       }
       keysToRemove.forEach((k) => window.localStorage.removeItem(k))
     }

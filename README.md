@@ -1,4 +1,4 @@
-# SpringTD Dashboard — Frontend
+# PLATA Dashboard — Frontend
 
 > A multi-tenant fintech platform built with **Next.js 15**, hosting three distinct frontend applications under one codebase.
 
@@ -79,7 +79,7 @@ A shared `/dashboard/` area (Overview, Compliance, Developer, Settings) sits out
 ### Installation
 
 ```bash
-cd springtd-frontend
+cd plata-frontend
 npm install
 # or: pnpm install
 ```
@@ -126,7 +126,7 @@ A seed user is auto-created in the `service-auth-ms` SQLite database:
 ## 4. Repository Structure
 
 ```
-springtd-frontend/
+plata-frontend/
 ├── app/                        # Next.js App Router pages
 │   ├── api/                    # API Routes (Next.js proxy layer)
 │   │   ├── apps/               # → create-app-ms
@@ -564,7 +564,7 @@ NEXT_PUBLIC_PUBLIC_KEY=your-public-key-here
 JWT_SECRET=your-super-secure-secret-key-minimum-32-characters
 
 # ── App Configuration ─────────────────────────────────────────────────────────
-NEXT_PUBLIC_APP_NAME=SpringTD Dashboard
+NEXT_PUBLIC_APP_NAME=PLATA Dashboard
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
 # ── Spring App Identification ─────────────────────────────────────────────────

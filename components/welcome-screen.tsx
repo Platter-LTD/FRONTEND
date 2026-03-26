@@ -20,7 +20,7 @@ export function WelcomeScreen() {
         <CardContent className="p-12 text-center space-y-8 flex flex-col justify-center h-full">
           <div className="space-y-2">
             <h1 className="text-2xl font-medium text-balance">
-              Welcome to <span className="font-bold text-slate-800">SpringTD</span>!
+              Welcome to <span className="font-bold text-slate-800">PLATA</span>!
             </h1>
             <p className="text-muted-foreground">Thank you signing up</p>
           </div>

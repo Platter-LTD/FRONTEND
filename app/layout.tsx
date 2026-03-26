@@ -4,8 +4,8 @@ import "./globals.css"
 import { AppProviders } from "./providers"
 
 export const metadata: Metadata = {
-  title: "Spring TD Dashboard",
-  description: "Spring TD Dashboard Application",
+  title: "PLATA Dashboard",
+  description: "PLATA Dashboard Application",
   generator: "v0.app",
 }
 

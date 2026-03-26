@@ -493,7 +493,7 @@ export default function SettingsPage() {
                     <div className="max-w-5xl">
                         <div className="mb-6">
                             <h2 className="text-lg font-semibold text-gray-900">Frequently Asked Questions</h2>
-                            <p className="text-sm text-gray-500">Find answers to common questions about Spring TD</p>
+                            <p className="text-sm text-gray-500">Find answers to common questions about PLATA</p>
                         </div>
                         <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4">
                             <button className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm hover:bg-gray-50 transition-colors group">

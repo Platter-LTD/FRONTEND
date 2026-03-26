@@ -114,7 +114,7 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
       {/* Logo */}
       <div className="p-6 border-b border-gray-100">
-        <h1 className="text-2xl font-bold text-[#7C3AED]">Spring TD</h1>
+        <h1 className="text-2xl font-bold text-[#7C3AED]">PLATA</h1>
       </div>
 
       {/* Manage App button directly under the logo */}

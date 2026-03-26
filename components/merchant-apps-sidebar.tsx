@@ -34,7 +34,7 @@ export default function MerchantAppsSidebar() {
     <div className="w-64 bg-[#F9F9FB] border-r border-gray-200 h-screen flex flex-col">
       {/* Logo */}
       <div className="p-6">
-        <h1 className="text-2xl font-bold text-[#7C3AED]">Spring TD</h1>
+        <h1 className="text-2xl font-bold text-[#7C3AED]">PLATA</h1>
       </div>
 
       {/* Search */}

@@ -150,7 +150,7 @@ export function SpringRegistrationForm({ onSubmit, isSubmitting }: RegistrationF
                         className="mt-1 rounded border-gray-300 data-[state=checked]:bg-[#7C3AED] data-[state=checked]:border-[#7C3AED]"
                     />
                     <p className="text-xs text-gray-500 leading-relaxed">
-                        I accept the SpringTD <Link href="#" className="font-semibold text-gray-900 hover:underline">Merchant Service Agreement</Link> and the use of my personal data as outlined in the SpringTD <Link href="#" className="font-semibold text-gray-900 hover:underline">Privacy Notice</Link>.
+                        I accept the PLATA <Link href="#" className="font-semibold text-gray-900 hover:underline">Merchant Service Agreement</Link> and the use of my personal data as outlined in the PLATA <Link href="#" className="font-semibold text-gray-900 hover:underline">Privacy Notice</Link>.
                     </p>
                 </div>
 

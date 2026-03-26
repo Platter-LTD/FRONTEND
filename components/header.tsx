@@ -5,7 +5,7 @@ export function Header() {
   return (
     <header className="flex items-center justify-between px-[100px] py-4">
       <div className="text-xl font-semibold" style={{ color: "#74612F" }}>
-        Spring TD
+        PLATA
       </div>
 
       <DropdownMenu>
