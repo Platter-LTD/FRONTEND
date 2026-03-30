@@ -3,7 +3,7 @@
 
 import { fetchWithAuth } from '@/lib/fetchWithAuth';
 
-const WALLET_API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
+const WALLET_API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
 const WALLET_API_V1 = `${WALLET_API_BASE.replace(/\/+$/, "")}/api/v1`;
 
 // Types

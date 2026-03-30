@@ -37,7 +37,13 @@ export class ComplianceService {
     const token = getAccessToken();
     const userId = decodeUserIdFromToken(token);
     if (!userId) throw new Error("Unable to resolve userId from token");
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[ComplianceService] getKycStatusForCurrentUser userId:", userId);
+    }
     const res = await apiClient.get(ENDPOINTS.compliance.status(userId));
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[ComplianceService] getKycStatusForCurrentUser response:", res.data);
+    }
     return res.data;
   }
 

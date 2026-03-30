@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Clock, CheckCircle, XCircle, Eye, ChevronDown, Search } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { TableSkeleton } from "@/components/ui/table-skeleton"
 
 interface Application {
   id: string
@@ -103,11 +104,8 @@ export default function UserApplicationsTable({
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 p-8">
-        <div className="flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7C3AED]"></div>
-          <span className="ml-3 text-gray-600">Loading applications...</span>
-        </div>
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <TableSkeleton columnCount={7} rowCount={6} />
       </div>
     )
   }

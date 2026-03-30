@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 // Proxies to backend GET /api/v1/keys
 export async function GET(request: NextRequest) {
   try {
-    const AUTH_MS_URL = process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev"
+    const AUTH_MS_URL = process.env.NEXT_PUBLIC_API_URL || "https://account-ms.fly.dev"
 
     const cookieAccessToken = request.cookies.get("accessToken")?.value
     const authHeader =

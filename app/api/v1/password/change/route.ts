@@ -3,7 +3,7 @@ import { BACKEND } from "@/lib/endpoints"
 
 export const dynamic = "force-dynamic"
 
-const AUTH_MS_URL = process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev"
+const AUTH_MS_URL = process.env.NEXT_PUBLIC_API_URL || "https://account-ms.fly.dev"
 
 /**
  * PUT /api/v1/password/change — Bearer. Changes the authenticated user's password.

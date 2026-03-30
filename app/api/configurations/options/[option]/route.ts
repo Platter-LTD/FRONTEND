@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev").replace(/\/+$/, "")
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://account-ms.fly.dev").replace(/\/+$/, "")
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 

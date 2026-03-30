@@ -12,6 +12,7 @@ import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { Eye, EyeOff } from "lucide-react"
 import { ProductAuthShell } from "@/components/product-auth-shell"
+import { AuthFormSkeleton } from "@/components/ui/app-loading-skeleton"
 
 function ResetPasswordForm() {
   const [formData, setFormData] = useState({
@@ -171,11 +172,11 @@ export default function ResetPasswordPage() {
   return (
     <ProductAuthShell>
       <div className="w-full px-4">
-        <Suspense fallback={
-          <div className="flex justify-center p-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#7C3AED]"></div>
-          </div>
-        }>
+        <Suspense
+          fallback={
+            <AuthFormSkeleton />
+          }
+        >
           <ResetPasswordForm />
         </Suspense>
       </div>

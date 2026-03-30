@@ -24,11 +24,11 @@
 // Plata Product Builder (/dashboard/create-app/) → uses NEXT_PUBLIC_PLATA_ACCOUNT_SERVICE_URL
 //
 // accountService (default export) → Spring's account-ms (https://account-ms.fly.dev)
-// PLATA_ACCOUNT_API_BASE          → Plata's account-ms  (https://account-ms-plata.fly.dev)
+// PLATA_ACCOUNT_API_BASE          → Plata's account-ms  (https://account-ms.fly.dev)
 // =============================================================================
 
 const ACCOUNT_API_BASE = process.env.NEXT_PUBLIC_SPRING_ACCOUNT_SERVICE_URL || 'https://account-ms.fly.dev';
-export const PLATA_ACCOUNT_API_BASE = process.env.NEXT_PUBLIC_PLATA_ACCOUNT_SERVICE_URL || 'https://account-ms-plata.fly.dev';
+export const PLATA_ACCOUNT_API_BASE = process.env.NEXT_PUBLIC_PLATA_ACCOUNT_SERVICE_URL || 'https://account-ms.fly.dev';
 
 import { getAccessToken } from '@/lib/cookieAuth';
 

@@ -1,5 +1,6 @@
 "use client"
 
+import type { ReactNode } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutGrid, User, ShieldCheck, Code2, Settings, Search, LogOut } from "lucide-react"
@@ -7,10 +8,16 @@ import { Input } from "@/components/ui/input"
 import { useAuth } from "@/hooks/useAuth"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
+import Tippy from "@tippyjs/react"
+import "tippy.js/dist/tippy.css"
+import { useMerchantCompliance } from "@/contexts/MerchantComplianceContext"
+
+const COMPLIANCE_MESSAGE = "Complete compliance (KYC approved) before you can access this section."
 
 export default function MerchantAppsSidebar() {
   const pathname = usePathname()
   const { user } = useAuth()
+  const { isApproved, loading } = useMerchantCompliance()
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
 
@@ -23,11 +30,16 @@ export default function MerchantAppsSidebar() {
     : ""
   const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
 
-  const navItems = [
-    { icon: <LayoutGrid size={20} />, label: "Apps", href: "/dashboard/merchant" },
-    { icon: <User size={20} />, label: "Admin", href: "/dashboard/merchant/admin" },
-    { icon: <ShieldCheck size={20} />, label: "Compliance", href: "/dashboard/merchant/compliance" },
-    { icon: <Code2 size={20} />, label: "Developer", href: "/dashboard/merchant/developer" },
+  const navItems: {
+    icon: ReactNode
+    label: string
+    href: string
+    requiresCompliance?: boolean
+  }[] = [
+    { icon: <LayoutGrid size={20} />, label: "Apps", href: "/dashboard/merchant", requiresCompliance: true },
+    { icon: <User size={20} />, label: "Admin", href: "/dashboard/merchant/admin", requiresCompliance: true },
+    { icon: <ShieldCheck size={20} />, label: "Compliance", href: "/dashboard/merchant/compliance", requiresCompliance: false },
+    { icon: <Code2 size={20} />, label: "Developer", href: "/dashboard/merchant/developer", requiresCompliance: true },
   ]
 
   return (
@@ -52,19 +64,31 @@ export default function MerchantAppsSidebar() {
       <nav className="flex-1 px-4 space-y-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href
+          const disabled = item.requiresCompliance && !isApproved && !loading
+          const linkClass = `flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+            isActive
+              ? "bg-[#DBEAFE] text-[#1D4ED8]"
+              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+          } ${disabled ? "pointer-events-none opacity-60 cursor-not-allowed" : ""}`
+
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-[#DBEAFE] text-[#1D4ED8]" // Active state based on blue primary
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-              }`}
-            >
-              {item.icon}
-              {item.label}
-            </Link>
+            <div key={item.href}>
+              {disabled ? (
+                <Tippy content={COMPLIANCE_MESSAGE} placement="right" arrow theme="sidebar-light">
+                  <span className="block w-full cursor-not-allowed">
+                    <span className={`${linkClass} flex w-full`}>
+                      {item.icon}
+                      {item.label}
+                    </span>
+                  </span>
+                </Tippy>
+              ) : (
+                <Link href={item.href} className={linkClass}>
+                  {item.icon}
+                  {item.label}
+                </Link>
+              )}
+            </div>
           )
         })}
 
@@ -72,13 +96,22 @@ export default function MerchantAppsSidebar() {
            Section Title
         </div>
         
-        <Link
-          href="/dashboard/merchant/settings"
-          className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 mt-1"
-        >
-          <Settings size={20} />
-          Settings
-        </Link>
+        {!isApproved && !loading ? (
+          <Tippy content={COMPLIANCE_MESSAGE} placement="right" arrow theme="sidebar-light">
+            <span className="mt-1 flex cursor-not-allowed items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-gray-600 opacity-60">
+              <Settings size={20} />
+              Settings
+            </span>
+          </Tippy>
+        ) : (
+          <Link
+            href="/dashboard/merchant/settings"
+            className="mt-1 flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+          >
+            <Settings size={20} />
+            Settings
+          </Link>
+        )}
       </nav>
 
       {/* User Profile */}

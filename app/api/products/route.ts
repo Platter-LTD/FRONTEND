@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 // Base URL for all APIs (account-ms). Endpoints match Product API doc:
 // POST /api/v1/products/select-type, POST /api/v1/products/create-after-type, POST /api/v1/products (legacy),
 // GET /api/v1/products, GET /api/v1/products/app/:appId
-const PRODUCT_SERVICE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(/\/$/, '');
+const PRODUCT_SERVICE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev').replace(/\/$/, '');
 
 const agent = new https.Agent({
   keepAlive: true,

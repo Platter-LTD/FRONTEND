@@ -11,6 +11,7 @@ import { toast } from "react-toastify"
 import { useAuth } from "@/hooks/useAuth"
 import { useComplianceForm } from "@/providers/ComplianceFormProvider"
 import type { ShareholderRow } from "@/providers/ComplianceFormProvider"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export function ShareholderInfo() {
   const { user, loading: authLoading } = useAuth()
@@ -71,7 +72,19 @@ export function ShareholderInfo() {
 
   return (
     <div className="space-y-6">
-      {loading && <div className="text-center py-4">Loading shareholders...</div>}
+      {loading && (
+        <div className="space-y-3 py-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-4 rounded-lg border border-gray-100 bg-white p-4">
+              <Skeleton className="h-10 w-10 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="flex justify-end">
         <Button onClick={() => setShareholderDrawerOpen(true)} className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white">

@@ -34,6 +34,7 @@ import {
 import { accountService, ProductApplication } from "@/lib/services/accountService"
 import ApplicationDetailDrawer from "@/components/drawers/application-detail-drawer"
 import { toast } from "sonner"
+import { TableSkeleton } from "@/components/ui/table-skeleton"
 
 // Fallback mock applications
 const FALLBACK_APPLICATIONS: ProductApplication[] = [
@@ -356,8 +357,8 @@ export default function ApplicationsPage() {
             {/* Applications Table */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 {isLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                    <div className="p-4">
+                        <TableSkeleton columnCount={7} rowCount={8} />
                     </div>
                 ) : filteredApplications.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20">

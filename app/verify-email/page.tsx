@@ -8,6 +8,7 @@ import { ENDPOINTS } from "@/lib/endpoints"
 import { Button } from "@/components/ui/button"
 import { toast } from "react-toastify"
 import { ProductAuthShell } from "@/components/product-auth-shell"
+import { AuthFormSkeleton } from "@/components/ui/app-loading-skeleton"
 
 function VerifyEmailContent() {
   const [email, setEmail] = useState<string>("")
@@ -206,13 +207,13 @@ function VerifyEmailContent() {
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense fallback={
-      <ProductAuthShell contentClassName="max-w-md">
-        <div className="py-4 text-center">
-          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
-        </div>
-      </ProductAuthShell>
-    }>
+    <Suspense
+      fallback={
+        <ProductAuthShell contentClassName="max-w-md">
+          <AuthFormSkeleton />
+        </ProductAuthShell>
+      }
+    >
       <VerifyEmailContent />
     </Suspense>
   )

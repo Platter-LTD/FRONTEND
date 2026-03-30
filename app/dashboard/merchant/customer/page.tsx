@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { accountService, Customer } from "@/lib/services/accountService"
 import { toast } from "sonner"
+import { CustomerListSkeleton } from "@/components/ui/app-loading-skeleton"
 
 // Fallback mock customers data - used when API is unavailable
 const FALLBACK_CUSTOMERS: Customer[] = [
@@ -222,9 +223,7 @@ export default function CustomersPage() {
             {/* Customers List */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 {isLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                    </div>
+                    <CustomerListSkeleton rows={8} />
                 ) : filteredCustomers.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20">
                         <Users className="h-12 w-12 text-gray-300 mb-4" />

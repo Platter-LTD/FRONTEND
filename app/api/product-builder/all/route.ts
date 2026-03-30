@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-/**
- * GET /api/product-builder/all
- * Fetch ALL products from Product Builder (global pool)
- * This endpoint should call the Product Builder microservice to get all products
- */
 export async function GET(request: NextRequest) {
     try {
         const authHeader = request.headers.get('authorization');
@@ -16,10 +11,8 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // TODO: Replace with actual Product Builder API URL
-        const PRODUCT_BUILDER_URL = process.env.PRODUCT_BUILDER_API_URL || 'http://localhost:3002';
+        const PRODUCT_BUILDER_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
 
-        // Call Product Builder microservice to get all products
         const response = await fetch(`${PRODUCT_BUILDER_URL}/api/products/all`, {
             method: 'GET',
             headers: {

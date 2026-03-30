@@ -6,6 +6,7 @@ import { toast } from 'react-toastify';
 import { WEBSITE_URL_PREFIX } from '@/lib/websiteUrl';
 import { CountrySelect } from '@/components/ui/country-select';
 import { ComplianceService } from '@/lib/services/complianceService';
+import { useComplianceForm } from '@/providers/ComplianceFormProvider';
 
 interface BusinessInfoTabProps {
   onContinue?: () => void;
@@ -109,32 +110,7 @@ const SimpleInput: React.FC<SimpleInputProps> = ({
 };
 
 const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
-  const [formData, setFormData] = useState({
-    businessType: '',
-    userBase: '',
-    businessModel: '',
-    monthlyVolume: '',
-    industry: '',
-    country: '',
-    businessName: '',
-    website: WEBSITE_URL_PREFIX,
-    companyRegId: '',
-  });
-
-  // hydrate from localStorage if present (no UI change)
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem('kyc.businessInfo');
-        if (raw) {
-          const saved = JSON.parse(raw);
-          setFormData((prev) => ({ ...prev, ...saved }));
-        }
-      }
-    } catch (_) {
-      // ignore corrupt storage
-    }
-  }, []);
+  const { merchantBusinessSurvey: formData, setMerchantBusinessSurvey } = useComplianceForm();
 
   // control collapsing animation for the businessModel select
   const [isBusinessModelVisible, setIsBusinessModelVisible] = useState(true);
@@ -172,18 +148,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
   }, []);
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => {
-      const next = { ...prev, [field]: value };
-      // persist to localStorage for cross-tab access
-      try {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('kyc.businessInfo', JSON.stringify(next));
-        }
-      } catch (_) {
-        // ignore storage errors
-      }
-      return next;
-    });
+    setMerchantBusinessSurvey((prev) => ({ ...prev, [field]: value }));
   };
 
   return (

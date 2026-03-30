@@ -24,6 +24,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
+import { TableSkeleton } from "@/components/ui/table-skeleton"
 
 interface CustomerAccountsTabProps {
     customerId: string
@@ -230,8 +231,8 @@ export default function CustomerAccountsTab({ customerId }: CustomerAccountsTabP
 
             {/* Accounts Table */}
             {isLoading ? (
-                <div className="flex items-center justify-center py-20">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+                <div className="p-4">
+                    <TableSkeleton columnCount={8} rowCount={6} />
                 </div>
             ) : accounts.length === 0 ? (
                 <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">

@@ -6,12 +6,14 @@ import UploadCard from "./UploadCard";
 import { fileToBase64 } from "@/lib/fileUtils";
 import { submitBusinessKyc } from "@/lib/services/kycService";
 import { toast } from "react-toastify";
+import { useComplianceForm } from "@/providers/ComplianceFormProvider";
 
 interface Props {
   missingIds?: string[];
 }
 
 const BusinessDocumentWithError: React.FC<Props> = ({ missingIds = [] }) => {
+  const { merchantBusinessSurvey: info } = useComplianceForm();
   const [selected, setSelected] = useState<Record<string, File | null>>({});
   const [submitting, setSubmitting] = useState(false);
 
@@ -39,13 +41,10 @@ const BusinessDocumentWithError: React.FC<Props> = ({ missingIds = [] }) => {
   const handleSubmit = async () => {
     try {
       setSubmitting(true);
-      // read business info
-      const raw = typeof window !== "undefined" ? localStorage.getItem("kyc.businessInfo") : null;
-      if (!raw) {
+      if (!info.businessName?.trim() || !info.country?.trim()) {
         toast.error("Please fill Business Info before uploading documents.");
         return;
       }
-      const info = JSON.parse(raw || "{}");
 
       // build documents from selected
       const entries = Object.entries(selected).filter(([, f]) => !!f) as Array<[string, File]>;

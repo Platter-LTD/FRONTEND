@@ -13,7 +13,6 @@ import { SearchIcon } from "lucide-react"
 import { useState, useEffect } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
-import { COMPLIANCE_COMPLETE_KEY } from "@/lib/compliance"
 import { ComplianceService } from "@/lib/services/complianceService"
 import { useAuth } from "@/hooks/useAuth"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -51,23 +50,16 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
 
   useEffect(() => {
     let cancelled = false
-    const stored = typeof window !== "undefined" ? localStorage.getItem(COMPLIANCE_COMPLETE_KEY) : null
     const run = async () => {
       try {
         const res = await ComplianceService.getKycStatusForCurrentUser()
-        const status = (res as { data?: { status?: string } })?.data?.status
-        if (!cancelled && status?.toLowerCase() === "approved") {
-          setComplianceComplete(true)
-          if (typeof window !== "undefined") {
-            window.localStorage.setItem(COMPLIANCE_COMPLETE_KEY, "true")
-          }
-          return
+        const raw = res as { data?: { status?: string }; status?: string }
+        const status = (raw?.data?.status ?? raw?.status)?.toLowerCase()
+        if (!cancelled) {
+          setComplianceComplete(status === "approved")
         }
       } catch {
-        // No token, 404, or API error: fall back to localStorage
-      }
-      if (!cancelled) {
-        setComplianceComplete(stored === "true")
+        if (!cancelled) setComplianceComplete(false)
       }
     }
     run()

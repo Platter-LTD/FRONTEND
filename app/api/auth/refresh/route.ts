@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BACKEND } from '@/lib/endpoints';
 
-const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
+const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
 
 /**
  * API Route to refresh tokens using httpOnly cookie

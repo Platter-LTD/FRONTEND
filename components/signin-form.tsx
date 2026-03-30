@@ -11,7 +11,6 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
 import { ComplianceService } from "@/lib/services/complianceService"
-import { COMPLIANCE_COMPLETE_KEY } from "@/lib/compliance"
 
 export function SigninForm() {
   const [showPassword, setShowPassword] = useState(false)
@@ -30,22 +29,15 @@ export function SigninForm() {
   const resolvePostLoginRoute = async () => {
     try {
       const res = await ComplianceService.getKycStatusForCurrentUser()
-      const status = (res as { data?: { status?: string } })?.data?.status?.toLowerCase()
+      const raw = res as { data?: { status?: string }; status?: string }
+      const status = (raw?.data?.status ?? raw?.status)?.toLowerCase()
       if (status === "approved") {
-        if (typeof window !== "undefined") {
-          window.localStorage.setItem(COMPLIANCE_COMPLETE_KEY, "true")
-        }
-        return "/dashboard/create-app/all-apps"
+        return "/dashboard/merchant"
       }
     } catch {
-      // Fall back to local storage if status API is unavailable.
+      // If status cannot be loaded, treat as not approved so the user completes KYC on the merchant flow.
     }
-
-    if (typeof window !== "undefined" && window.localStorage.getItem(COMPLIANCE_COMPLETE_KEY) === "true") {
-      return "/dashboard/create-app/all-apps"
-    }
-
-    return "/dashboard/compliance"
+    return "/dashboard/merchant/compliance"
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

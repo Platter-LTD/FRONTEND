@@ -18,7 +18,7 @@ import { getAccessToken } from '@/lib/cookieAuth';
 
 // Use the same base URL as the auth/account service
 const PRODUCT_SERVICE_URL =
-  (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(/\/$/, '');
+  (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev').replace(/\/$/, '');
 
 // ============================================================================
 // Types & Interfaces

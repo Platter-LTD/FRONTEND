@@ -15,7 +15,6 @@ export default function ProductTypeListPage() {
   const [activations, setActivations] = useState<{ [key: string]: boolean }>({})
   const [loading, setLoading] = useState(true)
 
-  // Load ALL products from Product Builder and app-specific activations
   useEffect(() => {
     const fetchData = async () => {
       try {

@@ -36,7 +36,7 @@ This codebase hosts **three separate frontend applications** under one Next.js m
 
 | App | Path Prefix | Who Uses It | Purpose |
 |-----|-------------|-------------|---------|
-| **Platter** (Product Builder) | `/dashboard/create-app/` | Platform Operators | Create & configure financial product apps (Loan, Mortgage, Savings, Commodity) |
+| **Platter** (Spring TD) | `/dashboard/create-app/` | Platform Operators | Create & configure financial product apps (Loan, Mortgage, Savings, Commodity) |
 | **Spring App** (Merchant Dashboard) | `/dashboard/merchant/` | Merchants | Manage apps, toggle products, view customers, handle billing |
 | **User Mobile App** | `/mobile/` and `/mobile-v2/` | End Users | Browse and apply for financial products |
 
@@ -223,7 +223,7 @@ springtd-frontend/
 
 ## 5. The Three Sub-Applications
 
-### 5.1 Platter — Product Builder (`/dashboard/create-app/`)
+### 5.1 Platter - (`/dashboard/create-app/`)
 
 Platform operators use this to create fintech apps and products.
 
@@ -546,7 +546,7 @@ Merchants can approve or reject customer applications:
 
 ```env
 # ── Backend Microservice URLs ─────────────────────────────────────────────────
-NEXT_PUBLIC_API_URL=https://account-ms-plata.fly.dev
+NEXT_PUBLIC_API_URL=https://account-ms.fly.dev
 NEXT_PUBLIC_CREATE_APP_SERVICE_URL=https://create-app-ms.fly.dev
 NEXT_PUBLIC_PRODUCT_SERVICE_URL=https://product-ms.fly.dev
 
@@ -588,7 +588,7 @@ All services run on **Fly.dev** and use **SQLite** with **better-sqlite3**. Sour
 
 | Service | Base URL | Purpose |
 |---------|----------|---------|
-| `account-ms-plata` | `https://account-ms-plata.fly.dev` | Login, signup, OTP, email verify, token refresh |
+| `account-ms-plata` | `https://account-ms.fly.dev` | Login, signup, OTP, email verify, token refresh |
 
 ### Key API Endpoints
 
@@ -626,7 +626,7 @@ POST   /api/v1/configuration/*
 ### Health Checks
 
 ```bash
-curl https://account-ms-plata.fly.dev/health
+curl https://account-ms.fly.dev/health
 curl https://create-app-ms.fly.dev/health
 curl https://product-ms.fly.dev/health
 ```

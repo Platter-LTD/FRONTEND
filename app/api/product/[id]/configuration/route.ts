@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-// Product Builder: base URL for all APIs (account-ms).
-// Endpoints per Product API doc: GET/POST/PUT/DELETE /api/v1/configurations, /api/v1/configurations/:productId
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(/\/$/, '');
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev').replace(/\/$/, '');
 
 // GET - Get product configuration
 export async function GET(

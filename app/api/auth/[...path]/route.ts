@@ -13,7 +13,7 @@ const httpsAgent = new https.Agent({
 
 // Origin only (no path). All backend paths in BACKEND already start with /api/v1/...
 function getBaseUrl() {
-  const url = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
+  const url = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
   return url.replace(/\/+$/, '').replace(/\/(api\/v1?)?\/?$/, '');
 }
 

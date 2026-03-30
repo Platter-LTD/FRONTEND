@@ -18,6 +18,7 @@ import {
 import { accountService, ProductApplication } from "@/lib/services/accountService"
 import ApplicationDetailDrawer from "@/components/drawers/application-detail-drawer"
 import { toast } from "sonner"
+import { CardListSkeleton } from "@/components/ui/app-loading-skeleton"
 
 // Fallback mock pending applications
 const FALLBACK_PENDING: ProductApplication[] = [
@@ -248,9 +249,7 @@ export default function PendingApplicationsPage() {
             {/* Applications Queue */}
             <div className="space-y-4">
                 {isLoading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-                    </div>
+                    <CardListSkeleton rows={4} />
                 ) : applications.length === 0 ? (
                     <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
                         <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
