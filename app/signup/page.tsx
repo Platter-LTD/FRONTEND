@@ -58,14 +58,10 @@ export default function SignupPage() {
         user_merchant_id: `merchant_${Date.now()}`,
       }
 
-      console.log("Sending registration data:", registrationData)
-
       // Call the registration API - via client-auth-ms gateway
       const response = await apiClient.post(ENDPOINTS.auth.signup.merchant, registrationData, {
         includeAuth: false,
       })
-
-      console.log("Registration successful:", response.data)
 
       if (response.data) {
         // Store email in sessionStorage for verification flow (more secure than URL params)

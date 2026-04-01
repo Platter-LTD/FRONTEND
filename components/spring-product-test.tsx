@@ -27,9 +27,7 @@ export default function SpringProductTest() {
   const handleFetchProducts = async () => {
     setLoading(true)
     try {
-      console.log('Fetching products from:', process.env.NEXT_PUBLIC_PRODUCT_SERVICE_URL || 'https://product-ms.fly.dev')
       const response = await springProductService.getAllProducts()
-      console.log('Response:', response)
       setProducts(response.data || [])
       toast.success(`Fetched ${response.data?.length || 0} products`)
     } catch (error: any) {

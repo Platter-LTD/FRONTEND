@@ -10,7 +10,6 @@ export default function UserAppDetailsPage() {
   const params = useParams()
   const [activeTab, setActiveTab] = useState("general-info")
 
-  console.log("[v0] App ID from params:", params.id)
 
   // Mock data - in real app, fetch based on params.id
   const appData = {

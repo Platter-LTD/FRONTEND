@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { toast } from "react-toastify"
 import api from "@/lib/api"
 
@@ -11,16 +10,14 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 export default function TestBypassPage() {
   const [loading, setLoading] = useState(false)
   const [blocked, setBlocked] = useState(false)
-  const router = useRouter()
 
   useEffect(() => {
     // Block access in production
     if (IS_PRODUCTION) {
       setBlocked(true)
       toast.error("🚫 Test bypass is disabled in production")
-      setTimeout(() => router.replace("/signin"), 2000)
     }
-  }, [router])
+  }, [])
 
   if (blocked) {
     return (
@@ -46,12 +43,7 @@ export default function TestBypassPage() {
         const { setSecureTokens } = await import("@/lib/tokenManager")
         await setSecureTokens(accessToken, refreshToken)
 
-        toast.success("🔓 Bypass successful! Redirecting to dashboard...")
-        
-        // Redirect to dashboard
-        setTimeout(() => {
-          router.push("/dashboard/overview")
-        }, 1000)
+        toast.success("🔓 Bypass successful!")
       }
     } catch (error: any) {
       console.error("Bypass error:", error)

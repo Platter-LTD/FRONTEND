@@ -10,8 +10,6 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        console.log('[Auth Verify Proxy] POST - Forwarding verify-account request');
-
         const response = await fetch(`${AUTH_MS_URL}${BACKEND.auth.verifyAccount}`, {
             method: 'POST',
             headers: {

@@ -10,102 +10,46 @@ import {
 } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { ComplianceService } from "@/lib/services/complianceService"
-import { FullPageAppSkeleton } from "@/components/ui/app-loading-skeleton"
-import { getAccessToken } from "@/lib/cookieAuth"
+import { isKycStatusApproved } from "@/lib/kycApproval"
+import { isMerchantComplianceBypassEnabled } from "@/lib/merchantComplianceBypass"
 
-const isDev = process.env.NODE_ENV !== "production"
-
-function resolveKycStatus(res: unknown): string | undefined {
-  const r = res as { data?: { status?: string }; status?: string }
-  return r?.data?.status ?? r?.status
-}
+const COMPLIANCE_BYPASS = isMerchantComplianceBypassEnabled()
 
 type MerchantComplianceContextValue = {
   isApproved: boolean
   loading: boolean
-  tokenPresent: boolean
   refetch: () => Promise<void>
 }
 
 const MerchantComplianceContext = createContext<MerchantComplianceContextValue | null>(null)
 
 export function MerchantComplianceProvider({ children }: { children: ReactNode }) {
-  const [isApproved, setIsApproved] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [tokenPresent, setTokenPresent] = useState(false)
-
-  const pathname = usePathname()
+  const [isApproved, setIsApproved] = useState(() => COMPLIANCE_BYPASS)
+  const [loading, setLoading] = useState(() => !COMPLIANCE_BYPASS)
 
   const fetchStatus = useCallback(async () => {
-    if (isDev) {
-      console.log("[MerchantCompliance] fetchStatus() start")
+    if (COMPLIANCE_BYPASS) {
+      setIsApproved(true)
+      setLoading(false)
+      return
     }
     setLoading(true)
     try {
       const res = await ComplianceService.getKycStatusForCurrentUser()
-      const status = resolveKycStatus(res)?.toLowerCase()
-      if (isDev) {
-        console.log("[MerchantCompliance] fetchStatus() response:", res, "resolved status:", status)
-      }
-      setIsApproved(status === "approved")
+      setIsApproved(isKycStatusApproved(res))
     } catch {
-      if (isDev) {
-        console.log("[MerchantCompliance] fetchStatus() failed (falling back to not-approved)")
-      }
       setIsApproved(false)
     } finally {
       setLoading(false)
     }
   }, [])
 
-  // Wait for cookie access token to be readable before treating a fetch error
-  // as "not approved" (which would prematurely redirect users to compliance).
   useEffect(() => {
-    let cancelled = false
-    let attempts = 0
-
-    const checkTokenAndFetch = async () => {
-      const token = typeof document !== "undefined" ? getAccessToken() : null
-      const present = !!token
-      if (cancelled) return
-
-      setTokenPresent(present)
-      if (isDev) {
-        console.log("[MerchantCompliance] token check:", {
-          pathname,
-          tokenPresent: present,
-          tokenPrefix: typeof token === "string" ? token.slice(0, 10) : null,
-          attempts,
-        })
-      }
-      if (present) {
-        await fetchStatus()
-        return
-      }
-
-      // Retry briefly; the cookie might not be visible immediately after login.
-      attempts += 1
-      if (attempts < 10) {
-        setTimeout(() => {
-          void checkTokenAndFetch()
-        }, 250)
-      } else {
-        if (cancelled) return
-        setLoading(false)
-        setIsApproved(false)
-      }
-    }
-
-    void checkTokenAndFetch()
-    return () => {
-      cancelled = true
-    }
-  }, [fetchStatus, pathname])
+    void fetchStatus()
+  }, [fetchStatus])
 
   return (
-    <MerchantComplianceContext.Provider
-      value={{ isApproved, loading, tokenPresent, refetch: fetchStatus }}
-    >
+    <MerchantComplianceContext.Provider value={{ isApproved, loading, refetch: fetchStatus }}>
       {children}
     </MerchantComplianceContext.Provider>
   )
@@ -128,36 +72,14 @@ function isCompliancePath(pathname: string) {
 export function MerchantComplianceGate({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const { isApproved, loading, tokenPresent } = useMerchantCompliance()
+  const { isApproved, loading } = useMerchantCompliance()
 
   useEffect(() => {
-    if (loading) return
-
-    if (isDev) {
-      console.log("[MerchantCompliance] gate decision:", {
-        pathname,
-        loading,
-        tokenPresent,
-        isApproved,
-      })
-    }
-
-    // If they end up on the compliance page but the backend says approved,
-    // send them to Apps.
-    if (isApproved && isCompliancePath(pathname)) {
-      router.replace("/dashboard/merchant")
-      return
-    }
-
-    // Only redirect when we have a token and status is NOT approved.
-    if (tokenPresent && !isApproved && !isCompliancePath(pathname)) {
+    if (COMPLIANCE_BYPASS || loading) return
+    if (!isApproved && !isCompliancePath(pathname)) {
       router.replace(COMPLIANCE_PATH)
     }
-  }, [loading, isApproved, pathname, router, tokenPresent])
-
-  if (loading) {
-    return <FullPageAppSkeleton />
-  }
+  }, [loading, isApproved, pathname, router])
 
   return <>{children}</>
 }

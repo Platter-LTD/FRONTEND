@@ -69,7 +69,7 @@ export default function CreateProductDrawer({
         }
       } catch (e) {
         if ((e as Error).name !== "AbortError") {
-          console.log("Failed to fetch product types")
+          console.error("Failed to fetch product types", e)
         }
       } finally {
         if (!ac.signal.aborted) setIsLoadingTypes(false)

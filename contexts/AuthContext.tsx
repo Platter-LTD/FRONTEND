@@ -1,7 +1,6 @@
 "use client"
 
 import { createContext, useEffect, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
 import { clearSecureTokens } from "@/lib/tokenManager"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { loginThunk, loadUserFromTokenThunk, logoutThunk } from "@/store/authSlice"
@@ -28,7 +27,6 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch()
   const { user: authUser, loading, isAuthenticated } = useAppSelector((state) => state.auth)
-  const router = useRouter()
 
   useEffect(() => {
     dispatch(loadUserFromTokenThunk())
@@ -58,7 +56,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await clearSecureTokens()
     await dispatch(logoutThunk())
-    router.push("/signin")
   }
 
   return (

@@ -10,7 +10,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
-import { ComplianceService } from "@/lib/services/complianceService"
+import { resolveMerchantPostLoginRoute } from "@/lib/merchantPostLoginRoute"
 
 export function SigninForm() {
   const [showPassword, setShowPassword] = useState(false)
@@ -25,20 +25,6 @@ export function SigninForm() {
     email: "",
     password: "",
   })
-
-  const resolvePostLoginRoute = async () => {
-    try {
-      const res = await ComplianceService.getKycStatusForCurrentUser()
-      const raw = res as { data?: { status?: string }; status?: string }
-      const status = (raw?.data?.status ?? raw?.status)?.toLowerCase()
-      if (status === "approved") {
-        return "/dashboard/merchant"
-      }
-    } catch {
-      // If status cannot be loaded, treat as not approved so the user completes KYC on the merchant flow.
-    }
-    return "/dashboard/merchant/compliance"
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -57,7 +43,7 @@ export function SigninForm() {
       await signin(formData.email, formData.password)
       toast.success("Signin successful 🎉")
 
-      const nextRoute = await resolvePostLoginRoute()
+      const nextRoute = await resolveMerchantPostLoginRoute()
       setTimeout(() => {
         router.push(nextRoute)
       }, 1000)

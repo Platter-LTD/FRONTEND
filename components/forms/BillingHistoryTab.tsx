@@ -156,8 +156,8 @@ export function BillingHistoryTab() {
           open={open}
           onOpenChange={setOpen}
           record={selectedRecord}
-          onDownload={() => console.log('Download', selectedRecord.transactionId)}
-          onShare={() => console.log('Share', selectedRecord.transactionId)}
+          onDownload={() => {}}
+          onShare={() => {}}
         />
       )}
     </div>

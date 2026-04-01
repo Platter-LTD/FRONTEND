@@ -8,16 +8,16 @@ import { Input } from "@/components/ui/input"
 import { useAuth } from "@/hooks/useAuth"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
+import { useMerchantCompliance } from "@/contexts/MerchantComplianceContext"
+import { isMerchantComplianceBypassEnabled } from "@/lib/merchantComplianceBypass"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
-import { useMerchantCompliance } from "@/contexts/MerchantComplianceContext"
 
-const COMPLIANCE_MESSAGE = "Complete compliance (KYC approved) before you can access this section."
+const LOCK_MSG = "Complete Compliance (KYC) to unlock this section."
 
 export default function MerchantAppsSidebar() {
   const pathname = usePathname()
   const { user } = useAuth()
-  const { isApproved, loading } = useMerchantCompliance()
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
 
@@ -30,16 +30,20 @@ export default function MerchantAppsSidebar() {
     : ""
   const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
 
+  const { isApproved, loading } = useMerchantCompliance()
+  const bypass = isMerchantComplianceBypassEnabled()
+  const lockNonCompliance = !bypass && !loading && !isApproved
+
   const navItems: {
     icon: ReactNode
     label: string
     href: string
-    requiresCompliance?: boolean
+    requiresApproval?: boolean
   }[] = [
-    { icon: <LayoutGrid size={20} />, label: "Apps", href: "/dashboard/merchant", requiresCompliance: true },
-    { icon: <User size={20} />, label: "Admin", href: "/dashboard/merchant/admin", requiresCompliance: true },
-    { icon: <ShieldCheck size={20} />, label: "Compliance", href: "/dashboard/merchant/compliance", requiresCompliance: false },
-    { icon: <Code2 size={20} />, label: "Developer", href: "/dashboard/merchant/developer", requiresCompliance: true },
+    { icon: <LayoutGrid size={20} />, label: "Apps", href: "/dashboard/merchant", requiresApproval: true },
+    { icon: <User size={20} />, label: "Admin", href: "/dashboard/merchant/admin", requiresApproval: true },
+    { icon: <ShieldCheck size={20} />, label: "Compliance", href: "/dashboard/merchant/compliance", requiresApproval: false },
+    { icon: <Code2 size={20} />, label: "Developer", href: "/dashboard/merchant/developer", requiresApproval: true },
   ]
 
   return (
@@ -64,22 +68,20 @@ export default function MerchantAppsSidebar() {
       <nav className="flex-1 px-4 space-y-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href
-          const disabled = item.requiresCompliance && !isApproved && !loading
+          const disabled = !!(item.requiresApproval && lockNonCompliance)
           const linkClass = `flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
             isActive
               ? "bg-[#DBEAFE] text-[#1D4ED8]"
               : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-          } ${disabled ? "pointer-events-none opacity-60 cursor-not-allowed" : ""}`
+          } ${disabled ? "pointer-events-none opacity-50 cursor-not-allowed" : ""}`
 
           return (
             <div key={item.href}>
               {disabled ? (
-                <Tippy content={COMPLIANCE_MESSAGE} placement="right" arrow theme="sidebar-light">
-                  <span className="block w-full cursor-not-allowed">
-                    <span className={`${linkClass} flex w-full`}>
-                      {item.icon}
-                      {item.label}
-                    </span>
+                <Tippy content={LOCK_MSG} placement="right" arrow theme="light">
+                  <span className={`block cursor-not-allowed ${linkClass}`}>
+                    {item.icon}
+                    {item.label}
                   </span>
                 </Tippy>
               ) : (
@@ -96,9 +98,9 @@ export default function MerchantAppsSidebar() {
            Section Title
         </div>
         
-        {!isApproved && !loading ? (
-          <Tippy content={COMPLIANCE_MESSAGE} placement="right" arrow theme="sidebar-light">
-            <span className="mt-1 flex cursor-not-allowed items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-gray-600 opacity-60">
+        {lockNonCompliance ? (
+          <Tippy content={LOCK_MSG} placement="right" arrow theme="light">
+            <span className="mt-1 flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-gray-400 opacity-60 cursor-not-allowed">
               <Settings size={20} />
               Settings
             </span>

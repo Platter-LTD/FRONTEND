@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BACKEND } from '@/lib/endpoints';
+import axios from 'axios';
+import https from 'https';
+import dns from 'dns';
 
 const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
+
+const agent = new https.Agent({
+  keepAlive: true,
+  family: 4,
+  // Force IPv4 lookup to avoid intermittent ETIMEDOUT on some hosts
+  // @ts-ignore - Node lookup signature compatibility
+  lookup: (hostname: string, options: any, cb: any) => dns.lookup(hostname, { family: 4 }, cb),
+});
+
+const http = axios.create({
+  timeout: 15_000,
+  httpsAgent: agent,
+  validateStatus: () => true,
+});
 
 /**
  * API Route to refresh tokens using httpOnly cookie
@@ -25,27 +42,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call auth service to refresh tokens
-    const authResponse = await fetch(`${AUTH_SERVICE_URL}${BACKEND.auth.refresh}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refreshToken }),
-    });
+    // Call auth service to refresh tokens (IPv4 agent avoids intermittent ETIMEDOUT)
+    const authResponse = await http.post(
+      `${AUTH_SERVICE_URL}${BACKEND.auth.refresh}`,
+      { refreshToken },
+      { headers: { 'Content-Type': 'application/json' } },
+    );
 
-    const data = await authResponse.json();
+    const data = authResponse.data as any;
 
-    if (!authResponse.ok || !data.success) {
-      // Clear invalid cookies
+    if (!(authResponse.status >= 200 && authResponse.status < 300) || !data?.success) {
+      // Do not clear access/refresh cookies here. A transient or endpoint-specific
+      // 401 should not wipe the current session unexpectedly.
       const errorResponse = NextResponse.json(
-        { success: false, error: data.error || 'Token refresh failed' },
+        { success: false, error: data?.error || 'Token refresh failed' },
         { status: 401 }
       );
-      
-      errorResponse.cookies.set('accessToken', '', { maxAge: 0, path: '/' });
-      errorResponse.cookies.set('refreshToken', '', { maxAge: 0, path: '/' });
-      
       return errorResponse;
     }
 

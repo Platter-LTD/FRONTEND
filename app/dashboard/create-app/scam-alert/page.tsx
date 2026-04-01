@@ -70,7 +70,6 @@ export default function ScamAlertPage() {
   }
 
   const handleDeactivate = (email: string) => {
-    console.log("[v0] Deactivating account with email:", email)
     setIsEmailDrawerOpen(false)
   }
 

@@ -260,7 +260,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
             <FileUpload
               label="Upload Company Logo"
               description="PDF format • Max. 5MB"
-              onFileSelect={(file) => console.log('File selected:', file)}
+              onFileSelect={() => {}}
               buttonColor="#2563EB"
             />
           </div>
@@ -274,7 +274,6 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
           className="px-4 py-2 rounded-md text-sm font-medium shadow-sm cursor-pointer disabled:opacity-60"
           style={{ backgroundColor: "#2563EB", color: "#fff" }}
           onClick={() => {
-            console.log('Business Info saved:', formData);
             toast.success('✅ Business info saved successfully');
             // Navigate to next tab
             if (onContinue) {

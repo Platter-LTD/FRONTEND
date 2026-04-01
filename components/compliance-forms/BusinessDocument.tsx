@@ -187,8 +187,6 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
         uploadResults.push({ key, file: f, url: up.url });
       }
 
-      console.log('[KYC Submit] uploadResults count:', uploadResults.length, 'keys:', uploadResults.map((r) => r.key));
-
       // Backend requires exactly these 7 types (and min 8 items); build in fixed order so nothing is missed
       const REQUIRED_BUSINESS_DOC_TYPES = [
         'certificate_of_incorporation',
@@ -218,7 +216,6 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
       if (businessDocuments.length === 7) {
         businessDocuments.push({ ...businessDocuments[0] });
       }
-      console.log('[KYC Submit] businessDocuments built:', businessDocuments.length, 'types:', businessDocuments.map((d) => d.type));
 
       if (businessDocuments.length < 7) {
         toast.error(`Missing uploads for required document types. Found ${businessDocuments.length}, need 7.`);
@@ -282,11 +279,6 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
           adverseMediaCheck: false,
         },
       } as any;
-
-      const payloadStr = JSON.stringify(payload);
-      console.log('[KYC Submit] payload keys:', Object.keys(payload));
-      console.log('[KYC Submit] payload.businessDocuments length:', payload.businessDocuments?.length, 'types:', payload.businessDocuments?.map((d: { type: string }) => d.type));
-      console.log('[KYC Submit] payload body size (bytes):', new Blob([payloadStr]).size);
 
       await ComplianceService.submitBusinessKyc(payload as any);
       toast.success('Business KYC submitted');

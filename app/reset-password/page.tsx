@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -24,7 +24,6 @@ function ResetPasswordForm() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   
-  const router = useRouter()
   const searchParams = useSearchParams()
   const token = searchParams.get("token")
 
@@ -56,11 +55,6 @@ function ResetPasswordForm() {
       
       setIsSuccess(true)
       toast.success("Password reset successfully")
-      
-      // Redirect after 3 seconds
-      setTimeout(() => {
-        router.push("/signin")
-      }, 3000)
     } catch (error: any) {
       console.error("Reset password error:", error)
       const errorMsg = error.response?.data?.message || error.response?.data?.error || "Failed to reset password"

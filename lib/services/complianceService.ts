@@ -11,7 +11,16 @@ function decodeUserIdFromToken(t: string | null): string | null {
     const decoded = JSON.parse(
       typeof atob === "function" ? atob(payload) : Buffer.from(payload, "base64").toString("utf8"),
     );
-    return decoded?.userId || decoded?.sub || decoded?.id || decoded?._id || null;
+    return (
+      decoded?.userId ||
+      decoded?.user_merchant_id ||
+      decoded?.userMerchantId ||
+      decoded?.merchantId ||
+      decoded?.sub ||
+      decoded?.id ||
+      decoded?._id ||
+      null
+    );
   } catch {
     return null;
   }
@@ -26,10 +35,7 @@ export class ComplianceService {
 
   // --- Business KYC ---
   static async submitBusinessKyc(payload: unknown) {
-    const p = payload as { businessDocuments?: Array<{ type?: string }> };
-    console.log('[ComplianceService] submitBusinessKyc: businessDocuments length:', p?.businessDocuments?.length, 'types:', p?.businessDocuments?.map((d) => d?.type));
     const res = await apiClient.post(ENDPOINTS.compliance.business.submit, payload);
-    console.log('[ComplianceService] submitBusinessKyc response status:', res.status);
     return res.data;
   }
 
@@ -37,13 +43,7 @@ export class ComplianceService {
     const token = getAccessToken();
     const userId = decodeUserIdFromToken(token);
     if (!userId) throw new Error("Unable to resolve userId from token");
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[ComplianceService] getKycStatusForCurrentUser userId:", userId);
-    }
     const res = await apiClient.get(ENDPOINTS.compliance.status(userId));
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[ComplianceService] getKycStatusForCurrentUser response:", res.data);
-    }
     return res.data;
   }
 

@@ -35,7 +35,6 @@ export async function PUT(
         // If the record exists, update isActive
         // If it doesn't exist, create a new record with appId, productId, and isActive
 
-        console.log(`Toggling product ${productId} for app ${appId} to ${isActive}`);
 
         // Mock implementation - replace with actual database update
         const updatedActivation = {

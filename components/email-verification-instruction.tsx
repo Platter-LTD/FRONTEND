@@ -29,9 +29,7 @@ export function EmailVerificationInstruction({ email, onResend, message, isResen
         { identifier: email, channel: "email", purpose: "verification" },
         { includeAuth: false }
       )
-      console.log("[Resend code] SUCCESS — new verification code sent to", email)
     } catch (err) {
-      console.log("[Resend code] FAILED", err)
       console.error("Resend failed (fallback)", err)
     }
   }

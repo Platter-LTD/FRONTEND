@@ -14,6 +14,7 @@ import { useState, useEffect } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
 import { ComplianceService } from "@/lib/services/complianceService"
+import { isKycStatusApproved } from "@/lib/kycApproval"
 import { useAuth } from "@/hooks/useAuth"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
@@ -25,7 +26,7 @@ interface NavItem {
   requiresCompliance?: boolean
 }
 
-const COMPLIANCE_MESSAGE = "You need to complete Compliance before you can access this section."
+const COMPLIANCE_MESSAGE = "Complete Compliance before you can access this section."
 
 interface SidebarProps {
   className?: string
@@ -53,10 +54,8 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
     const run = async () => {
       try {
         const res = await ComplianceService.getKycStatusForCurrentUser()
-        const raw = res as { data?: { status?: string }; status?: string }
-        const status = (raw?.data?.status ?? raw?.status)?.toLowerCase()
         if (!cancelled) {
-          setComplianceComplete(status === "approved")
+          setComplianceComplete(isKycStatusApproved(res))
         }
       } catch {
         if (!cancelled) setComplianceComplete(false)
@@ -78,8 +77,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
     { icon: <IoMdCube size={20} />, label: "Compliance", href: "/dashboard/compliance", requiresCompliance: false },
     // { icon: <TbCodeCircle2Filled size={20} />, label: "Developer", href: "/dashboard/developer", requiresCompliance: true },
   ]
-
-  const isSettingsDisabled = !complianceComplete
 
   return (
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
@@ -105,15 +102,15 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
         <ul className="space-y-4">
           {navItems.map((item, index) => {
             const isActive = pathname.startsWith(item.href)
-            const disabled = item.requiresCompliance && !complianceComplete
+            const disabled = !!(item.requiresCompliance && !complianceComplete)
             const linkClass = `flex items-center space-x-3 px-3 py-2 rounded-md transition-colors ${isActive ? "bg-[#FFF9EA] text-[#9A813F] font-medium" : "text-gray-700 hover:bg-gray-100"} ${disabled ? "pointer-events-none opacity-60 cursor-not-allowed" : ""}`
 
             return (
               <li key={index}>
                 {disabled ? (
-                  <Tippy content={COMPLIANCE_MESSAGE} placement="top" arrow={true} theme="sidebar-light">
-                    <span className="flex items-center space-x-3 px-3 py-2 rounded-md w-full cursor-not-allowed">
-                      <span className={`${linkClass} pointer-events-none`}>
+                  <Tippy content={COMPLIANCE_MESSAGE} placement="top" arrow theme="sidebar-light">
+                    <span className="flex w-full cursor-not-allowed">
+                      <span className={`${linkClass} pointer-events-none w-full`}>
                         {item.icon}
                         <span className="text-sm">{item.label}</span>
                       </span>
@@ -138,13 +135,11 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
         {/* Settings */}
         <ul>
           <li>
-            {isSettingsDisabled ? (
-              <Tippy content={COMPLIANCE_MESSAGE} placement="top" arrow={true} theme="sidebar-light">
+            {!complianceComplete ? (
+              <Tippy content={COMPLIANCE_MESSAGE} placement="top" arrow theme="sidebar-light">
                 <span className="flex items-center space-x-3 px-3 py-2 rounded-md text-gray-700 opacity-60 cursor-not-allowed w-full">
-                  <span className="pointer-events-none flex items-center space-x-3">
-                    <RiSettings3Fill size={20} />
-                    <span className="text-sm">Settings</span>
-                  </span>
+                  <RiSettings3Fill size={20} />
+                  <span className="text-sm">Settings</span>
                 </span>
               </Tippy>
             ) : (

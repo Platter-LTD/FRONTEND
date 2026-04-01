@@ -1,6 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
+import axios from 'axios';
+import https from 'https';
+import dns from 'dns';
 
 export const dynamic = 'force-dynamic';
+
+const agent = new https.Agent({
+  keepAlive: true,
+  family: 4,
+  // Force IPv4 lookup to avoid intermittent ETIMEDOUT on some hosts
+  // @ts-ignore - Node lookup signature compatibility
+  lookup: (hostname: string, options: any, cb: any) => dns.lookup(hostname, { family: 4 }, cb),
+});
+
+const http = axios.create({
+  timeout: 30_000,
+  httpsAgent: agent,
+  validateStatus: () => true,
+});
+
+function readAccessTokenFromCookieHeader(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  const parts = cookieHeader.split(';').map((p) => p.trim());
+  const kv = parts.find((p) => p.startsWith('accessToken='));
+  if (!kv) return null;
+  const raw = kv.slice('accessToken='.length);
+  if (!raw) return null;
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function extractRoleFromBearer(authHeader: string | null): string {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return 'MERCHANT';
+  try {
+    const token = authHeader.replace('Bearer ', '');
+    const [, payload] = token.split('.');
+    if (!payload) return 'MERCHANT';
+    const decoded = JSON.parse(Buffer.from(payload, 'base64').toString());
+    const candidates = [
+      decoded?.role,
+      decoded?.userRole,
+      decoded?.user_role,
+      decoded?.userType,
+      decoded?.user_type,
+      Array.isArray(decoded?.roles) ? decoded.roles[0] : undefined,
+    ]
+      .filter((v: unknown) => typeof v === 'string' && String(v).trim())
+      .map((v: unknown) => String(v).toUpperCase().replace(/^ROLE_/, ''));
+    return candidates[0] || 'MERCHANT';
+  } catch {
+    return 'MERCHANT';
+  }
+}
 
 function getComplianceOrigin(): string {
   const raw =
@@ -22,11 +76,7 @@ function buildComplianceUrl(pathSegments: string[]): string {
   const origin = getComplianceOrigin().replace(/\/+$/, '');
   const pathParts = ['api', 'v1', 'kyc', ...pathSegments];
   const path = '/' + pathParts.join('/');
-  const full = `${origin}${path}`;
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[Compliance] outgoing URL:', full);
-  }
-  return full;
+  return `${origin}${path}`;
 }
 
 /**
@@ -45,12 +95,22 @@ export class Compliance {
     const contentType = request.headers.get('Content-Type') ?? '';
     const isMultipart = contentType.includes('multipart/form-data');
 
-    console.log('[Compliance] proxy start:', { method, path: pathKey, contentType: contentType.slice(0, 50), isMultipart });
-
     const headers: Record<string, string> = {};
     if (!isMultipart) headers['Content-Type'] = 'application/json';
-    const authHeader = request.headers.get('Authorization');
-    if (authHeader) headers['Authorization'] = authHeader;
+    const incomingAuth = request.headers.get('Authorization') || request.headers.get('authorization');
+    const cookieHeader = request.headers.get('cookie');
+    const tokenFromCookie = readAccessTokenFromCookieHeader(cookieHeader);
+    const authHeader = incomingAuth || (tokenFromCookie ? `Bearer ${tokenFromCookie}` : null);
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+      const role = extractRoleFromBearer(authHeader);
+      headers['x-user-role'] = role;
+      headers['x-user-type'] = role;
+      headers['x-user-roles'] = role;
+    }
+    if (cookieHeader) {
+      headers['Cookie'] = cookieHeader;
+    }
 
     try {
       const init: RequestInit = { method, headers };
@@ -58,11 +118,8 @@ export class Compliance {
         if (isMultipart) {
           // Forward raw body and Content-Type (with boundary) so the backend receives the file as-is.
           if (contentType) headers['Content-Type'] = contentType;
-          console.log('[Compliance] reading multipart body...');
           const rawBody = await request.arrayBuffer();
-          console.log('[Compliance] body size:', rawBody.byteLength, 'bytes');
           if (rawBody.byteLength === 0) {
-            console.log('[Compliance] body empty, returning 400');
             return NextResponse.json(
               { success: false, error: 'No file uploaded. Send a single file in the "file" field.' },
               { status: 400 }
@@ -74,32 +131,6 @@ export class Compliance {
             const body = await request.text();
             if (body) {
               init.body = body;
-              if (pathKey === 'business/submit') {
-                try {
-                  const parsed = JSON.parse(body) as { businessDocuments?: Array<{ type?: string }> };
-                  const bd = parsed?.businessDocuments;
-                  console.log('[Compliance] proxy received business/submit body length:', body.length);
-                  console.log('[Compliance] proxy parsed businessDocuments:', Array.isArray(bd) ? bd.length : 'not array', 'types:', Array.isArray(bd) ? bd.map((d) => d?.type) : bd);
-                } catch {
-                  console.log('[Compliance] proxy business/submit body parse failed (non-JSON or invalid)');
-                }
-              }
-              if (pathKey === 'business/beneficial-owners' && method === 'PUT') {
-                try {
-                  const parsed = JSON.parse(body) as unknown;
-                  const arr = Array.isArray(parsed) ? parsed : (parsed as { shareholders?: unknown[] })?.shareholders;
-                  const count = Array.isArray(arr) ? arr.length : 'not array';
-                  const first = Array.isArray(arr) && arr.length > 0 ? arr[0] : null;
-                  const firstKeys = first && typeof first === 'object' && first !== null ? Object.keys(first as object).filter((k) => k !== 'documents' && k !== 'fileData') : [];
-                  const docKeys = first && typeof first === 'object' && first !== null && 'documents' in first ? (() => {
-                    const docs = (first as { documents?: unknown[] }).documents;
-                    return Array.isArray(docs) && docs.length > 0 && typeof docs[0] === 'object' && docs[0] !== null ? Object.keys(docs[0] as object) : [];
-                  })() : [];
-                  console.log('[Compliance] PUT beneficial-owners body: payload is array?', Array.isArray(parsed), 'length/count:', count, 'first item keys:', firstKeys, 'documents[0] keys:', docKeys);
-                } catch (e) {
-                  console.log('[Compliance] PUT beneficial-owners body parse failed:', e);
-                }
-              }
             }
           } catch {
             // no body
@@ -109,27 +140,21 @@ export class Compliance {
 
       // Use a longer timeout for uploads (large body); compliance-ms can be slow or cold-start
       const timeoutMs = isMultipart ? 120_000 : 30_000;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      init.signal = controller.signal;
 
-      console.log('[Compliance] calling compliance service:', url, '(timeout', timeoutMs / 1000, 's)');
-      let res: Response;
-      try {
-        res = await fetch(url, init);
-      } finally {
-        clearTimeout(timeoutId);
-      }
-      console.log('[Compliance] response:', res.status, res.statusText, 'ok:', res.ok);
+      const resp = await http.request({
+        url,
+        method,
+        headers,
+        data: init.body as any,
+        timeout: timeoutMs,
+      });
 
-      const data = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from compliance service' }));
-      if (pathKey === 'business/submit' && !res.ok) {
-        console.log('[Compliance] business/submit error response:', data);
-      }
-      if (pathKey === 'business/beneficial-owners' && !res.ok) {
-        console.log('[Compliance] business/beneficial-owners error response:', JSON.stringify(data));
-      }
-      return NextResponse.json(data, { status: res.status });
+      const data =
+        typeof resp.data === 'object' && resp.data !== null
+          ? resp.data
+          : { success: resp.status >= 200 && resp.status < 300, data: resp.data };
+
+      return NextResponse.json(data, { status: resp.status });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Compliance request failed';
       const errCause = err instanceof Error && (err as Error & { cause?: unknown }).cause;

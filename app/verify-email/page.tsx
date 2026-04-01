@@ -75,10 +75,8 @@ function VerifyEmailContent() {
         { identifier: email, channel: "email", purpose: "verification" },
         { includeAuth: false }
       )
-      console.log("[Resend code] SUCCESS — new verification code sent to", email)
       toast.success("✅ A new verification code has been sent to your email.")
     } catch (err: any) {
-      console.log("[Resend code] FAILED", err?.response?.data ?? err?.message)
       console.error("Resend request failed", err)
       const errorMsg = err?.response?.data?.error || err?.message || "Failed to resend verification code"
       toast.error(`❌ ${errorMsg}`)

@@ -11,8 +11,8 @@ const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.
 // Per latest docs, the Create App endpoints are exposed on the same base URL
 // as the auth/account service, under /api/v1/apps.
 const CREATE_APP_URL = AUTH_SERVICE_URL.replace(/\/$/, '');
-// When create-app is on the same host as auth, forward the original login token (backend uses same JWT secret).
-// Set CREATE_APP_USE_ORIGINAL_TOKEN=false only if you use a separate create-app service with a different secret.
+// GET and POST first attempt use the same rule. If POST returns 401, we retry once with the alternate
+// (original ↔ re-signed via transformJwtForBackend) so product-builder-style list + create both work.
 const CREATE_APP_USE_ORIGINAL_TOKEN = process.env.CREATE_APP_USE_ORIGINAL_TOKEN !== 'false';
 const JWT_SECRET = process.env.JWT_SECRET || 'Jb@1zP!k9#tW$xL&5aVn*QyR7gE^cF#Qb23'; // Fallback to service-auth-ms secret
 
@@ -146,10 +146,19 @@ function transformJwtForBackend(authHeader: string): string {
     }
 }
 
+/** Primary Authorization for apps proxy — must match GET when using the same env. */
+function primaryAppsJwtAuthorization(authHeader: string): string {
+    return CREATE_APP_USE_ORIGINAL_TOKEN ? authHeader : transformJwtForBackend(authHeader);
+}
+
+/** Opposite of primary (used for POST 401 retry). */
+function alternateAppsJwtAuthorization(authHeader: string): string {
+    return CREATE_APP_USE_ORIGINAL_TOKEN ? transformJwtForBackend(authHeader) : authHeader;
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        console.log('[Create App API] Request body:', JSON.stringify(body));
 
         const { name, websiteUrl, alias, description } = body || {};
         if (!name || !websiteUrl || !alias) {
@@ -157,18 +166,15 @@ export async function POST(request: NextRequest) {
         }
 
         const authHeader = request.headers.get('authorization');
-        console.log('[Create App API] Auth header present:', !!authHeader);
 
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             // Allow API key bypass if keys are configured
             if (!CREATE_APP_API_KEY || !CREATE_APP_PUBLIC_KEY) {
-                console.log('[Create App API] No auth header and no API keys configured');
                 return NextResponse.json({ success: false, error: 'Authorization token is required. Please log in.' }, { status: 401 });
             }
         }
 
         const merchantId = await resolveMerchantId(authHeader, body?.merchantId);
-        console.log('[Create App API] Resolved merchantId:', merchantId);
 
         if (!merchantId) {
             return NextResponse.json({ success: false, error: 'Merchant ID is required' }, { status: 400 });
@@ -193,27 +199,50 @@ export async function POST(request: NextRequest) {
                 ? CREATE_APP_BYPASS_TOKEN
                 : `Bearer ${CREATE_APP_BYPASS_TOKEN}`;
         }
-        // Strategy 3: Send token to backend. When create-app is on the same host as auth
-        // (CREATE_APP_URL === AUTH_SERVICE_URL), the backend validates with the same secret
-        // that issued the login token — forward the original token. Otherwise re-sign for create-app-ms.
+        // Strategy 3: JWT — same primary strategy as GET; forward browser cookies so upstream can read accessToken cookie on POST.
         else if (authHeader) {
             const roleHint = extractPrimaryRoleFromAuthHeader(authHeader);
             const effectiveRole = roleHint || 'MERCHANT';
-
-            if (CREATE_APP_USE_ORIGINAL_TOKEN) {
-                headers['Authorization'] = authHeader;
-            } else {
-                headers['Authorization'] = transformJwtForBackend(authHeader);
-            }
             headers['x-user-role'] = effectiveRole;
             headers['x-user-type'] = effectiveRole;
             headers['x-user-roles'] = effectiveRole;
+            headers['Authorization'] = primaryAppsJwtAuthorization(authHeader);
+            const browserCookie = request.headers.get('cookie');
+            if (browserCookie) {
+                headers['Cookie'] = browserCookie;
+            }
         }
 
-        const resp = await http.post(`${CREATE_APP_URL}/api/v1/apps`,
+        let resp = await http.post(`${CREATE_APP_URL}/api/v1/apps`,
             { name, websiteUrl, alias, description, merchantId },
             { headers }
         );
+
+        if (
+            resp.status === 401 &&
+            authHeader &&
+            authHeader.startsWith('Bearer ') &&
+            !(CREATE_APP_API_KEY && CREATE_APP_PUBLIC_KEY) &&
+            !CREATE_APP_BYPASS_TOKEN
+        ) {
+            const alt = alternateAppsJwtAuthorization(authHeader);
+            if (alt !== headers['Authorization']) {
+                const retryHeaders: Record<string, string> = {
+                    ...headers,
+                    Authorization: alt,
+                    'Idempotency-Key': `create-app-retry-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                };
+                const browserCookie = request.headers.get('cookie');
+                if (browserCookie) {
+                    retryHeaders['Cookie'] = browserCookie;
+                }
+                resp = await http.post(
+                    `${CREATE_APP_URL}/api/v1/apps`,
+                    { name, websiteUrl, alias, description, merchantId },
+                    { headers: retryHeaders }
+                );
+            }
+        }
 
         if (resp.status >= 200 && resp.status < 300) {
             const result = resp.data;
@@ -268,8 +297,6 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
     try {
         const authHeader = request.headers.get('authorization') || '';
-        console.log('[GET /api/apps] Auth header present:', !!authHeader);
-        console.log('[GET /api/apps] Auth header (first 50 chars):', authHeader.substring(0, 50));
 
         let headers: Record<string, string> = {
             'Content-Type': 'application/json',
@@ -277,38 +304,25 @@ export async function GET(request: NextRequest) {
 
         // Use same auth strategy as POST
         if (CREATE_APP_API_KEY && CREATE_APP_PUBLIC_KEY) {
-            console.log('[GET /api/apps] Using API keys');
             headers['X-Special-Key'] = CREATE_APP_API_KEY;
             headers['X-Public-Key'] = CREATE_APP_PUBLIC_KEY;
         } else if (CREATE_APP_BYPASS_TOKEN) {
-            console.log('[GET /api/apps] Using bypass token');
             headers['Authorization'] = CREATE_APP_BYPASS_TOKEN.startsWith('Bearer ')
                 ? CREATE_APP_BYPASS_TOKEN
                 : `Bearer ${CREATE_APP_BYPASS_TOKEN}`;
         } else if (authHeader && authHeader.startsWith('Bearer ')) {
             const roleHint = extractPrimaryRoleFromAuthHeader(authHeader);
-            console.log('[GET /api/apps] Role from token:', roleHint);
 
             // If no role found in token, default to MERCHANT for app operations
             const effectiveRole = roleHint || 'MERCHANT';
-            console.log('[GET /api/apps] Effective role:', effectiveRole);
 
-            if (CREATE_APP_USE_ORIGINAL_TOKEN) {
-                headers['Authorization'] = authHeader;
-            } else {
-                headers['Authorization'] = transformJwtForBackend(authHeader);
-            }
+            headers['Authorization'] = primaryAppsJwtAuthorization(authHeader);
             headers['x-user-role'] = effectiveRole;
             headers['x-user-type'] = effectiveRole;
             headers['x-user-roles'] = effectiveRole;
-        } else {
-            console.log('[GET /api/apps] No valid auth header');
         }
 
-        console.log('[GET /api/apps] Calling:', `${CREATE_APP_URL}/api/v1/apps`);
         const resp = await http.get(`${CREATE_APP_URL}/api/v1/apps`, { headers });
-        console.log('[GET /api/apps] Response status:', resp.status);
-        console.log('[GET /api/apps] Response data:', JSON.stringify(resp.data).substring(0, 200));
 
         if (resp.status >= 200 && resp.status < 300) {
             return NextResponse.json({ success: true, data: resp.data?.data || resp.data });

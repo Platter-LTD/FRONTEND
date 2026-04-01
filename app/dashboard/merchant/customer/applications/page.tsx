@@ -132,7 +132,6 @@ export default function ApplicationsPage() {
   }
 
   const handleViewDetails = (application: Application) => {
-    console.log("View details:", application)
   }
 
   // Filter applications by type for tabs

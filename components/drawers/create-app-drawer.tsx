@@ -5,6 +5,8 @@ import { Drawer } from "@/components/drawer"
 import { Loader2 } from "lucide-react"
 import { WEBSITE_URL_PREFIX } from "@/lib/websiteUrl"
 import walletService from "@/lib/services/walletService"
+import { apiClient } from "@/lib/api"
+import { getAccessToken } from "@/lib/cookieAuth"
 
 interface CreateAppDrawerProps {
   isOpen: boolean
@@ -65,38 +67,46 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
     setErrors({})
 
     try {
-      const token = (await import("@/lib/cookieAuth")).getAccessToken();
+      const token = getAccessToken()
 
-      // Try to derive merchantId from JWT to include in payload
-      let merchantId: string | undefined;
+      // Derive merchantId from JWT for body + wallet step (same as before)
+      let merchantId: string | undefined
       if (token) {
         try {
-          const payload = JSON.parse(atob(token.split('.')[1]));
-          merchantId = payload?.user_merchant_id || payload?.userMerchantId || payload?.merchantId || payload?.userId || payload?.id || payload?.sub;
-        } catch (_) {
+          const payload = JSON.parse(atob(token.split(".")[1]))
+          merchantId =
+            payload?.user_merchant_id ||
+            payload?.userMerchantId ||
+            payload?.merchantId ||
+            payload?.userId ||
+            payload?.id ||
+            payload?.sub
+        } catch {
           // ignore decode errors
         }
       }
 
-      // Call local API route which proxies to create-app-ms
-      const response = await fetch("/api/apps", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { "Authorization": `Bearer ${token}` })
-        },
-        body: JSON.stringify({
+      // Same path as other authed calls: cookie token via includeAuth + 401 refresh interceptor
+      const response = await apiClient.post(
+        "/apps",
+        {
           name: formData.name,
           websiteUrl: formData.websiteUrl,
           alias: formData.alias,
           description: formData.description,
           ...(merchantId ? { merchantId } : {}),
-          source: 'spring-app'
-        })
-      });
+          source: "spring-app",
+        },
+        { includeAuth: true },
+      )
 
-      const result = await response.json();
-      console.log('API response:', result);
+      const result = response.data as {
+        success?: boolean
+        data?: unknown
+        error?: string
+        message?: string
+        details?: { message?: string }
+      }
 
       if (result.success && result.data) {
         const createdApp = result.data.app || result.data
@@ -121,14 +131,20 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
         setErrors({})
         onClose()
       } else {
-        // Show more detailed error message
-        const errorMessage = result.error || result.message || result.details?.message || "Failed to create app";
-        console.error('Create app error:', errorMessage, result);
-        setErrors({ submit: errorMessage });
+        const errorMessage =
+          result.error || result.message || result.details?.message || "Failed to create app"
+        console.error("Create app error:", errorMessage, result)
+        setErrors({ submit: errorMessage })
       }
-    } catch (error) {
-      console.error("Error creating app:", error);
-      setErrors({ submit: error instanceof Error ? error.message : "An unexpected error occurred. Please try again." });
+    } catch (error: unknown) {
+      console.error("Error creating app:", error)
+      const ax = error as { response?: { data?: { error?: string; message?: string } } }
+      const msg =
+        ax?.response?.data?.error ||
+        ax?.response?.data?.message ||
+        (error instanceof Error ? error.message : null) ||
+        "An unexpected error occurred. Please try again."
+      setErrors({ submit: msg })
     } finally {
       setIsLoading(false);
     }

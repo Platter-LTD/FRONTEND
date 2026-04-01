@@ -336,9 +336,9 @@ export const ENDPOINTS = {
       documents: `${COMPLIANCE_BASE}/business/documents`,
       document: (documentId: string) =>
         `${COMPLIANCE_BASE}/business/document/${encodeURIComponent(documentId)}`,
-      businessTypeOptions: `${COMPLIANCE_BASE}/business/business-type-options`,
-      industryTypeOptions: `${COMPLIANCE_BASE}/business/industry-type-options`,
-      businessModelOptions: `${COMPLIANCE_BASE}/business/business-model-options`,
+      businessTypeOptions: "/v1/kyc/business/business-type-options",
+      industryTypeOptions: "/v1/kyc/business/industry-type-options",
+      businessModelOptions: "/v1/kyc/business/business-model-options",
       beneficialOwners: (merchantId: string) =>
         `${COMPLIANCE_BASE}/business/${encodeURIComponent(merchantId)}/beneficial-owners`,
       beneficialOwnersPut: `${COMPLIANCE_BASE}/business/beneficial-owners`,
@@ -350,7 +350,8 @@ export const ENDPOINTS = {
       message: `${COMPLIANCE_BASE}/business/message`,
       messages: `${COMPLIANCE_BASE}/business/messages`,
     },
-    status: (userId: string) => `${COMPLIANCE_BASE}/status/${encodeURIComponent(userId)}`,
+    /** GET — KYC status for user; proxied to upstream GET /api/v1/kyc/status/:userId */
+    status: (userId: string) => `/v1/kyc/status/${encodeURIComponent(userId)}`,
     admin: {
       users: `${COMPLIANCE_BASE}/admin/users`,
       documents: `${COMPLIANCE_BASE}/admin/documents`,

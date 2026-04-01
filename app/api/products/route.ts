@@ -60,10 +60,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[Product API] Creating product:', { appId, type, name: name?.slice(0, 30) });
-
     const selectUrl = `${PRODUCT_SERVICE_URL}/api/v1/products/select-type`;
-    console.log('[Product API] POST select-type:', selectUrl);
 
     let selectResp;
     try {
@@ -83,7 +80,6 @@ export async function POST(request: NextRequest) {
       console.error('[Product API] select-type error:', { status: selectResp.status, data: selectData });
       // Fallback: legacy create
       const legacyUrl = `${PRODUCT_SERVICE_URL}/api/v1/products`;
-      console.log('[Product API] Fallback POST legacy create:', legacyUrl);
       let legacyResp;
       try {
         legacyResp = await http.post(legacyUrl, { appId, type, name, description, ...rest }, {
@@ -104,13 +100,11 @@ export async function POST(request: NextRequest) {
           { status: legacyResp.status }
         );
       }
-      console.log('[Product API] Legacy product created successfully');
       return NextResponse.json(legacyData);
     }
 
     const productId = selectData.data.id as string;
     const createUrl = `${PRODUCT_SERVICE_URL}/api/v1/products/create-after-type`;
-    console.log('[Product API] POST create-after-type:', createUrl, { productId });
 
     let createResp;
     try {
@@ -134,7 +128,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[Product API] Product created successfully');
     return NextResponse.json(createData);
   } catch (error: unknown) {
     console.error('[Product API] Unexpected error:', error);
@@ -162,8 +155,6 @@ export async function GET(request: NextRequest) {
       ? `${PRODUCT_SERVICE_URL}/api/v1/products/app/${appId}`
       : `${PRODUCT_SERVICE_URL}/api/v1/products`;
 
-    console.log('[Product API] GET products:', url);
-
     let response;
     try {
       response = await http.get(url, {
@@ -186,8 +177,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const count = Array.isArray(data?.data) ? data.data.length : (data?.data?.length ?? 0);
-    console.log('[Product API] Products fetched:', count);
     return NextResponse.json(data);
   } catch (error: unknown) {
     console.error('[Product API] GET products unexpected error:', error);

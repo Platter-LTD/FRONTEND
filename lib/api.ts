@@ -6,9 +6,6 @@ import axios, {
 } from "axios"
 import { getAccessToken } from "@/lib/cookieAuth"
 
-// Only log in development
-const isDev = process.env.NODE_ENV !== 'production'
-
 // Use relative URL so requests go through our own Next.js API proxy
 export interface ApiRequestConfig extends AxiosRequestConfig {
   includeAuth?: boolean
@@ -21,6 +18,21 @@ const api = axios.create({
   },
   withCredentials: true,
 })
+
+let refreshPromise: Promise<string | null> | null = null
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post("/api/auth/refresh", {}, { withCredentials: true })
+      .then((res) => (res.data?.data?.accessToken ?? res.data?.accessToken ?? null) as string | null)
+      .catch(() => null)
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
 
 // Request interceptor: use cookie (or localStorage fallback) for token
 api.interceptors.request.use((config: InternalAxiosRequestConfig & { includeAuth?: boolean }) => {
@@ -53,11 +65,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig & { includeAuth
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config
-
-    if (isDev) {
-      console.log("API Error:", originalRequest?.url, error.response?.status)
-    }
+    const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined
 
     const isAuthEndpoint = originalRequest?.url?.includes('/auth/login') ||
       originalRequest?.url?.includes('/auth/refresh') ||
@@ -65,23 +73,17 @@ api.interceptors.response.use(
       originalRequest?.url?.includes('/auth/me') ||
       originalRequest?.url?.includes('/v1/auth/')
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true
-      try {
-        const res = await axios.post("/api/auth/refresh", {}, { withCredentials: true })
-        const newAccessToken = res.data?.data?.accessToken ?? res.data?.accessToken
-        if (newAccessToken) {
-          api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`
-          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
-          return api(originalRequest)
-        }
-      } catch {
-        /* refresh failed */
+      const newAccessToken = await refreshAccessToken()
+      if (newAccessToken) {
+        api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`
+        const retryHeaders = (originalRequest.headers ?? {}) as Record<string, string>
+        retryHeaders.Authorization = `Bearer ${newAccessToken}`
+        originalRequest.headers = retryHeaders as any
+        return api(originalRequest)
       }
       delete api.defaults.headers.common.Authorization
-      if (typeof window !== "undefined" && !window.location.pathname.includes("/signin")) {
-        window.location.href = "/signin"
-      }
     }
     return Promise.reject(error)
   },

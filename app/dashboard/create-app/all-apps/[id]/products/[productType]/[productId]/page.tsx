@@ -39,7 +39,6 @@ export default function ProductDetailsPage() {
             setConfiguration(configData.data)
           }
         } catch (configError) {
-          console.log('No configuration found for product')
         }
       } catch (error) {
         console.error('Error fetching product:', error)

@@ -47,12 +47,8 @@ export default function SignupPage() {
                 user_merchant_id: `merchant_${Date.now()}`,
             }
 
-            console.log("Sending registration data:", registrationData)
-
             // Call the registration API - production endpoint
             const response = await api.post("/auth/register/merchant", registrationData)
-
-            console.log("Registration successful:", response.data)
 
             if (response.data) {
                 // Store email in sessionStorage for verification flow

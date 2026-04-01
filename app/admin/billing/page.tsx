@@ -52,7 +52,6 @@ export default function AdminBillingPage() {
 
   const handleDownload = (billing: Transaction) => {
     // Implement download functionality
-    console.log('Download billing:', billing.id)
   }
 
   return (

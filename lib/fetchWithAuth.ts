@@ -1,7 +1,7 @@
 /**
  * Client-side fetch that on 401 attempts silent refresh (via /api/auth/refresh) then retries once.
  * Follows convention: do not log user out on first 401; try refresh then retry.
- * Only redirect to signin when refresh fails (server will clear cookies in refresh response).
+ * Does not force redirects when refresh fails; caller decides UI behavior.
  */
 
 import { getAccessToken } from '@/lib/cookieAuth';
@@ -11,16 +11,26 @@ export type FetchWithAuthOptions = RequestInit & {
   skipAuth?: boolean;
 };
 
+let refreshPromise: Promise<string | null> | null = null;
+
 async function doRefresh(): Promise<string | null> {
-  const res = await fetch('/api/auth/refresh', {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-  });
-  const data = await res.json().catch(() => ({}));
-  const newAccess = data?.data?.accessToken ?? data?.accessToken;
-  if (res.ok && newAccess) return newAccess;
-  return null;
+  if (!refreshPromise) {
+    refreshPromise = fetch('/api/auth/refresh', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}));
+        const newAccess = data?.data?.accessToken ?? data?.accessToken;
+        return res.ok && newAccess ? newAccess : null;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
 }
 
 /**
@@ -46,9 +56,6 @@ export async function fetchWithAuth(
     if (newToken) {
       headers.set('Authorization', `Bearer ${newToken}`);
       res = await fetch(input, { ...init, headers, credentials: init.credentials ?? 'include' });
-    } else if (typeof window !== 'undefined' && !window.location.pathname.includes('/signin')) {
-      // Refresh failed (e.g. refresh token expired). Server already cleared cookies in refresh response.
-      window.location.href = '/signin';
     }
   }
 

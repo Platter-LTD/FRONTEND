@@ -131,10 +131,7 @@ export class Auth {
       const res = await axios.post(buildUrl(BACKEND.auth.refresh), { refreshToken }, axiosConfig);
       const data = res.data;
       if (res.status !== 200 || !data.success) {
-        const errRes = NextResponse.json({ success: false, error: data.error || 'Token refresh failed' }, { status: 401 });
-        errRes.cookies.set('accessToken', '', { maxAge: 0, path: '/' });
-        errRes.cookies.set('refreshToken', '', { maxAge: 0, path: '/' });
-        return errRes;
+        return NextResponse.json({ success: false, error: data.error || 'Token refresh failed' }, { status: 401 });
       }
       const newAccess = data.data?.accessToken ?? data.accessToken;
       const newRefresh = data.data?.refreshToken ?? data.refreshToken;
@@ -266,9 +263,6 @@ export class Auth {
       }
 
       const res = await axios.post(buildUrl(BACKEND.otp.resend), payload, axiosConfig);
-      const data = res.data as { success?: boolean };
-      const success = res.status === 200 && data.success !== false;
-      console.log('[Auth] resendEmailOtp (send code):', success ? 'SUCCESS' : 'FAILED', { status: res.status, identifier: payload.identifier });
       return NextResponse.json(res.data, { status: res.status });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to resend OTP';

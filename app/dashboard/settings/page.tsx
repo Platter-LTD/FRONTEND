@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
 import { ChevronRight, CircleHelp, Copy, Flag, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,7 +25,6 @@ import {
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState("account-settings")
     const [deactivateOpen, setDeactivateOpen] = useState(false)
-    const router = useRouter()
 
     const [profileLoading, setProfileLoading] = useState(false)
     const [profile, setProfile] = useState<AuthUser | null>(null)
@@ -241,7 +239,6 @@ export default function SettingsPage() {
             if (!res.ok) return
 
             setDeactivateOpen(false)
-            router.push("/signin")
         } finally {
             setDeactivateLoading(false)
         }

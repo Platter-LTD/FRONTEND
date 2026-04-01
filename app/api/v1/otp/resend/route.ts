@@ -38,8 +38,6 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from backend' }));
-    const success = res.ok && (data as { success?: boolean }).success !== false;
-    console.log('[otp/resend] send code:', success ? 'SUCCESS' : 'FAILED', { status: res.status, identifier: payload.identifier });
     return NextResponse.json(data, { status: res.status });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to resend OTP';

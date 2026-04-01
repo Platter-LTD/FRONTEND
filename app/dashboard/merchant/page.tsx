@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import CreateAppDrawer from "@/components/drawers/create-app-drawer"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
-import { getAccessToken } from "@/lib/cookieAuth"
+import { apiClient } from "@/lib/api"
 
 interface App {
   id: string
@@ -52,17 +52,12 @@ export default function MerchantDashboardPage() {
     setError(null)
 
     try {
-      const token = typeof window !== 'undefined' ? getAccessToken() : null
-
-      const response = await fetch('/api/apps', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token && { 'Authorization': `Bearer ${token}` }),
-        },
-      })
-
-      const result = await response.json()
+      const response = await apiClient.get("/apps", { includeAuth: true })
+      const result = response.data as {
+        success?: boolean
+        data?: unknown
+        error?: string
+      }
 
       if (result.success && result.data) {
         const transformedApps: App[] = Array.isArray(result.data)

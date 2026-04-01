@@ -70,10 +70,6 @@ export async function POST(
     const body = await request.json();
     const authHeader = request.headers.get('authorization');
 
-    console.log('[Configuration API] POST - Product ID:', id);
-    console.log('[Configuration API] Body:', JSON.stringify(body));
-    console.log('[Configuration API] Auth header present:', !!authHeader);
-
     if (!authHeader) {
       return NextResponse.json(
         { success: false, error: 'Authorization required' },
@@ -84,7 +80,6 @@ export async function POST(
     // First try to get existing configuration
     let existingConfig = null;
     try {
-      console.log('[Configuration API] Checking for existing config...');
       const getResponse = await fetch(
         `${BASE_URL}/api/v1/configurations/${id}`,
         {
@@ -96,17 +91,14 @@ export async function POST(
       if (getResponse.ok) {
         const getData = await getResponse.json();
         existingConfig = getData?.data;
-        console.log('[Configuration API] Existing config found:', !!existingConfig);
       }
-    } catch (e) {
-      // Configuration doesn't exist, will create new one
-      console.log('[Configuration API] No existing config, will create new');
+    } catch {
+      // Configuration doesn't exist, will create new
     }
 
     let response;
     if (existingConfig) {
       // Update existing configuration
-      console.log('[Configuration API] Updating existing configuration');
       response = await fetch(
         `${BASE_URL}/api/v1/configurations/${id}`,
         {
@@ -120,10 +112,6 @@ export async function POST(
       );
     } else {
       // Create new configuration
-      console.log('[Configuration API] Creating new configuration');
-      console.log('[Configuration API] POST URL:', `${BASE_URL}/api/v1/configurations`);
-      console.log('[Configuration API] POST Body:', JSON.stringify(body));
-
       response = await fetch(
         `${BASE_URL}/api/v1/configurations`,
         {
@@ -137,9 +125,7 @@ export async function POST(
       );
     }
 
-    console.log('[Configuration API] Response status:', response.status);
     const data = await response.json();
-    console.log('[Configuration API] Response data:', JSON.stringify(data));
 
     if (!response.ok) {
       return NextResponse.json(

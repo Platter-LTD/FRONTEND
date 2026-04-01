@@ -629,21 +629,8 @@ export const paymentWebhookApi = {
     error?: string;
   }> {
     try {
-      // Handle different webhook events
-      switch (payload.event) {
-        case 'payment.created':
-          console.log('Payment created:', payload.payment.id);
-          break;
-        case 'payment.processing':
-          console.log('Payment processing:', payload.payment.id);
-          break;
-        case 'payment.completed':
-          console.log('Payment completed:', payload.payment.id);
-          break;
-        case 'payment.failed':
-          console.log('Payment failed:', payload.payment.id);
-          break;
-      }
+      // Handle different webhook events (payment.created | processing | completed | failed)
+      void payload.event;
 
       return {
         success: true,
