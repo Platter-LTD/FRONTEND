@@ -1,12 +1,50 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { Switch } from "@/components/ui/switch"
 import { Clock, Globe, Loader2 } from "lucide-react"
 import { ProductDetailModal } from "@/components/product-detail-modal"
 import { springProductService } from "@/lib/services/springProductService"
 import { toast } from "sonner"
+import { Skeleton } from "@/components/ui/skeleton"
+
+function ProductCardsSkeleton() {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="bg-white rounded-2xl border border-gray-200 overflow-hidden flex flex-col"
+        >
+          <Skeleton className="h-40 w-full rounded-none" />
+          <div className="p-5 flex-1 flex flex-col gap-3">
+            <div className="flex justify-between items-start gap-2">
+              <Skeleton className="h-6 flex-1 max-w-[200px]" />
+              <Skeleton className="h-6 w-14 shrink-0 rounded-md" />
+            </div>
+            <div className="space-y-2">
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-[85%]" />
+            </div>
+            <div className="flex items-center gap-4 pt-1">
+              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-3 w-20" />
+              <div className="ml-auto">
+                <Skeleton className="h-6 w-10 rounded-full" />
+              </div>
+            </div>
+            <div className="mt-auto flex justify-between items-center pt-4 border-t border-gray-100">
+              <Skeleton className="h-7 w-24 rounded-full" />
+              <Skeleton className="h-8 w-8 rounded-full" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 interface Product {
   id: string
@@ -26,6 +64,56 @@ interface Product {
 // Default placeholder image
 const DEFAULT_PRODUCT_IMAGE = "https://images.unsplash.com/photo-1541535650810-10d26f5c2ab3?w=800&q=80"
 
+function parseRowIsActive(row: Record<string, unknown>): boolean {
+  const nested =
+    row.product && typeof row.product === "object" ? (row.product as Record<string, unknown>) : null
+  const v = row.isActive ?? nested?.isActive
+  if (typeof v === "boolean") return v
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase()
+    if (s === "true" || s === "1" || s === "active") return true
+    if (s === "false" || s === "0" || s === "inactive") return false
+  }
+  // Row is in GET /products/app/:appId list but field omitted — treat as on for this app (legacy)
+  return true
+}
+
+/** Map catalog product id → isActive for this app from GET /api/v1/products/app/:appId (uses each row's isActive). */
+function buildAppProductActivationMap(activePayload: unknown): Map<string, boolean> {
+  const out = new Map<string, boolean>()
+  const rows: unknown[] = Array.isArray(activePayload)
+    ? activePayload
+    : activePayload &&
+        typeof activePayload === "object" &&
+        Array.isArray((activePayload as { products?: unknown }).products)
+      ? ((activePayload as { products: unknown[] }).products ?? [])
+      : []
+  for (const row of rows) {
+    if (row == null || typeof row !== "object") continue
+    const r = row as Record<string, unknown>
+    const nested = r.product && typeof r.product === "object" ? (r.product as Record<string, unknown>) : null
+    const on = parseRowIsActive(r)
+    const candidates = [
+      r.id,
+      r._id,
+      r.productId,
+      r.product_id,
+      nested?.id,
+      nested?._id,
+      nested?.productId,
+    ]
+    for (const c of candidates) {
+      if (c != null && String(c).trim()) out.set(String(c).trim(), on)
+    }
+  }
+  return out
+}
+
+function catalogProductKey(p: { id?: unknown; _id?: unknown }): string {
+  const v = p?.id ?? p?._id
+  return v != null ? String(v).trim() : ""
+}
+
 interface ProductCardsProps {
   category?: string
   appId?: string
@@ -38,82 +126,106 @@ export default function ProductCards({ category = "Mortgage", appId }: ProductCa
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
-  // Fetch products from Spring's product-ms via /api/spring-products
-  useEffect(() => {
-    fetchProducts()
-  }, [appId, category])
+  /**
+   * Merchant grid: full catalog from GET /api/v1/products.
+   * With `appActivation`, switch + label follow each row's `isActive` from GET /api/v1/products/app/:appId.
+   * Without app context, catalog `isActive` drives display.
+   */
+  const mapRows = (rows: any[], appActivation?: Map<string, boolean>): Product[] =>
+    rows
+      .filter((p: any) => p.type?.toLowerCase() === category.toLowerCase())
+      .filter((p: any) => catalogProductKey(p))
+      .map((p: any) => {
+        const id = catalogProductKey(p)
+        const onForApp =
+          appActivation != null
+            ? appActivation.get(id) === true
+            : p.isActive !== false && p.isActive !== "inactive"
+        return {
+          id,
+          name: p.name,
+          title: p.name,
+          description: p.description || "No description available",
+          image: p.image || DEFAULT_PRODUCT_IMAGE,
+          status: onForApp ? "Active" : "Inactive",
+          interestRate: p.interestRate || p.configuration?.interestRate || "N/A",
+          duration: p.duration || p.configuration?.loanTenure || "N/A",
+          category: p.type,
+          type: p.type,
+          isActive: onForApp,
+          appId: p.appId,
+        }
+      })
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     setLoading(true)
     try {
-      // Fetch ALL products from Plata's product-ms via /api/spring-products
-      // Products are created in Product Builder with Plata appIds — different from Spring appIds.
-      // We show the full catalog for merchants to activate/deactivate.
-      const data = await springProductService.getAllProducts()
+      const catalogRes = await springProductService.getAllProducts()
+      const catalogRaw = (catalogRes as { success?: boolean; data?: unknown }).data
+      const catalogRows = Array.isArray(catalogRaw) ? catalogRaw : []
 
-      if (data.success && data.data) {
-        // Filter only by product type/category — do NOT filter by appId
-        // (Spring appIds ≠ Plata appIds, so filtering by Spring appId returns nothing)
-        const transformedProducts: Product[] = data.data
-          .filter((p: any) => p.type?.toLowerCase() === category.toLowerCase())
-          .map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            title: p.name,
-            description: p.description || 'No description available',
-            image: p.image || DEFAULT_PRODUCT_IMAGE,
-            status: p.isActive ? "Active" : "Inactive",
-            interestRate: p.interestRate || p.configuration?.interestRate || "N/A",
-            duration: p.duration || p.configuration?.loanTenure || "N/A",
-            category: p.type,
-            type: p.type,
-            isActive: p.isActive ?? true,
-            appId: p.appId,
-          }))
-
-        setProducts(transformedProducts)
-      } else {
+      if ((catalogRes as { success?: boolean }).success === false) {
         setProducts([])
+        return
       }
+
+      if (!appId) {
+        setProducts(mapRows(catalogRows))
+        return
+      }
+
+      let appActivation = new Map<string, boolean>()
+      try {
+        const activeRes = await springProductService.getProductsForApp(appId)
+        const body = activeRes as { data?: unknown; success?: boolean }
+        const activeRaw = body.data
+        appActivation = buildAppProductActivationMap(activeRaw)
+      } catch (err) {
+        console.warn("[ProductCards] active products for app failed; toggles may be wrong until retry", err)
+      }
+
+      setProducts(mapRows(catalogRows, appActivation))
     } catch (error) {
       console.error("Failed to fetch Spring products:", error)
       setProducts([])
     } finally {
       setLoading(false)
     }
-  }
+  }, [category, appId])
+
+  useEffect(() => {
+    fetchProducts()
+  }, [fetchProducts])
 
   const toggleProduct = async (id: string) => {
-    const product = products.find(p => p.id === id)
+    if (!appId) {
+      toast.error("Select an app to manage products")
+      return
+    }
+    const product = products.find((p) => p.id === id)
     if (!product) return
 
     setTogglingId(id)
     const newIsActive = !product.isActive
 
     try {
-      // Get merchantId from Spring token, then toggle via springProductService
-      const merchantId = springProductService.getMerchantId()
-      if (!merchantId) {
-        toast.error("Could not determine merchant ID. Please log in again.")
-        return
+      const json = (await springProductService.toggleProductActivation(appId, id, newIsActive)) as {
+        data?: { isActive?: boolean }
       }
-
-      // Calls /api/spring-products/toggle/{merchantId}/{productId} → product-ms.fly.dev
-      await springProductService.toggleProductActivation(merchantId, id, newIsActive)
-
-      // Update local state on success
-      setProducts(products.map(p => {
-        if (p.id === id) {
-          return {
-            ...p,
-            isActive: newIsActive,
-            status: newIsActive ? "Active" : "Inactive"
-          }
-        }
-        return p
-      }))
-
-      toast.success(`Product ${newIsActive ? 'enabled' : 'disabled'} successfully`)
+      const serverOn =
+        typeof json?.data?.isActive === "boolean" ? json.data.isActive : newIsActive
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                isActive: serverOn,
+                status: serverOn ? "Active" : "Inactive",
+              }
+            : p,
+        ),
+      )
+      toast.success(`Product ${serverOn ? "enabled" : "disabled"} successfully`)
     } catch (error) {
       console.error("Failed to toggle product:", error)
       toast.error("Failed to update product status")
@@ -128,14 +240,7 @@ export default function ProductCards({ category = "Mortgage", appId }: ProductCa
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 animate-spin text-[#7C3AED]" />
-          <p className="text-sm text-gray-500">Loading products...</p>
-        </div>
-      </div>
-    )
+    return <ProductCardsSkeleton />
   }
 
   if (products.length === 0) {
@@ -144,10 +249,9 @@ export default function ProductCards({ category = "Mortgage", appId }: ProductCa
         <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
           <Globe className="w-8 h-8 text-gray-400" />
         </div>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">No {category} Products</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">No {category} products</h3>
         <p className="text-sm text-gray-500 max-w-sm mb-4">
-          No {category.toLowerCase()} products have been activated for this app yet.<br />
-          Products are created in the Product Builder dashboard.
+          No {category.toLowerCase()} products in the catalog yet. Create them in Product Builder.
         </p>
       </div>
     )

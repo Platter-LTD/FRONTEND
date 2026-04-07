@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const CREATE_APP_SERVICE_URL = process.env.CREATE_APP_SERVICE_URL || 'https://create-app-ms.fly.dev';
+import { getApiUpstreamBase } from '@/lib/server/apiUpstreamBase';
+
+const API_UPSTREAM_BASE = getApiUpstreamBase();
+
 
 // PUT - Activate a specific configuration
 export async function PUT(
@@ -12,7 +15,7 @@ export async function PUT(
         const authHeader = request.headers.get('Authorization');
 
         const response = await fetch(
-            `${CREATE_APP_SERVICE_URL}/api/v1/apps/${appId}/configuration/${configurationId}/activate`,
+            `${API_UPSTREAM_BASE}/api/v1/apps/${appId}/configuration/${configurationId}/activate`,
             {
                 method: 'PUT',
                 headers: {

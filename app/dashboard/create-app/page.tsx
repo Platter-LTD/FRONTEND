@@ -22,7 +22,7 @@ export default function CreateAppPage() {
     setError(null)
     try {
       const token = getAccessToken()
-      const response = await fetch("/api/apps?source=spring-app", {
+      const response = await fetch("/api/apps", {
         headers: {
           "Content-Type": "application/json",
           ...(token && { "Authorization": `Bearer ${token}` })

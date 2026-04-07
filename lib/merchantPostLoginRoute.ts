@@ -1,7 +1,7 @@
-import { ComplianceService } from "@/lib/services/complianceService"
-import { isKycStatusApproved } from "@/lib/kycApproval"
 import { isMerchantComplianceBypassEnabled } from "@/lib/merchantComplianceBypass"
 import { getUserFromToken } from "@/lib/tokenManager"
+import { store } from "@/store/store"
+import { fetchKycStatusThunk } from "@/store/complianceSlice"
 
 function isMerchantRoleFromToken(): boolean {
   const u = getUserFromToken()
@@ -18,8 +18,8 @@ export async function resolveMerchantPostLoginRoute(): Promise<string> {
     return "/dashboard/merchant"
   }
   try {
-    const res = await ComplianceService.getKycStatusForCurrentUser()
-    if (isKycStatusApproved(res)) {
+    const result = await store.dispatch(fetchKycStatusThunk()).unwrap()
+    if (result.isApproved) {
       return "/dashboard/merchant"
     }
   } catch {

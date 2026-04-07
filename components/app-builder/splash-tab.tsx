@@ -1,6 +1,8 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { RotateCcw } from "lucide-react"
+import { pwaPublicOptionsApi } from "@/lib/services/appService"
 import { MobileTemplatePreview, buildMobileConfig } from "./mobile-template-preview"
 import { useAppBuilder } from "@/contexts/AppBuilderContext"
 import { DeviceFrame } from "./ui/device-frame"
@@ -22,6 +24,24 @@ const DEFAULT_COLORS = {
 
 export function SplashTab() {
    const { appElements, selectedTemplateId, updateAppElements } = useAppBuilder()
+   const [paletteHexes, setPaletteHexes] = useState<string[]>([])
+
+   useEffect(() => {
+      let cancelled = false
+      pwaPublicOptionsApi
+         .getColorOptions()
+         .then((res) => {
+            if (cancelled) return
+            const opts = res.data?.options
+            if (Array.isArray(opts)) {
+               setPaletteHexes(opts.map((o) => o.hex).filter(Boolean).slice(0, 16))
+            }
+         })
+         .catch(() => {})
+      return () => {
+         cancelled = true
+      }
+   }, [])
 
    const defaults = DEFAULT_COLORS[selectedTemplateId as keyof typeof DEFAULT_COLORS] || DEFAULT_COLORS['mobile-v1']
    const primaryColor = appElements.buttons?.primaryColor || defaults.primary
@@ -122,6 +142,30 @@ export function SplashTab() {
                         defaultColor={defaults.secondary}
                         tooltip="Used for secondary elements and text"
                      />
+
+                     {paletteHexes.length > 0 ? (
+                        <div className="pt-4 border-t border-gray-100">
+                           <p className="text-xs font-medium text-gray-600 mb-2">
+                              Shared palette (GET /api/v1/pwa/color-options)
+                           </p>
+                           <p className="text-xs text-gray-500 mb-2">
+                              Click a swatch to set primary; use secondary picker above for the second color.
+                           </p>
+                           <div className="flex flex-wrap gap-2">
+                              {paletteHexes.map((hex) => (
+                                 <button
+                                    key={hex}
+                                    type="button"
+                                    className="h-8 w-8 rounded-md border border-gray-200 shadow-sm ring-offset-2 focus:outline-none focus:ring-2 focus:ring-[#7C3AED]"
+                                    style={{ backgroundColor: hex }}
+                                    title={hex}
+                                    aria-label={`Use ${hex} as primary`}
+                                    onClick={() => handlePrimaryColorChange(hex)}
+                                 />
+                              ))}
+                           </div>
+                        </div>
+                     ) : null}
                   </div>
                </CollapsibleSection>
 

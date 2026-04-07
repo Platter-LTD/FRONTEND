@@ -1,17 +1,23 @@
 "use client"
 
 import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from "react"
-import { 
-    AppConfiguration, 
-    appConfigurationApi, 
+import {
+    AppConfiguration,
+    appConfigurationApi,
+    appTemplateApi,
     PredefinedTemplate,
     AppElementsConfig,
     OnboardingConfig,
     AppProfileConfig,
     PolicyConfig,
     SupportConfig,
-    DNSConfig
+    DNSConfig,
 } from "@/lib/services/appService"
+import {
+    appBuilderSlicesToPwaConfig,
+    pwaConfigToAppBuilderSlices,
+    sectionToPwaConfigPatch,
+} from "@/lib/pwaTemplateBridge"
 
 // ============================================
 // TYPES
@@ -21,7 +27,9 @@ interface AppBuilderState {
     // Core identifiers
     appId: string | null
     configurationId: string | null
-    
+    /** Create App MS PWA template id when loaded or created via /pwa-templates */
+    pwaTemplateId: string | null
+
     // Selected template
     selectedTemplateId: string
     
@@ -105,6 +113,7 @@ const defaultDNS: DNSConfig = {
 const initialState: AppBuilderState = {
     appId: null,
     configurationId: null,
+    pwaTemplateId: null,
     selectedTemplateId: 'mobile-v1',
     appElements: defaultAppElements,
     onboarding: defaultOnboarding,
@@ -165,15 +174,136 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
 
     const loadConfiguration = useCallback(async (appId: string) => {
         setState(prev => ({ ...prev, isLoading: true, error: null }))
-        
+
+        const mergeLoadedState = (slices: ReturnType<typeof pwaConfigToAppBuilderSlices>, templateId: string) => {
+            setState(prev => ({
+                ...prev,
+                appId,
+                pwaTemplateId: templateId,
+                configurationId: templateId,
+                appElements: {
+                    ...defaultAppElements,
+                    ...slices.appElements,
+                    buttons: {
+                        ...defaultAppElements.buttons,
+                        ...(slices.appElements.buttons || {}),
+                    },
+                    header: {
+                        ...defaultAppElements.header,
+                        ...(slices.appElements.header || {}),
+                    },
+                    body: {
+                        ...defaultAppElements.body,
+                        ...(slices.appElements.body || {}),
+                    },
+                },
+                onboarding: {
+                    ...defaultOnboarding,
+                    ...slices.onboarding,
+                    splash1: { ...defaultOnboarding.splash1, ...slices.onboarding.splash1 },
+                    splash2: { ...defaultOnboarding.splash2, ...slices.onboarding.splash2 },
+                    splash3: { ...defaultOnboarding.splash3, ...slices.onboarding.splash3 },
+                    textColors: {
+                        ...defaultOnboarding.textColors,
+                        ...slices.onboarding.textColors,
+                    },
+                    backgroundColors: {
+                        ...defaultOnboarding.backgroundColors,
+                        ...slices.onboarding.backgroundColors,
+                    },
+                },
+                appProfile: {
+                    ...defaultAppProfile,
+                    ...slices.appProfile,
+                    textColors: {
+                        ...defaultAppProfile.textColors,
+                        ...slices.appProfile.textColors,
+                    },
+                    elementColors: {
+                        ...defaultAppProfile.elementColors,
+                        ...slices.appProfile.elementColors,
+                    },
+                    backgroundColors: {
+                        ...defaultAppProfile.backgroundColors,
+                        ...slices.appProfile.backgroundColors,
+                    },
+                    menuColors: {
+                        ...defaultAppProfile.menuColors,
+                        ...slices.appProfile.menuColors,
+                    },
+                    auxElementColors: {
+                        ...defaultAppProfile.auxElementColors,
+                        ...slices.appProfile.auxElementColors,
+                    },
+                },
+                policy: { ...defaultPolicy, ...slices.policy },
+                support: { ...defaultSupport, ...slices.support },
+                dns: {
+                    ...defaultDNS,
+                    ...slices.dns,
+                    records: slices.dns?.records ?? defaultDNS.records,
+                },
+                isLoading: false,
+                hasUnsavedChanges: false,
+                error: null,
+            }))
+        }
+
+        try {
+            const listRes = await appTemplateApi.getAllTemplates(appId)
+            const raw = listRes.data as unknown
+            let templates: Array<Record<string, unknown>> = []
+            if (Array.isArray(raw)) {
+                templates = raw as Array<Record<string, unknown>>
+            } else if (raw && typeof raw === "object" && Array.isArray((raw as { templates?: unknown }).templates)) {
+                templates = (raw as { templates: Array<Record<string, unknown>> }).templates
+            }
+
+            const applied =
+                templates.find((t) => t.isApplied === true) ??
+                templates.find((t) => t.isDefault === true) ??
+                templates[0]
+            const pwaCfg = applied?.config
+            const legacyCfg = applied?.configuration as Partial<AppConfiguration> | undefined
+            const tid = applied ? String(applied.id ?? applied._id ?? "") : ""
+
+            if (tid && pwaCfg && typeof pwaCfg === "object") {
+                const slices = pwaConfigToAppBuilderSlices(pwaCfg)
+                mergeLoadedState(slices, tid)
+                return
+            }
+
+            if (tid && legacyCfg && typeof legacyCfg === "object" && legacyCfg.appElements) {
+                setState(prev => ({
+                    ...prev,
+                    appId,
+                    pwaTemplateId: tid,
+                    configurationId: tid,
+                    appElements: legacyCfg.appElements || defaultAppElements,
+                    onboarding: legacyCfg.onboarding || defaultOnboarding,
+                    appProfile: legacyCfg.appProfile || defaultAppProfile,
+                    policy: legacyCfg.policy || defaultPolicy,
+                    support: legacyCfg.support || defaultSupport,
+                    dns: legacyCfg.dns || defaultDNS,
+                    isLoading: false,
+                    hasUnsavedChanges: false,
+                    error: null,
+                }))
+                return
+            }
+        } catch (e) {
+            console.warn("[AppBuilder] PWA templates unavailable, falling back to legacy configuration", e)
+        }
+
         try {
             const response = await appConfigurationApi.getActiveConfiguration(appId)
             const config = response.data
-            
+
             if (config) {
                 setState(prev => ({
                     ...prev,
                     appId,
+                    pwaTemplateId: null,
                     configurationId: config.id,
                     appElements: config.appElements || defaultAppElements,
                     onboarding: config.onboarding || defaultOnboarding,
@@ -183,17 +313,25 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
                     dns: config.dns || defaultDNS,
                     isLoading: false,
                     hasUnsavedChanges: false,
+                    error: null,
                 }))
             } else {
-                setState(prev => ({ ...prev, appId, isLoading: false }))
+                setState(prev => ({
+                    ...prev,
+                    appId,
+                    pwaTemplateId: null,
+                    isLoading: false,
+                    error: null,
+                }))
             }
         } catch (error) {
-            console.error('Failed to load configuration:', error)
+            console.error("Failed to load configuration:", error)
             setState(prev => ({
                 ...prev,
                 appId,
+                pwaTemplateId: null,
                 isLoading: false,
-                error: error instanceof Error ? error.message : 'Failed to load configuration',
+                error: error instanceof Error ? error.message : "Failed to load configuration",
             }))
         }
     }, [])
@@ -276,7 +414,7 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
         setState(prev => ({ ...prev, isSaving: true, error: null }))
 
         try {
-            const configUpdate: Partial<AppConfiguration> = {
+            const slices = {
                 appElements: state.appElements,
                 onboarding: state.onboarding,
                 appProfile: state.appProfile,
@@ -284,8 +422,23 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
                 support: state.support,
                 dns: state.dns,
             }
+            const fullPwaConfig = appBuilderSlicesToPwaConfig(slices)
 
-            await appConfigurationApi.updateConfiguration(state.appId, configUpdate)
+            if (state.pwaTemplateId) {
+                await appTemplateApi.updateTemplate(state.appId, state.pwaTemplateId, {
+                    config: fullPwaConfig,
+                })
+            } else {
+                const configUpdate: Partial<AppConfiguration> = {
+                    appElements: state.appElements,
+                    onboarding: state.onboarding,
+                    appProfile: state.appProfile,
+                    policy: state.policy,
+                    support: state.support,
+                    dns: state.dns,
+                }
+                await appConfigurationApi.updateConfiguration(state.appId, configUpdate)
+            }
 
             setState(prev => ({
                 ...prev,
@@ -301,37 +454,64 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
                 error: error instanceof Error ? error.message : 'Failed to save configuration',
             }))
         }
-    }, [state.appId, state.appElements, state.onboarding, state.appProfile, state.policy, state.support, state.dns])
+    }, [
+        state.appId,
+        state.pwaTemplateId,
+        state.appElements,
+        state.onboarding,
+        state.appProfile,
+        state.policy,
+        state.support,
+        state.dns,
+    ])
 
-    const saveSection = useCallback(async (section: 'appElements' | 'onboarding' | 'appProfile' | 'policy' | 'support' | 'dns') => {
-        if (!state.appId) {
-            console.error('Cannot save: No appId set')
-            return
-        }
-
-        setState(prev => ({ ...prev, isSaving: true, error: null }))
-
-        try {
-            const configUpdate: Partial<AppConfiguration> = {
-                [section]: state[section],
+    const saveSection = useCallback(
+        async (section: 'appElements' | 'onboarding' | 'appProfile' | 'policy' | 'support' | 'dns') => {
+            if (!state.appId) {
+                console.error('Cannot save: No appId set')
+                return
             }
 
-            await appConfigurationApi.updateConfiguration(state.appId, configUpdate)
+            setState(prev => ({ ...prev, isSaving: true, error: null }))
 
-            setState(prev => ({
-                ...prev,
-                isSaving: false,
-                lastSavedAt: new Date(),
-            }))
-        } catch (error) {
-            console.error(`Failed to save ${section}:`, error)
-            setState(prev => ({
-                ...prev,
-                isSaving: false,
-                error: error instanceof Error ? error.message : `Failed to save ${section}`,
-            }))
-        }
-    }, [state.appId, state])
+            try {
+                const slices = {
+                    appElements: state.appElements,
+                    onboarding: state.onboarding,
+                    appProfile: state.appProfile,
+                    policy: state.policy,
+                    support: state.support,
+                    dns: state.dns,
+                }
+
+                if (state.pwaTemplateId) {
+                    const patch = sectionToPwaConfigPatch(section, slices)
+                    await appTemplateApi.updateTemplate(state.appId, state.pwaTemplateId, {
+                        config: patch,
+                    })
+                } else {
+                    const configUpdate: Partial<AppConfiguration> = {
+                        [section]: state[section],
+                    }
+                    await appConfigurationApi.updateConfiguration(state.appId, configUpdate)
+                }
+
+                setState(prev => ({
+                    ...prev,
+                    isSaving: false,
+                    lastSavedAt: new Date(),
+                }))
+            } catch (error) {
+                console.error(`Failed to save ${section}:`, error)
+                setState(prev => ({
+                    ...prev,
+                    isSaving: false,
+                    error: error instanceof Error ? error.message : `Failed to save ${section}`,
+                }))
+            }
+        },
+        [state.appId, state.pwaTemplateId, state],
+    )
 
     // ==================
     // Publish Actions
@@ -346,7 +526,30 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
         setState(prev => ({ ...prev, isSaving: true, error: null }))
 
         try {
-            // First save any unsaved changes
+            const slices = {
+                appElements: state.appElements,
+                onboarding: state.onboarding,
+                appProfile: state.appProfile,
+                policy: state.policy,
+                support: state.support,
+                dns: state.dns,
+            }
+            const fullPwaConfig = appBuilderSlicesToPwaConfig(slices)
+
+            if (state.pwaTemplateId) {
+                await appTemplateApi.updateTemplate(state.appId, state.pwaTemplateId, {
+                    config: fullPwaConfig,
+                })
+                await appTemplateApi.applyTemplate(state.appId, state.pwaTemplateId)
+                setState(prev => ({
+                    ...prev,
+                    isSaving: false,
+                    hasUnsavedChanges: false,
+                    lastSavedAt: new Date(),
+                }))
+                return { success: true, versionId: state.pwaTemplateId }
+            }
+
             const configUpdate: Partial<AppConfiguration> = {
                 appElements: state.appElements,
                 onboarding: state.onboarding,
@@ -356,15 +559,13 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
                 dns: state.dns,
             }
 
-            // Create a new configuration version (this creates an immutable snapshot)
             const createResponse = await appConfigurationApi.createConfiguration(
                 state.appId,
                 configUpdate,
-                { isActive: true }
+                { isActive: true },
             )
 
             if (createResponse.data) {
-                // Update publishing status to mark as published
                 await appConfigurationApi.updatePublishingStatus(state.appId, true)
 
                 setState(prev => ({
@@ -388,7 +589,16 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
             }))
             return { success: false }
         }
-    }, [state.appId, state.appElements, state.onboarding, state.appProfile, state.policy, state.support, state.dns])
+    }, [
+        state.appId,
+        state.pwaTemplateId,
+        state.appElements,
+        state.onboarding,
+        state.appProfile,
+        state.policy,
+        state.support,
+        state.dns,
+    ])
 
     const restoreConfiguration = useCallback(async (configurationId: string): Promise<{ success: boolean }> => {
         if (!state.appId) {
@@ -404,10 +614,10 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
             
             if (response.data) {
                 const config = response.data
-                
-                // Update local state with the restored configuration
+
                 setState(prev => ({
                     ...prev,
+                    pwaTemplateId: null,
                     configurationId: config.id,
                     appElements: config.appElements || defaultAppElements,
                     onboarding: config.onboarding || defaultOnboarding,

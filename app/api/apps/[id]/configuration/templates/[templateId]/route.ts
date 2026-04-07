@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const CREATE_APP_SERVICE_URL = process.env.CREATE_APP_SERVICE_URL || 'https://create-app-ms.fly.dev';
+import { getApiUpstreamBase } from '@/lib/server/apiUpstreamBase';
+
+const API_UPSTREAM_BASE = getApiUpstreamBase();
+
 
 // GET - Get a specific template
 export async function GET(
@@ -12,7 +15,7 @@ export async function GET(
         const authHeader = request.headers.get('Authorization');
 
         const response = await fetch(
-            `${CREATE_APP_SERVICE_URL}/api/v1/apps/${appId}/configuration/templates/${templateId}`,
+            `${API_UPSTREAM_BASE}/api/v1/apps/${appId}/pwa-templates/${templateId}`,
             {
                 method: 'GET',
                 headers: {
@@ -52,7 +55,7 @@ export async function PUT(
         const body = await request.json();
 
         const response = await fetch(
-            `${CREATE_APP_SERVICE_URL}/api/v1/apps/${appId}/configuration/templates/${templateId}`,
+            `${API_UPSTREAM_BASE}/api/v1/apps/${appId}/pwa-templates/${templateId}`,
             {
                 method: 'PUT',
                 headers: {
@@ -92,7 +95,7 @@ export async function DELETE(
         const authHeader = request.headers.get('Authorization');
 
         const response = await fetch(
-            `${CREATE_APP_SERVICE_URL}/api/v1/apps/${appId}/configuration/templates/${templateId}`,
+            `${API_UPSTREAM_BASE}/api/v1/apps/${appId}/pwa-templates/${templateId}`,
             {
                 method: 'DELETE',
                 headers: {

@@ -10,11 +10,11 @@ import { TbCodeCircle2Filled } from "react-icons/tb"
 import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { SearchIcon } from "lucide-react"
-import { useState, useEffect } from "react"
+import { useEffect } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
-import { ComplianceService } from "@/lib/services/complianceService"
-import { isKycStatusApproved } from "@/lib/kycApproval"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import { fetchKycStatusThunk } from "@/store/complianceSlice"
 import { useAuth } from "@/hooks/useAuth"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
@@ -34,7 +34,8 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
   const pathname = usePathname()
-  const [complianceComplete, setComplianceComplete] = useState(false)
+  const dispatch = useAppDispatch()
+  const complianceComplete = useAppSelector((s) => s.compliance.isApproved)
   const { user } = useAuth()
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
@@ -50,22 +51,8 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
   const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
 
   useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      try {
-        const res = await ComplianceService.getKycStatusForCurrentUser()
-        if (!cancelled) {
-          setComplianceComplete(isKycStatusApproved(res))
-        }
-      } catch {
-        if (!cancelled) setComplianceComplete(false)
-      }
-    }
-    run()
-    return () => {
-      cancelled = true
-    }
-  }, [pathname])
+    void dispatch(fetchKycStatusThunk())
+  }, [pathname, dispatch])
 
   const navItems: NavItem[] = [
     {

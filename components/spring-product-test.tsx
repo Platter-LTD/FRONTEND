@@ -28,8 +28,11 @@ export default function SpringProductTest() {
     setLoading(true)
     try {
       const response = await springProductService.getAllProducts()
-      setProducts(response.data || [])
-      toast.success(`Fetched ${response.data?.length || 0} products`)
+      const list = Array.isArray((response as { data?: unknown }).data)
+        ? (response as { data: any[] }).data
+        : []
+      setProducts(list)
+      toast.success(`Fetched ${list.length} products`)
     } catch (error: any) {
       console.error('Fetch error:', error)
       toast.error(error.message || "Failed to fetch products")
@@ -38,15 +41,15 @@ export default function SpringProductTest() {
     }
   }
 
-  const handleToggleProduct = async (productId: string, currentStatus: boolean) => {
-    if (!merchantId) {
-      toast.error("No merchant ID found in token")
+  const handleToggleProduct = async (product: { id: string; isActive?: boolean; appId?: string }) => {
+    const aid = product.appId?.trim()
+    if (!aid) {
+      toast.error("Product needs appId to toggle — use merchant flows with a selected app")
       return
     }
-
     try {
-      await springProductService.toggleProductActivation(merchantId, productId, !currentStatus)
-      toast.success(`Product ${!currentStatus ? 'activated' : 'deactivated'}`)
+      await springProductService.toggleProductActivation(aid, product.id, !product.isActive)
+      toast.success(`Product ${!product.isActive ? "activated" : "deactivated"}`)
       // Refresh products
       handleFetchProducts()
     } catch (error: any) {
@@ -92,7 +95,7 @@ export default function SpringProductTest() {
                       <Button
                         size="sm"
                         variant={product.isActive ? "destructive" : "default"}
-                        onClick={() => handleToggleProduct(product.id, product.isActive)}
+                        onClick={() => handleToggleProduct(product)}
                       >
                         {product.isActive ? "Deactivate" : "Activate"}
                       </Button>

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const CREATE_APP_SERVICE_URL = process.env.CREATE_APP_SERVICE_URL || 'https://create-app-ms.fly.dev';
+import { getApiUpstreamBase } from '@/lib/server/apiUpstreamBase';
+
+const API_UPSTREAM_BASE = getApiUpstreamBase();
+
 
 // GET - Get all templates for an app
 export async function GET(
@@ -12,7 +15,7 @@ export async function GET(
         const authHeader = request.headers.get('Authorization');
 
         const response = await fetch(
-            `${CREATE_APP_SERVICE_URL}/api/v1/apps/${appId}/configuration/templates`,
+            `${API_UPSTREAM_BASE}/api/v1/apps/${appId}/pwa-templates`,
             {
                 method: 'GET',
                 headers: {
@@ -52,7 +55,7 @@ export async function POST(
         const body = await request.json();
 
         const response = await fetch(
-            `${CREATE_APP_SERVICE_URL}/api/v1/apps/${appId}/configuration/templates`,
+            `${API_UPSTREAM_BASE}/api/v1/apps/${appId}/pwa-templates`,
             {
                 method: 'POST',
                 headers: {

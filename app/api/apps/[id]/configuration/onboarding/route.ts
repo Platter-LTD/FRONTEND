@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const CREATE_APP_SERVICE_URL = process.env.CREATE_APP_SERVICE_URL || 'https://create-app-ms.fly.dev';
+import { getApiUpstreamBase } from '@/lib/server/apiUpstreamBase';
+
+const API_UPSTREAM_BASE = getApiUpstreamBase();
+
 
 // PUT - Update onboarding configuration
 export async function PUT(
@@ -13,7 +16,7 @@ export async function PUT(
         const body = await request.json();
 
         const response = await fetch(
-            `${CREATE_APP_SERVICE_URL}/api/v1/apps/${appId}/configuration/onboarding`,
+            `${API_UPSTREAM_BASE}/api/v1/apps/${appId}/configuration/onboarding`,
             {
                 method: 'PUT',
                 headers: {

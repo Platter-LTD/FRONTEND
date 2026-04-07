@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const CREATE_APP_SERVICE_URL = process.env.CREATE_APP_SERVICE_URL || 'https://create-app-ms.fly.dev';
+import { getApiUpstreamBase } from '@/lib/server/apiUpstreamBase';
+
+const API_UPSTREAM_BASE = getApiUpstreamBase();
+
 
 /**
  * Public endpoint for mobile apps to fetch their configuration
@@ -17,7 +20,7 @@ export async function GET(
 
         // Fetch active configuration from create-app-ms
         const response = await fetch(
-            `${CREATE_APP_SERVICE_URL}/api/v1/apps/${appId}/configuration`,
+            `${API_UPSTREAM_BASE}/api/v1/apps/${appId}/configuration`,
             {
                 method: 'GET',
                 headers: {

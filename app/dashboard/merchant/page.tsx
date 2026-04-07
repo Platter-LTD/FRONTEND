@@ -1,134 +1,53 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { RefreshCw, Loader2, Plus, AlertCircle } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import CreateAppDrawer from "@/components/drawers/create-app-drawer"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
-import { apiClient } from "@/lib/api"
-
-interface App {
-  id: string
-  appId?: string
-  name: string
-  websiteUrl?: string
-  alias?: string
-  description?: string
-  type?: string
-  key?: string
-  status: string
-  dateCreated?: string
-  createdAt?: string
-}
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import { fetchMerchantAppsThunk, setSelectedMerchantApp, type MerchantAppItem } from "@/store/merchantAppsSlice"
+import { buildMerchantProductsUrl } from "@/lib/merchantAppNavigation"
+import { useState } from "react"
 
 export default function MerchantDashboardPage() {
   const router = useRouter()
-  const [apps, setApps] = useState<App[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const dispatch = useAppDispatch()
+  const { apps, loading, error, fetchAttempted } = useAppSelector((s) => s.merchantApps)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [isCreateAppOpen, setIsCreateAppOpen] = useState(false)
 
-  const formatDate = useCallback((dateString: string) => {
+  useEffect(() => {
+    if (fetchAttempted) return
+    void dispatch(fetchMerchantAppsThunk())
+  }, [dispatch, fetchAttempted])
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
     try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      })
+      await dispatch(fetchMerchantAppsThunk()).unwrap()
+      toast.success("Apps refreshed")
     } catch {
-      return dateString
-    }
-  }, [])
-
-  const fetchApps = useCallback(async (showRefreshToast = false) => {
-    if (showRefreshToast) {
-      setIsRefreshing(true)
-    } else {
-      setIsLoading(true)
-    }
-    setError(null)
-
-    try {
-      const response = await apiClient.get("/apps", { includeAuth: true })
-      const result = response.data as {
-        success?: boolean
-        data?: unknown
-        error?: string
-      }
-
-      if (result.success && result.data) {
-        const transformedApps: App[] = Array.isArray(result.data)
-          ? result.data.map((app: any) => ({
-            id: app.id || app.appId,
-            appId: app.appId || app.id,
-            name: app.name || 'Unnamed App',
-            websiteUrl: app.websiteUrl,
-            alias: app.alias,
-            description: app.description,
-            type: app.type || 'Mobile App',
-            key: app.key || app.alias || 'N/A',
-            status: app.status === 'active' ? 'Active' : (app.status === 'inactive' ? 'Inactive' : (app.status || 'Active')),
-            dateCreated: app.dateCreated || (app.createdAt ? formatDate(app.createdAt) : 'N/A'),
-            createdAt: app.createdAt,
-          }))
-          : []
-
-        setApps(transformedApps)
-        if (showRefreshToast) toast.success('Apps refreshed')
-      } else {
-        setApps([])
-        setError(result.error || 'Failed to load apps')
-        if (showRefreshToast) toast.error('Failed to load apps')
-      }
-    } catch (err) {
-      console.error('Failed to fetch apps:', err)
-      setApps([])
-      setError('Failed to load apps. Please try again.')
-      if (showRefreshToast) toast.error('Failed to refresh apps')
+      toast.error("Failed to refresh apps")
     } finally {
-      setIsLoading(false)
       setIsRefreshing(false)
     }
-  }, [formatDate])
-
-  useEffect(() => {
-    fetchApps()
-  }, [fetchApps])
-
-  const handleAppClick = (app: App) => {
-    // Store selected app info for products page
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('selectedAppId', app.id)
-      sessionStorage.setItem('selectedAppName', app.name)
-    }
-    router.push(`/dashboard/merchant/products/all/loan?appId=${app.id}`)
   }
 
-  const handleRefresh = () => {
-    fetchApps(true)
+  const handleAppClick = (app: MerchantAppItem) => {
+    dispatch(setSelectedMerchantApp({ id: app.id, name: app.name }))
+    router.push(buildMerchantProductsUrl("/dashboard/merchant/products/all/loan", app.id))
   }
 
-  const handleAppCreated = (app: any) => {
+  const handleAppCreated = (_app: unknown) => {
     setIsCreateAppOpen(false)
-    // Add the new app to the list
-    setApps(prevApps => [...prevApps, {
-      id: app.id || app.appId,
-      appId: app.appId || app.id,
-      name: app.name || 'Unnamed App',
-      websiteUrl: app.websiteUrl,
-      alias: app.alias,
-      description: app.description,
-      type: app.type || 'Mobile App',
-      key: app.key || app.alias || 'N/A',
-      status: 'Active',
-      dateCreated: formatDate(app.createdAt || new Date().toISOString()),
-      createdAt: app.createdAt || new Date().toISOString(),
-    }])
-    toast.success('App created successfully!')
+    void dispatch(fetchMerchantAppsThunk())
+    toast.success("App created successfully!")
   }
+
+  const isLoading = loading && !fetchAttempted
 
   return (
     <div className="p-8 max-w-[1600px] mx-auto">
@@ -137,7 +56,6 @@ export default function MerchantDashboardPage() {
         <p className="text-sm text-gray-500 mt-1">View and manage your applications</p>
       </div>
 
-      {/* Banner */}
       <div className="bg-[#2563EB] rounded-2xl p-8 text-white mb-10 shadow-lg relative overflow-hidden">
         <div className="relative z-10">
           <h2 className="text-xl font-bold mb-2">Manage Your Products</h2>
@@ -153,15 +71,11 @@ export default function MerchantDashboardPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
+            onClick={() => void handleRefresh()}
+            disabled={isRefreshing || loading}
             className="gap-2"
           >
-            {isRefreshing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
+            {isRefreshing || loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Refresh
           </Button>
           <Button
@@ -188,11 +102,7 @@ export default function MerchantDashboardPage() {
             <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
             <p className="text-lg font-medium text-gray-900 mb-2">Something went wrong</p>
             <p className="text-gray-600 text-center mb-6">{error}</p>
-            <Button
-              variant="outline"
-              onClick={() => fetchApps(true)}
-              className="gap-2"
-            >
+            <Button variant="outline" onClick={() => void handleRefresh()} className="gap-2">
               <RefreshCw className="h-4 w-4" />
               Try again
             </Button>
@@ -200,53 +110,54 @@ export default function MerchantDashboardPage() {
         ) : apps.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-500">
             <p className="text-center">
-              No apps available yet.<br />
-              <span className="text-sm">Create an app using the "Create App" button above.</span>
+              No apps available yet.
+              <br />
+              <span className="text-sm">Create an app using the &quot;Create App&quot; button above.</span>
             </p>
           </div>
         ) : (
           <>
-        <div className="grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1fr_0.8fr] gap-4 p-4 bg-[#F3F4F6] text-xs font-semibold text-gray-600 border-b border-gray-100">
-          <div>App Name</div>
-          <div>App ID</div>
-          <div>Date Created</div>
-          <div>Type</div>
-          <div>Product Key</div>
-          <div>Status</div>
-        </div>
-          <div className="divide-y divide-gray-50">
-            {apps.map((app, i) => (
-              <div
-                key={app.id || i}
-                onClick={() => handleAppClick(app)}
-                className="grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1fr_0.8fr] gap-4 p-5 items-center hover:bg-gray-50 cursor-pointer transition-colors"
-                role="button"
-              >
-                <div className="font-medium text-gray-900 text-sm">{app.name}</div>
-                <div className="text-gray-500 text-sm font-light truncate" title={app.id}>
-                  {app.id?.slice(0, 18) || 'N/A'}...
-                </div>
-                <div className="text-gray-500 text-sm">{app.dateCreated}</div>
-                <div className="text-gray-500 text-sm">{app.type || 'Mobile App'}</div>
-                <div className="text-gray-500 text-sm">{app.key || app.alias || 'N/A'}</div>
-                <div>
-                  <span
-                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${app.status === "Active"
-                      ? "bg-blue-100 text-blue-700"
-                      : "bg-gray-100 text-gray-600"
+            <div className="grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1fr_0.8fr] gap-4 p-4 bg-[#F3F4F6] text-xs font-semibold text-gray-600 border-b border-gray-100">
+              <div>App Name</div>
+              <div>App ID</div>
+              <div>Date Created</div>
+              <div>Type</div>
+              <div>Product Key</div>
+              <div>Status</div>
+            </div>
+            <div className="divide-y divide-gray-50">
+              {apps.map((app, i) => (
+                <div
+                  key={app.id || i}
+                  onClick={() => handleAppClick(app)}
+                  className="grid grid-cols-[1.5fr_1.5fr_1fr_1fr_1fr_0.8fr] gap-4 p-5 items-center hover:bg-gray-50 cursor-pointer transition-colors"
+                  role="button"
+                >
+                  <div className="font-medium text-gray-900 text-sm">{app.name}</div>
+                  <div className="text-gray-500 text-sm font-light truncate" title={app.id}>
+                    {app.id?.slice(0, 18) || "N/A"}...
+                  </div>
+                  <div className="text-gray-500 text-sm">{app.dateCreated ?? "N/A"}</div>
+                  <div className="text-gray-500 text-sm">{app.type || "Mobile App"}</div>
+                  <div className="text-gray-500 text-sm">{app.key || app.alias || "N/A"}</div>
+                  <div>
+                    <span
+                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                        app.status === "Inactive"
+                          ? "bg-gray-100 text-gray-600"
+                          : "bg-blue-100 text-blue-700"
                       }`}
-                  >
-                    {app.status}
-                  </span>
+                    >
+                      {app.status}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
           </>
         )}
       </div>
 
-      {/* Create App Drawer */}
       <CreateAppDrawer
         isOpen={isCreateAppOpen}
         onClose={() => setIsCreateAppOpen(false)}

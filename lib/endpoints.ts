@@ -350,8 +350,8 @@ export const ENDPOINTS = {
       message: `${COMPLIANCE_BASE}/business/message`,
       messages: `${COMPLIANCE_BASE}/business/messages`,
     },
-    /** GET — KYC status for user; proxied to upstream GET /api/v1/kyc/status/:userId */
-    status: (userId: string) => `/v1/kyc/status/${encodeURIComponent(userId)}`,
+    /** GET — KYC status for user; use /api/compliance/... (same proxy as other KYC routes). */
+    status: (userId: string) => `${COMPLIANCE_BASE}/status/${encodeURIComponent(userId)}`,
     admin: {
       users: `${COMPLIANCE_BASE}/admin/users`,
       documents: `${COMPLIANCE_BASE}/admin/documents`,

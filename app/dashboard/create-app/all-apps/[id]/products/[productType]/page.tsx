@@ -34,10 +34,15 @@ export default function ProductTypeListPage() {
         }
 
         if (activationsData.success && activationsData.data) {
-          // Create a map of productId -> isActive
+          // GET /api/v1/products/app/:appId returns enabled products (id or productId per row)
           const activationMap: { [key: string]: boolean } = {}
-          activationsData.data.forEach((activation: any) => {
-            activationMap[activation.productId] = activation.isActive
+          const rows = Array.isArray(activationsData.data) ? activationsData.data : []
+          rows.forEach((row: any) => {
+            const pid = row.productId ?? row.id
+            if (pid) {
+              activationMap[String(pid)] =
+                row.isActive !== false && row.isActive !== "inactive"
+            }
           })
           setActivations(activationMap)
         }

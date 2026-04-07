@@ -1,110 +1,105 @@
 /**
- * Spring Product Service
- * Integrates with Spring App's Product MS for product management
- * Uses Next.js API proxy to avoid CORS issues
+ * Merchant product list + activation via Next.js API routes (proxied to NEXT_PUBLIC_API_URL).
  *
- * All routes here go through:
- *   /api/spring-products → NEXT_PUBLIC_SPRING_PRODUCT_SERVICE_URL → product-ms.fly.dev
- *
- * NOT to be confused with the Plata Product Builder routes:
- *   /api/products → NEXT_PUBLIC_PLATA_PRODUCT_SERVICE_URL → product-ms-plata.fly.dev
+ * - GET /api/v1/products — **all** products (catalog)
+ * - GET /api/v1/products/app/:appId — **active / turned-on** products for that app only
+ * - PUT /api/v1/products/toggle/:appId/:productId — body `{ "activate": boolean }`
  */
 
-import { getAccessToken } from '@/lib/cookieAuth';
+import { getAccessToken } from "@/lib/cookieAuth"
 
 const getAuthHeaders = () => {
-  const token = typeof window !== 'undefined' ? getAccessToken() : null;
+  const token = typeof window !== "undefined" ? getAccessToken() : null
   return {
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
-  };
-};
+    "Content-Type": "application/json",
+    ...(token && { Authorization: `Bearer ${token}` }),
+  } as Record<string, string>
+}
 
-/**
- * Extract merchant ID from JWT token
- * Checks: userMerchantId, user_merchant_id, merchantId, userId, id, sub
- */
 const getMerchantIdFromToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
+  if (typeof window === "undefined") return null
 
-  const token = getAccessToken();
-  if (!token) return null;
+  const token = getAccessToken()
+  if (!token) return null
 
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return payload.userMerchantId ||
+    const payload = JSON.parse(atob(token.split(".")[1]))
+    return (
+      payload.userMerchantId ||
       payload.user_merchant_id ||
       payload.merchantId ||
       payload.userId ||
       payload.id ||
       payload.sub ||
-      null;
+      null
+    )
   } catch {
-    return null;
+    return null
   }
-};
+}
 
 export const springProductService = {
-  /**
-   * Get all products from Spring's Product MS
-   * Optionally filtered by appId
-   */
-  async getAllProducts(appId?: string) {
-    const url = appId
-      ? `/api/spring-products?appId=${encodeURIComponent(appId)}`
-      : '/api/spring-products';
-
-    const response = await fetch(url, {
+  /** Full product catalog — GET /api/v1/products */
+  async getAllProducts() {
+    const response = await fetch("/api/v1/products", {
       headers: getAuthHeaders(),
-    });
+    })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to fetch products' }));
-      throw new Error(error.error || 'Failed to fetch products');
+      const error = await response.json().catch(() => ({ error: "Failed to fetch products" }))
+      throw new Error((error as { error?: string }).error || "Failed to fetch products")
     }
 
-    return response.json();
+    return response.json()
   },
 
-  /**
-   * Get a single product by ID from Spring's Product MS
-   */
+  /** Active products for this app only — GET /api/v1/products/app/:appId */
+  async getProductsForApp(appId: string) {
+    const response = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}`, {
+      headers: getAuthHeaders(),
+    })
+
+    const data = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || "Failed to fetch products")
+    }
+
+    return data
+  },
+
   async getProductById(productId: string) {
-    const response = await fetch(`/api/spring-products/${productId}`, {
+    const response = await fetch(`/api/product/${encodeURIComponent(productId)}`, {
       headers: getAuthHeaders(),
-    });
+    })
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to fetch product' }));
-      throw new Error(error.error || 'Failed to fetch product');
+      const error = await response.json().catch(() => ({ error: "Failed to fetch product" }))
+      throw new Error((error as { error?: string }).error || "Failed to fetch product")
     }
 
-    return response.json();
+    return response.json()
   },
 
-  /**
-   * Toggle product activation for merchant
-   * Calls /api/spring-products/toggle/{merchantId}/{productId} → product-ms.fly.dev
-   */
-  async toggleProductActivation(merchantId: string, productId: string, activate: boolean) {
-    const response = await fetch(`/api/spring-products/toggle/${merchantId}/${productId}`, {
-      method: 'PUT',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ activate }),
-    });
+  async toggleProductActivation(appId: string, productId: string, activate: boolean) {
+    const response = await fetch(
+      `/api/v1/products/toggle/${encodeURIComponent(appId)}/${encodeURIComponent(productId)}`,
+      {
+        method: "PUT",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ activate }),
+      },
+    )
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Failed to toggle product' }));
-      throw new Error(error.error || 'Failed to toggle product');
+      const error = await response.json().catch(() => ({ error: "Failed to toggle product" }))
+      throw new Error((error as { error?: string }).error || "Failed to toggle product")
     }
 
-    return response.json();
+    return response.json()
   },
 
-  /**
-   * Get merchant ID from current user's token
-   */
   getMerchantId(): string | null {
-    return getMerchantIdFromToken();
+    return getMerchantIdFromToken()
   },
-};
+}

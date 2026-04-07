@@ -2,7 +2,7 @@
 
 import type React from "react"
 import Link from "next/link"
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { FaWallet, FaUsers, FaCubes } from "react-icons/fa"
 import { IoMdCube } from "react-icons/io"
 import { GitBranch, Receipt, CreditCard, Shield, FileText } from 'lucide-react'
@@ -10,10 +10,14 @@ import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { TbCodeCircle2Filled } from "react-icons/tb"
-import { useState } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/hooks/useAuth"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import { setSelectedMerchantApp } from "@/store/merchantAppsSlice"
+import { buildMerchantProductsUrl } from "@/lib/merchantAppNavigation"
+import { Loader2 } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
 
@@ -28,9 +32,43 @@ interface MerchantSidebarProps {
   className?: string
 }
 
+/** Match nav links: pathname has no query; href may include ?appId=… */
+function isSubNavActive(pathname: string, href: string, label: string): boolean {
+  const base = href.split("?")[0]
+  switch (label) {
+    case "All Product":
+      return pathname.startsWith("/dashboard/merchant/products/all")
+    case "Active Products":
+      return pathname.startsWith("/dashboard/merchant/products/active")
+    case "All Applications":
+      return (
+        pathname === "/dashboard/merchant/applications" ||
+        (pathname.startsWith("/dashboard/merchant/applications/") &&
+          !pathname.startsWith("/dashboard/merchant/applications/pending"))
+      )
+    case "Pending Review":
+      return pathname.startsWith("/dashboard/merchant/applications/pending")
+    case "Settlement Wallet":
+      return pathname.startsWith("/dashboard/merchant/wallets/settlement")
+    case "Billing Wallet":
+      return pathname.startsWith("/dashboard/merchant/wallets/billing")
+    case "Loan Workflow":
+      return pathname.startsWith("/dashboard/merchant/operation-workflow/loan-workflow")
+    case "Mortgage Workflow":
+      return pathname.startsWith("/dashboard/merchant/operation-workflow/mortgage-workflow")
+    default:
+      return pathname === base || pathname.startsWith(`${base}/`)
+  }
+}
+
 const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => {
   const pathname = usePathname()
+  const router = useRouter()
   const { user } = useAuth()
+  const dispatch = useAppDispatch()
+  const { apps, loading, selectedAppId, selectedAppName } = useAppSelector((s) => s.merchantApps)
+
+  const appQuery = selectedAppId ? `?appId=${encodeURIComponent(selectedAppId)}` : ""
 
   const [isWalletsOpen, setIsWalletsOpen] = useState(pathname.startsWith("/dashboard/merchant/wallets"))
   const [isProductsOpen, setIsProductsOpen] = useState(pathname.startsWith("/dashboard/merchant/products"))
@@ -38,6 +76,13 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
   const [isOperationWorkflowOpen, setIsOperationWorkflowOpen] = useState(
     pathname.startsWith("/dashboard/merchant/operation-workflow"),
   )
+
+  useEffect(() => {
+    setIsWalletsOpen(pathname.startsWith("/dashboard/merchant/wallets"))
+    setIsProductsOpen(pathname.startsWith("/dashboard/merchant/products"))
+    setIsApplicationsOpen(pathname.startsWith("/dashboard/merchant/applications"))
+    setIsOperationWorkflowOpen(pathname.startsWith("/dashboard/merchant/operation-workflow"))
+  }, [pathname])
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
@@ -51,7 +96,8 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
     : ""
   const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
 
-  const navItems: NavItem[] = [
+  const navItems: NavItem[] = useMemo(
+    () => [
     {
       icon: <FaWallet size={20} />,
       label: "Wallets",
@@ -85,8 +131,8 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
       label: "Products",
       href: `/dashboard/merchant/products`,
       subItems: [
-        { label: "All Product", href: `/dashboard/merchant/products/all` },
-        { label: "Active Products", href: `/dashboard/merchant/products/active` },
+        { label: "All Product", href: `/dashboard/merchant/products/all/mortgage${appQuery}` },
+        { label: "Active Products", href: `/dashboard/merchant/products/active${appQuery}` },
       ],
     },
     {
@@ -108,7 +154,14 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
       label: "Developer",
       href: `/dashboard/merchant/developer`,
     },
-  ]
+  ],
+    [appQuery],
+  )
+
+  const sidebarAppLabel =
+    selectedAppName ||
+    apps.find((a) => a.id === selectedAppId)?.name ||
+    (apps.length === 0 ? "No apps" : "Select app")
 
   return (
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
@@ -123,19 +176,43 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
           <DropdownMenuTrigger asChild>
             <Button
               variant="outline"
-              className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] hover:text-white border-none justify-center gap-2"
+              disabled={loading || apps.length === 0}
+              className="w-full bg-[#7C3AED] text-white hover:bg-[#6D28D9] hover:text-white border-none justify-center gap-2 disabled:opacity-60"
+              type="button"
             >
-              ABC Mortgage App
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  <span className="truncate">Loading…</span>
+                </>
+              ) : (
+                <>
+                  <span className="truncate">{sidebarAppLabel}</span>
+                  <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </>
+              )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
+          <DropdownMenuContent align="start" className="w-56 max-h-72 overflow-y-auto">
+            {apps.map((app) => (
+              <DropdownMenuItem
+                key={app.id}
+                className={app.id === selectedAppId ? "bg-violet-50" : undefined}
+                onSelect={() => {
+                  dispatch(setSelectedMerchantApp({ id: app.id, name: app.name }))
+                  router.push(buildMerchantProductsUrl(pathname, app.id))
+                }}
+              >
+                {app.name}
+              </DropdownMenuItem>
+            ))}
             <DropdownMenuItem asChild>
-              <Link href="/dashboard/create-app/all-apps">
-                All Apps
-              </Link>
+              <Link href="/dashboard/merchant">Your Apps</Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/dashboard/create-app/all-apps">All Apps (builder)</Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -147,6 +224,10 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
           {navItems.map((item, index) => {
             const isActive = pathname.startsWith(item.href)
             const hasSubItems = item.subItems && item.subItems.length > 0
+            const childActive =
+              hasSubItems &&
+              item.subItems!.some((s) => isSubNavActive(pathname, s.href, s.label))
+            const sectionActive = isActive || childActive
             const isOpen =
               item.label === "Wallets"
                 ? isWalletsOpen
@@ -173,9 +254,13 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
                 {hasSubItems ? (
                   <div>
                     <button
+                      type="button"
                       onClick={() => setIsOpen(!isOpen)}
-                      className={`flex items-center justify-between w-full px-3 py-2.5 rounded-md transition-colors ${isActive ? "bg-[#EDE9FE] text-gray-900 font-medium" : "text-gray-700 hover:bg-gray-50"
-                        }`}
+                      className={`flex items-center justify-between w-full px-3 py-2.5 rounded-md transition-colors ${
+                        sectionActive
+                          ? "bg-[#EDE9FE] text-[#5B21B6] font-semibold shadow-sm"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
                     >
                       <div className="flex items-center gap-3">
                         {item.icon}
@@ -187,18 +272,22 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
                     {isOpen && (
                       <ul className="mt-1 space-y-0.5">
                         {item.subItems?.map((subItem, subIndex) => {
-                          const isSubActive = pathname.startsWith(subItem.href)
+                          const isSubActive = isSubNavActive(pathname, subItem.href, subItem.label)
                           return (
                             <li key={subIndex}>
                               <Link
                                 href={subItem.href}
-                                className={`block px-3 py-2 ml-9 rounded-md text-sm transition-colors relative ${isSubActive
-                                  ? "text-gray-900 font-medium bg-white"
-                                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                                  }`}
+                                className={`block px-3 py-2 ml-9 rounded-md text-sm transition-colors relative ${
+                                  isSubActive
+                                    ? "text-[#6D28D9] font-semibold bg-[#EDE9FE] shadow-sm"
+                                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                                }`}
                               >
                                 {isSubActive && (
-                                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-[#7C3AED] rounded-r"></span>
+                                  <span
+                                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-7 bg-[#7C3AED] rounded-r"
+                                    aria-hidden
+                                  />
                                 )}
                                 {subItem.label}
                               </Link>
@@ -211,8 +300,11 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
                 ) : (
                   <Link
                     href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors ${isActive ? "bg-[#EDE9FE] text-gray-900 font-medium" : "text-gray-700 hover:bg-gray-50"
-                      }`}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors ${
+                      isActive
+                        ? "bg-[#EDE9FE] text-[#5B21B6] font-semibold shadow-sm"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
                   >
                     {item.icon}
                     <span className="text-sm">{item.label}</span>
@@ -233,10 +325,11 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
           <li>
             <Link
               href={`/dashboard/merchant/billing`}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${pathname.startsWith(`/dashboard/merchant/billing`)
-                ? "bg-[#EDE9FE] text-gray-900 font-medium"
-                : "text-gray-700 hover:bg-gray-50"
-                }`}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+                pathname.startsWith(`/dashboard/merchant/billing`)
+                  ? "bg-[#EDE9FE] text-[#5B21B6] font-semibold shadow-sm"
+                  : "text-gray-700 hover:bg-gray-50"
+              }`}
             >
               <CreditCard size={20} />
               <span>Billing</span>
@@ -245,10 +338,11 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
           <li>
             <Link
               href={`/dashboard/merchant/settings`}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${pathname.startsWith(`/dashboard/merchant/settings`)
-                ? "bg-[#EDE9FE] text-gray-900 font-medium"
-                : "text-gray-700 hover:bg-gray-50"
-                }`}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-colors ${
+                pathname.startsWith(`/dashboard/merchant/settings`)
+                  ? "bg-[#EDE9FE] text-[#5B21B6] font-semibold shadow-sm"
+                  : "text-gray-700 hover:bg-gray-50"
+              }`}
             >
               <RiSettings3Fill size={20} />
               <span>Settings</span>

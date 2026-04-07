@@ -4,7 +4,6 @@ import { useState } from "react"
 import { Drawer } from "@/components/drawer"
 import { Loader2 } from "lucide-react"
 import { WEBSITE_URL_PREFIX } from "@/lib/websiteUrl"
-import walletService from "@/lib/services/walletService"
 import { apiClient } from "@/lib/api"
 import { getAccessToken } from "@/lib/cookieAuth"
 
@@ -21,7 +20,8 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
     name: "",
     websiteUrl: WEBSITE_URL_PREFIX,
     alias: "",
-    description: ""
+    description: "",
+    subdomain: "",
   })
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
@@ -40,8 +40,11 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
   const validateForm = () => {
     const newErrors: { [key: string]: string } = {}
 
-    if (!formData.name.trim()) {
+    const name = formData.name.trim()
+    if (!name) {
       newErrors.name = "App name is required"
+    } else if (name.length < 3 || name.length > 100) {
+      newErrors.name = "App name must be 3–100 characters"
     }
 
     if (!formData.websiteUrl.trim() || formData.websiteUrl === WEBSITE_URL_PREFIX) {
@@ -50,8 +53,23 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
       newErrors.websiteUrl = "Please enter a valid URL (starting with http:// or https://)"
     }
 
-    if (!formData.alias.trim()) {
+    const alias = formData.alias.trim()
+    if (!alias) {
       newErrors.alias = "Alias is required"
+    } else if (alias.length < 2 || alias.length > 50) {
+      newErrors.alias = "Alias must be 2–50 characters"
+    }
+
+    const description = formData.description.trim()
+    if (!description) {
+      newErrors.description = "Description is required"
+    } else if (description.length < 10 || description.length > 1000) {
+      newErrors.description = "Description must be 10–1000 characters"
+    }
+
+    const sub = formData.subdomain.trim().toLowerCase()
+    if (sub && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(sub)) {
+      newErrors.subdomain = "Use a valid subdomain label (letters, numbers, hyphens)"
     }
 
     setErrors(newErrors)
@@ -87,15 +105,16 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
       }
 
       // Same path as other authed calls: cookie token via includeAuth + 401 refresh interceptor
+      const sub = formData.subdomain.trim().toLowerCase()
       const response = await apiClient.post(
         "/apps",
         {
-          name: formData.name,
-          websiteUrl: formData.websiteUrl,
-          alias: formData.alias,
-          description: formData.description,
+          name: formData.name.trim(),
+          websiteUrl: formData.websiteUrl.trim(),
+          alias: formData.alias.trim(),
+          description: formData.description.trim(),
           ...(merchantId ? { merchantId } : {}),
-          source: "spring-app",
+          ...(sub ? { subdomain: sub } : {}),
         },
         { includeAuth: true },
       )
@@ -109,25 +128,10 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
       }
 
       if (result.success && result.data) {
-        const createdApp = result.data.app || result.data
-        const createdAppId = createdApp.appId || createdApp.id
-
-        // Wallets are expected to exist as soon as an app is created.
-        // Call the wallet creation endpoint (idempotent on backend if implemented).
-        if (merchantId && createdAppId) {
-          try {
-            await walletService.merchant.createAllMerchantWallets(merchantId, createdAppId)
-          } catch (walletErr) {
-            console.error("Failed to create merchant wallets:", walletErr)
-            setErrors({
-              submit: "App created, but failed to create wallets. Please try again.",
-            })
-            return
-          }
-        }
+        const createdApp = (result.data as { app?: unknown }).app ?? result.data
 
         onSuccess(createdApp)
-        setFormData({ name: "", websiteUrl: WEBSITE_URL_PREFIX, alias: "", description: "" })
+        setFormData({ name: "", websiteUrl: WEBSITE_URL_PREFIX, alias: "", description: "", subdomain: "" })
         setErrors({})
         onClose()
       } else {
@@ -151,7 +155,7 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
   }
 
   const handleClose = () => {
-    setFormData({ name: "", websiteUrl: WEBSITE_URL_PREFIX, alias: "", description: "" })
+    setFormData({ name: "", websiteUrl: WEBSITE_URL_PREFIX, alias: "", description: "", subdomain: "" })
     setErrors({})
     onClose()
   }
@@ -213,15 +217,31 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
 
         <div>
           <label className="block text-sm font-medium text-gray-900 mb-3">
-            Description
+            Description *
           </label>
           <textarea
             value={formData.description}
             onChange={(e) => handleInputChange("description", e.target.value)}
-            placeholder="Brief description of your application"
+            placeholder="Brief description of your application (10–1000 characters)"
             rows={4}
             className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-colors resize-none"
           />
+          {errors.description && <p className="text-red-500 text-xs mt-2">{errors.description}</p>}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-900 mb-3">
+            Subdomain (optional)
+          </label>
+          <input
+            type="text"
+            value={formData.subdomain}
+            onChange={(e) => handleInputChange("subdomain", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+            placeholder="e.g. my-store"
+            className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent text-sm bg-gray-50 focus:bg-white transition-colors"
+          />
+          {errors.subdomain && <p className="text-red-500 text-xs mt-2">{errors.subdomain}</p>}
+          <p className="text-xs text-gray-500 mt-2">Leave blank to auto-generate from the app name.</p>
         </div>
 
         {/* Error Message */}

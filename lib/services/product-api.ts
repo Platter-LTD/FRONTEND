@@ -162,16 +162,16 @@ export const productApi = {
     return data;
   },
 
-  // Get products by app ID
+  /** Active / turned-on products for this app — GET /api/v1/products/app/:appId (not the full catalog). */
   async getProductsByAppId(appId: string) {
-    const response = await fetch(`/api/products?appId=${appId}`, {
+    const response = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}`, {
       headers: getAuthHeaders(),
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch products');
+      throw new Error((data as { error?: string }).error || 'Failed to fetch products');
     }
 
     return data;
@@ -258,21 +258,36 @@ export const productApi = {
     return data;
   },
 
-  // Toggle product active status
-  async toggleProductStatus(productId: string, isActive: boolean) {
-    return this.updateProduct(productId, { isActive });
-  },
-
-  // Get all products (no appId filter)
-  async getAllProducts() {
-    const response = await fetch('/api/products', {
-      headers: getAuthHeaders(),
-    });
+  // Toggle product on/off for an app (PUT /api/v1/products/toggle/:appId/:productId, body { activate })
+  async toggleProductStatus(appId: string, productId: string, activate: boolean) {
+    const response = await fetch(
+      `/api/v1/products/toggle/${encodeURIComponent(appId)}/${encodeURIComponent(productId)}`,
+      {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ activate }),
+      },
+    );
 
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch products');
+      throw new Error(data.error || 'Failed to toggle product');
+    }
+
+    return data;
+  },
+
+  /** Full catalog — GET /api/v1/products (all products, not app-filtered). */
+  async getAllProducts() {
+    const response = await fetch('/api/v1/products', {
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || 'Failed to fetch products');
     }
 
     return data;
@@ -293,35 +308,12 @@ export const productApi = {
     return data;
   },
 
-  // Get app-product activations for a specific app
+  /** Alias: active products for app — GET /api/v1/products/app/:appId */
   async getAppProductActivations(appId: string) {
-    const response = await fetch(`/api/apps/${appId}/products`, {
-      headers: getAuthHeaders(),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch app product activations');
-    }
-
-    return data;
+    return this.getProductsByAppId(appId);
   },
 
-  // Toggle product activation for an app
   async toggleAppProductActivation(appId: string, productId: string, isActive: boolean) {
-    const response = await fetch(`/api/apps/${appId}/products/${productId}`, {
-      method: 'PUT',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ isActive }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to toggle product activation');
-    }
-
-    return data;
+    return this.toggleProductStatus(appId, productId, isActive);
   },
 };

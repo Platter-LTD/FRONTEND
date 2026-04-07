@@ -1,15 +1,22 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Package, MoreVertical, X } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Package, MoreVertical, X, Loader2 } from "lucide-react"
+import { productApi } from "@/lib/services/product-api"
+import { toast } from "sonner"
 
 export default function UserAppDetailsPage() {
   const params = useParams()
+  const appId = params.id as string
   const [activeTab, setActiveTab] = useState("general-info")
-
+  const [products, setProducts] = useState<any[]>([])
+  const [productsLoading, setProductsLoading] = useState(true)
+  const [productsError, setProductsError] = useState<string | null>(null)
+  const [togglingProductId, setTogglingProductId] = useState<string | null>(null)
 
   // Mock data - in real app, fetch based on params.id
   const appData = {
@@ -23,39 +30,34 @@ export default function UserAppDetailsPage() {
     interestRate: "7% monthly",
   }
 
-  const products = [
-    {
-      name: "Mortgage Products",
-      count: 3,
-      customers: 203,
-      capital: "NGN12,233,000",
-      issued: "NGN120,233,300",
-      repayment: "NGN10,233,300",
-    },
-    {
-      name: "Mortgage Products",
-      count: 3,
-      customers: 203,
-      capital: "NGN12,233,000",
-      issued: "NGN120,233,300",
-      repayment: "NGN10,233,300",
-    },
-    {
-      name: "Mortgage Products",
-      count: 3,
-      customers: 203,
-      capital: "NGN12,233,000",
-      issued: "NGN120,233,300",
-      repayment: "NGN10,233,300",
-    },
-    {
-      name: "Mortgage Products",
-      count: 3,
-      customers: 203,
-      inventory: "NGN12,233,000",
-      sales: "NGN120,233,300",
-    },
-  ]
+  const fetchProducts = useCallback(async () => {
+    if (!appId) return
+    setProductsLoading(true)
+    setProductsError(null)
+    try {
+      const data = await productApi.getProductsByAppId(appId)
+      console.log(
+        "[App overview] GET /api/products (proxied to account-ms-plata /api/v1/products) response:",
+        data,
+      )
+      if (data?.data != null && Array.isArray(data.data)) {
+        setProducts(data.data)
+      } else {
+        setProducts([])
+        setProductsError(data?.error || "Failed to load products")
+      }
+    } catch (err) {
+      console.error("[App overview] products fetch error:", err)
+      setProducts([])
+      setProductsError("Failed to load products. Please try again.")
+    } finally {
+      setProductsLoading(false)
+    }
+  }, [appId])
+
+  useEffect(() => {
+    fetchProducts()
+  }, [fetchProducts])
 
   const customers = [
     {
@@ -195,58 +197,72 @@ export default function UserAppDetailsPage() {
 
         {/* General Info Tab */}
         <TabsContent value="general-info" className="mt-6">
-          <div className="grid grid-cols-4 gap-6">
-            {products.map((product, index) => (
-              <div key={index} className="space-y-4">
-                {/* Product Card */}
-                <div className="bg-[#8B7355] rounded-xl p-6 flex items-center gap-4">
-                  <div className="flex flex-col items-start gap-2 flex-1">
-                    <Package className="text-white" size={32} />
-                    <p className="text-white text-lg font-medium leading-tight">{product.name}</p>
-                  </div>
-                  <div className="w-px h-20 bg-white/30" />
-                  <div className="flex items-center justify-center">
-                    <p className="text-white text-6xl font-bold">{product.count}</p>
-                  </div>
-                </div>
+          {productsLoading ? (
+            <div className="flex items-center justify-center py-16 text-gray-500 gap-2">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <span>Loading products…</span>
+            </div>
+          ) : productsError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {productsError}
+            </div>
+          ) : products.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 py-12 text-center text-gray-500">
+              No products for this app yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {products.map((product) => {
+                const pid = product?.id as string | undefined
+                const active = product?.isActive !== false && product?.status !== "inactive"
+                return (
+                  <div key={pid || product?.name} className="space-y-4">
+                    <div className="bg-[#8B7355] rounded-xl p-6 flex flex-col gap-4">
+                      <div className="flex items-start gap-4">
+                        <Package className="text-white shrink-0" size={32} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-lg font-medium leading-tight break-words">
+                            {product?.name || "Product"}
+                          </p>
+                          {product?.type ? (
+                            <p className="text-white/80 text-sm mt-1">{String(product.type)}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/20">
+                        <span className="text-white text-sm">Enabled</span>
+                        <Switch
+                          checked={active}
+                          disabled={!pid || togglingProductId === pid}
+                          onCheckedChange={async (checked) => {
+                            if (!pid) return
+                            setTogglingProductId(pid)
+                            try {
+                              await productApi.toggleProductStatus(appId, pid, checked)
+                              setProducts((prev) =>
+                                prev.map((p) =>
+                                  p?.id === pid ? { ...p, isActive: checked, status: checked ? "active" : "inactive" } : p,
+                                ),
+                              )
+                            } catch (e) {
+                              console.error("[App overview] toggle product:", e)
+                              toast.error("Could not update product. Try again.")
+                            } finally {
+                              setTogglingProductId(null)
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
 
-                {/* Details */}
-                <div className="space-y-2">
-                  <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Customers</span>
-                    <span className="text-sm font-medium text-gray-900">{product.customers}</span>
+                    {product?.description ? (
+                      <p className="text-sm text-gray-600 line-clamp-3">{String(product.description)}</p>
+                    ) : null}
                   </div>
-                  {index === 3 ? (
-                    <>
-                      <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Inventory</span>
-                        <span className="text-sm font-medium text-gray-900">{product.inventory}</span>
-                      </div>
-                      <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Sales</span>
-                        <span className="text-sm font-medium text-gray-900">{product.sales}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Capital</span>
-                        <span className="text-sm font-medium text-gray-900">{product.capital}</span>
-                      </div>
-                      <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Issued</span>
-                        <span className="text-sm font-medium text-gray-900">{product.issued}</span>
-                      </div>
-                      <div className="bg-gray-100 rounded-lg px-4 py-3 flex items-center justify-between">
-                        <span className="text-sm text-gray-600">Repayment</span>
-                        <span className="text-sm font-medium text-gray-900">{product.repayment}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </TabsContent>
 
         {/* Customers Tab */}

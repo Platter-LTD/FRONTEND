@@ -40,7 +40,7 @@ export const DashboardHeader: React.FC = () => {
     const fetchApps = async () => {
       try {
         const token = typeof window !== 'undefined' ? getAccessToken() : null
-        const response = await fetch('/api/apps?source=spring-app', {
+        const response = await fetch('/api/apps', {
           credentials: 'include',
           headers: {
             'Content-Type': 'application/json',

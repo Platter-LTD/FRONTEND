@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const CREATE_APP_SERVICE_URL = process.env.CREATE_APP_SERVICE_URL || 'https://create-app-ms.fly.dev';
+import { getApiUpstreamBase } from '@/lib/server/apiUpstreamBase';
 
-// PUT - Set a template as default
+const API_UPSTREAM_BASE = getApiUpstreamBase();
+
+
+/** Maps to Create App MS: PATCH …/pwa-templates/:templateId/apply (set applied template for PWA). */
 export async function PUT(
     request: NextRequest,
     { params }: { params: { id: string; templateId: string } }
@@ -12,9 +15,9 @@ export async function PUT(
         const authHeader = request.headers.get('Authorization');
 
         const response = await fetch(
-            `${CREATE_APP_SERVICE_URL}/api/v1/apps/${appId}/configuration/templates/${templateId}/set-default`,
+            `${API_UPSTREAM_BASE}/api/v1/apps/${appId}/pwa-templates/${templateId}/apply`,
             {
-                method: 'PUT',
+                method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     ...(authHeader && { Authorization: authHeader }),

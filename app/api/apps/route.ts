@@ -3,14 +3,12 @@ import axios from 'axios';
 import https from 'https';
 import dns from 'dns';
 import jwt from 'jsonwebtoken';
+import { getApiUpstreamBase } from '@/lib/server/apiUpstreamBase';
 
 export const dynamic = 'force-dynamic';
 
-const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
-
-// Per latest docs, the Create App endpoints are exposed on the same base URL
-// as the auth/account service, under /api/v1/apps.
-const CREATE_APP_URL = AUTH_SERVICE_URL.replace(/\/$/, '');
+/** Create App routes: POST/GET /api/v1/apps — same upstream base as `.env` NEXT_PUBLIC_API_URL. */
+const CREATE_APP_URL = getApiUpstreamBase();
 // GET and POST first attempt use the same rule. If POST returns 401, we retry once with the alternate
 // (original ↔ re-signed via transformJwtForBackend) so product-builder-style list + create both work.
 const CREATE_APP_USE_ORIGINAL_TOKEN = process.env.CREATE_APP_USE_ORIGINAL_TOKEN !== 'false';
@@ -156,14 +154,56 @@ function alternateAppsJwtAuthorization(authHeader: string): string {
     return CREATE_APP_USE_ORIGINAL_TOKEN ? transformJwtForBackend(authHeader) : authHeader;
 }
 
+function validateCreateAppBody(input: {
+    name?: unknown;
+    websiteUrl?: unknown;
+    alias?: unknown;
+    description?: unknown;
+    subdomain?: unknown;
+}): { ok: true } | { ok: false; error: string } {
+    const name = typeof input.name === 'string' ? input.name.trim() : '';
+    const websiteUrl = typeof input.websiteUrl === 'string' ? input.websiteUrl.trim() : '';
+    const alias = typeof input.alias === 'string' ? input.alias.trim() : '';
+    const description = typeof input.description === 'string' ? input.description.trim() : '';
+    const subdomain =
+        typeof input.subdomain === 'string' && input.subdomain.trim() ? input.subdomain.trim().toLowerCase() : undefined;
+
+    if (!name || name.length < 3 || name.length > 100) {
+        return { ok: false, error: 'name is required (3–100 characters)' };
+    }
+    if (!websiteUrl) {
+        return { ok: false, error: 'websiteUrl is required' };
+    }
+    if (!alias || alias.length < 2 || alias.length > 50) {
+        return { ok: false, error: 'alias is required (2–50 characters)' };
+    }
+    if (!description || description.length < 10 || description.length > 1000) {
+        return { ok: false, error: 'description is required (10–1000 characters)' };
+    }
+    if (subdomain && !/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/i.test(subdomain)) {
+        return { ok: false, error: 'subdomain must be a valid hostname label' };
+    }
+    return { ok: true };
+}
+
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
 
-        const { name, websiteUrl, alias, description } = body || {};
-        if (!name || !websiteUrl || !alias) {
-            return NextResponse.json({ success: false, error: 'Missing required fields: name, websiteUrl, and alias are required' }, { status: 400 });
+        const { name, websiteUrl, alias, description, subdomain } = body || {};
+        const validation = validateCreateAppBody({ name, websiteUrl, alias, description, subdomain });
+        if (!validation.ok) {
+            return NextResponse.json({ success: false, error: validation.error }, { status: 400 });
         }
+
+        const nameStr = String(name).trim();
+        const websiteUrlStr = String(websiteUrl).trim();
+        const aliasStr = String(alias).trim();
+        const descriptionStr = String(description).trim();
+        const subdomainStr =
+            typeof subdomain === 'string' && subdomain.trim()
+                ? String(subdomain).trim().toLowerCase()
+                : undefined;
 
         const authHeader = request.headers.get('authorization');
 
@@ -174,7 +214,7 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const merchantId = await resolveMerchantId(authHeader, body?.merchantId);
+        const merchantId = await resolveMerchantId(authHeader, body?.merchantId as string | undefined);
 
         if (!merchantId) {
             return NextResponse.json({ success: false, error: 'Merchant ID is required' }, { status: 400 });
@@ -213,10 +253,16 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        let resp = await http.post(`${CREATE_APP_URL}/api/v1/apps`,
-            { name, websiteUrl, alias, description, merchantId },
-            { headers }
-        );
+        const upstreamPayload: Record<string, unknown> = {
+            name: nameStr,
+            websiteUrl: websiteUrlStr,
+            alias: aliasStr,
+            description: descriptionStr,
+        };
+        if (merchantId) upstreamPayload.merchantId = merchantId;
+        if (subdomainStr) upstreamPayload.subdomain = subdomainStr;
+
+        let resp = await http.post(`${CREATE_APP_URL}/api/v1/apps`, upstreamPayload, { headers });
 
         if (
             resp.status === 401 &&
@@ -236,11 +282,7 @@ export async function POST(request: NextRequest) {
                 if (browserCookie) {
                     retryHeaders['Cookie'] = browserCookie;
                 }
-                resp = await http.post(
-                    `${CREATE_APP_URL}/api/v1/apps`,
-                    { name, websiteUrl, alias, description, merchantId },
-                    { headers: retryHeaders }
-                );
+                resp = await http.post(`${CREATE_APP_URL}/api/v1/apps`, upstreamPayload, { headers: retryHeaders });
             }
         }
 
@@ -254,6 +296,8 @@ export async function POST(request: NextRequest) {
                 websiteUrl: appData.websiteUrl,
                 alias: appData.alias,
                 description: appData.description,
+                subdomain: appData.subdomain,
+                defaultAppUrl: appData.defaultAppUrl,
                 status: appData.status || 'active',
                 dateCreated: appData.createdAt ? new Date(appData.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
                 createdAt: appData.createdAt,

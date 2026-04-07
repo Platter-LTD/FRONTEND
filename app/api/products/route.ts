@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 // Base URL for all APIs (account-ms). Endpoints match Product API doc:
 // POST /api/v1/products/select-type, POST /api/v1/products/create-after-type, POST /api/v1/products (legacy),
-// GET /api/v1/products, GET /api/v1/products/app/:appId
+// GET /api/v1/products (catalog). App-scoped enabled list: GET /api/v1/products/app/:appId (see app/api/v1/products/app/[appId]/route.ts).
 const PRODUCT_SERVICE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev').replace(/\/$/, '');
 
 const agent = new https.Agent({
@@ -140,8 +140,6 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const appId = searchParams.get('appId');
     const authHeader = request.headers.get('authorization');
 
     if (!authHeader) {
@@ -151,9 +149,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const url = appId
-      ? `${PRODUCT_SERVICE_URL}/api/v1/products/app/${appId}`
-      : `${PRODUCT_SERVICE_URL}/api/v1/products`;
+    const url = `${PRODUCT_SERVICE_URL}/api/v1/products`;
 
     let response;
     try {
@@ -175,6 +171,12 @@ export async function GET(request: NextRequest) {
         { success: false, error: data?.error || data?.message || 'Failed to fetch products' },
         { status: response.status }
       );
+    }
+
+    try {
+      console.log('[Product API] GET products upstream response:', JSON.stringify(data).slice(0, 4000));
+    } catch {
+      console.log('[Product API] GET products upstream response (non-JSON body)');
     }
 
     return NextResponse.json(data);

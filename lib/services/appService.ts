@@ -1,6 +1,7 @@
 // App Service - Complete API wrapper for app management operations
 
 import { getAccessToken } from '@/lib/cookieAuth';
+import { emptyPwaTemplateConfig } from '@/lib/pwaTemplateBridge';
 
 const getAuthHeaders = () => {
   const token = typeof window !== 'undefined' ? getAccessToken() : null;
@@ -8,6 +9,14 @@ const getAuthHeaders = () => {
     'Content-Type': 'application/json',
     ...(token && { 'Authorization': `Bearer ${token}` }),
   };
+};
+
+/** For multipart uploads — do not set Content-Type (boundary is set automatically). */
+const getAuthHeadersMultipart = () => {
+  const token = typeof window !== 'undefined' ? getAccessToken() : null;
+  return {
+    ...(token && { Authorization: `Bearer ${token}` }),
+  } as Record<string, string>;
 };
 
 // Types
@@ -18,8 +27,10 @@ export interface App {
   websiteUrl: string;
   alias: string;
   description?: string;
+  subdomain?: string;
+  defaultAppUrl?: string;
   merchantId: string;
-  status: 'active' | 'pending' | 'approved' | 'rejected' | 'inactive';
+  status: 'active' | 'pending' | 'approved' | 'rejected' | 'inactive' | 'suspended';
   productKeys?: string[];
   dateCreated?: string;
   createdAt: string;
@@ -87,8 +98,9 @@ export const appApi = {
     name: string;
     websiteUrl: string;
     alias: string;
-    description?: string;
+    description: string;
     merchantId?: string;
+    subdomain?: string;
   }): Promise<ApiResponse<App>> {
     const token = typeof window !== 'undefined' ? getAccessToken() : null;
 
@@ -117,6 +129,28 @@ export const appApi = {
 
     if (!response.ok) {
       throw new Error(data.error || 'Failed to create app');
+    }
+
+    return data;
+  },
+
+  /**
+   * Set app status to active or suspended (Create App MS).
+   */
+  async updateAppStatus(
+    appId: string,
+    status: 'active' | 'suspended',
+  ): Promise<ApiResponse<App>> {
+    const response = await fetch(`/api/apps/${appId}/status`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ status }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to update app status');
     }
 
     return data;
@@ -677,13 +711,21 @@ export interface AppConfiguration {
 
 export interface AppTemplate {
   id: string;
-  appId: string;
+  _id?: string;
+  appId?: string;
   name: string;
   description?: string;
-  isDefault: boolean;
-  configuration: Partial<AppConfiguration>;
-  createdAt: string;
-  updatedAt: string;
+  category?: string;
+  iconKey?: string;
+  isDefault?: boolean;
+  /** Create App MS — applied PWA template for this app */
+  isApplied?: boolean;
+  /** PWA template sections (asset, splash, onboarding, …) per Create App MS docs */
+  config?: Record<string, unknown>;
+  /** Legacy shape from older configuration API */
+  configuration?: Partial<AppConfiguration>;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface PublishUIResponse {
@@ -956,16 +998,30 @@ export const appConfigurationApi = {
 
 export const appTemplateApi = {
   /**
-   * Create a template from current configuration
+   * Create PWA template — POST body must include `config` (Create App MS).
    */
   async createTemplate(
     appId: string,
-    data: { name: string; description?: string; isDefault?: boolean }
+    data: {
+      name: string;
+      description?: string;
+      category?: string;
+      iconKey?: string;
+      isDefault?: boolean;
+      config?: Record<string, unknown>;
+    }
   ): Promise<ApiResponse<AppTemplate>> {
+    const body = {
+      name: data.name,
+      description: data.description,
+      category: data.category,
+      iconKey: data.iconKey,
+      config: data.config ?? emptyPwaTemplateConfig(),
+    };
     const response = await fetch(`/api/apps/${appId}/configuration/templates`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(data),
+      body: JSON.stringify(body),
     });
 
     const result = await response.json();
@@ -1012,9 +1068,9 @@ export const appTemplateApi = {
   },
 
   /**
-   * Apply a template to the app's active configuration
+   * Mark template as applied for PWA (Next proxies PATCH …/pwa-templates/…/apply).
    */
-  async applyTemplate(appId: string, templateId: string): Promise<ApiResponse<AppConfiguration>> {
+  async applyTemplate(appId: string, templateId: string): Promise<ApiResponse<unknown>> {
     const response = await fetch(`/api/apps/${appId}/configuration/templates/${templateId}/apply`, {
       method: 'POST',
       headers: getAuthHeaders(),
@@ -1030,17 +1086,30 @@ export const appTemplateApi = {
   },
 
   /**
-   * Update a template
+   * Partial update — send `config` chunks per Create App MS merge rules.
    */
   async updateTemplate(
     appId: string,
     templateId: string,
-    data: Partial<AppTemplate>
+    data: Partial<{
+      name: string;
+      description: string;
+      category: string;
+      iconKey: string;
+      config: Record<string, unknown>;
+    }>
   ): Promise<ApiResponse<AppTemplate>> {
+    const payload: Record<string, unknown> = {};
+    if (data.name !== undefined) payload.name = data.name;
+    if (data.description !== undefined) payload.description = data.description;
+    if (data.category !== undefined) payload.category = data.category;
+    if (data.iconKey !== undefined) payload.iconKey = data.iconKey;
+    if (data.config !== undefined) payload.config = data.config;
+
     const response = await fetch(`/api/apps/${appId}/configuration/templates/${templateId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
-      body: JSON.stringify(data),
+      body: JSON.stringify(payload),
     });
 
     const result = await response.json();
@@ -1049,6 +1118,59 @@ export const appTemplateApi = {
       throw new Error(result.error || 'Failed to update template');
     }
 
+    return result;
+  },
+
+  async uploadPwaLogo(appId: string, templateId: string, file: File): Promise<ApiResponse<unknown>> {
+    const fd = new FormData();
+    fd.append('file', file);
+    const response = await fetch(`/api/apps/${appId}/pwa-templates/${templateId}/assets/logo`, {
+      method: 'POST',
+      headers: getAuthHeadersMultipart(),
+      body: fd,
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error((result as { error?: string }).error || 'Logo upload failed');
+    }
+    return result;
+  },
+
+  async uploadPwaSplashImage(appId: string, templateId: string, file: File): Promise<ApiResponse<unknown>> {
+    const fd = new FormData();
+    fd.append('file', file);
+    const response = await fetch(`/api/apps/${appId}/pwa-templates/${templateId}/assets/splash`, {
+      method: 'POST',
+      headers: getAuthHeadersMultipart(),
+      body: fd,
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error((result as { error?: string }).error || 'Splash image upload failed');
+    }
+    return result;
+  },
+
+  async uploadPwaOnboardingScreenImage(
+    appId: string,
+    templateId: string,
+    screenIndex: number,
+    file: File
+  ): Promise<ApiResponse<unknown>> {
+    const fd = new FormData();
+    fd.append('file', file);
+    const response = await fetch(
+      `/api/apps/${appId}/pwa-templates/${templateId}/onboarding/screens/${screenIndex}/image`,
+      {
+        method: 'POST',
+        headers: getAuthHeadersMultipart(),
+        body: fd,
+      }
+    );
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error((result as { error?: string }).error || 'Onboarding image upload failed');
+    }
     return result;
   },
 
@@ -1085,6 +1207,34 @@ export const appTemplateApi = {
       throw new Error(data.error || 'Failed to set default template');
     }
 
+    return data;
+  },
+};
+
+/** Public PWA palette / fonts — GET /api/v1/pwa/* (proxied to Create App MS). */
+export const pwaPublicOptionsApi = {
+  async getColorOptions(): Promise<
+    ApiResponse<{ options?: Array<{ id: string; label: string; hex: string }>; defaults?: unknown }>
+  > {
+    const response = await fetch('/api/v1/pwa/color-options');
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to load color options');
+    }
+    return data;
+  },
+
+  async getFontOptions(): Promise<
+    ApiResponse<{
+      options?: Array<{ id: string; label: string; value: string }>;
+      defaultFontFamily?: string;
+    }>
+  > {
+    const response = await fetch('/api/v1/pwa/font-options');
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to load font options');
+    }
     return data;
   },
 };
@@ -1289,6 +1439,7 @@ export const appService = {
   drive: appDriveApi,
   configuration: appConfigurationApi,
   templates: appTemplateApi,
+  pwaOptions: pwaPublicOptionsApi,
   supportComponents: appSupportComponentApi,
 };
 

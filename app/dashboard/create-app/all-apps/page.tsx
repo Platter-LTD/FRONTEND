@@ -22,7 +22,7 @@ export default function AllAppsPage() {
     setError(null)
     try {
       const token = getAccessToken()
-      const response = await fetch("/api/apps?source=spring-app", {
+      const response = await fetch("/api/apps", {
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
