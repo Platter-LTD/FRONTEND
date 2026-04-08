@@ -1,6 +1,5 @@
 "use client"
 
-import type { ReactNode } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { LayoutGrid, User, ShieldCheck, Code2, Settings, Search, LogOut } from "lucide-react"
@@ -8,12 +7,6 @@ import { Input } from "@/components/ui/input"
 import { useAuth } from "@/hooks/useAuth"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
-import { useMerchantCompliance } from "@/contexts/MerchantComplianceContext"
-import { isMerchantComplianceBypassEnabled } from "@/lib/merchantComplianceBypass"
-import Tippy from "@tippyjs/react"
-import "tippy.js/dist/tippy.css"
-
-const LOCK_MSG = "Complete Compliance (KYC) to unlock this section."
 
 export default function MerchantAppsSidebar() {
   const pathname = usePathname()
@@ -30,27 +23,18 @@ export default function MerchantAppsSidebar() {
     : ""
   const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
 
-  const { isApproved, loading } = useMerchantCompliance()
-  const bypass = isMerchantComplianceBypassEnabled()
-  const lockNonCompliance = !bypass && !loading && !isApproved
-
-  const navItems: {
-    icon: ReactNode
-    label: string
-    href: string
-    requiresApproval?: boolean
-  }[] = [
-    { icon: <LayoutGrid size={20} />, label: "Apps", href: "/dashboard/merchant", requiresApproval: true },
-    { icon: <User size={20} />, label: "Admin", href: "/dashboard/merchant/admin", requiresApproval: true },
-    { icon: <ShieldCheck size={20} />, label: "Compliance", href: "/dashboard/merchant/compliance", requiresApproval: false },
-    { icon: <Code2 size={20} />, label: "Developer", href: "/dashboard/merchant/developer", requiresApproval: true },
+  const navItems = [
+    { icon: <LayoutGrid size={20} />, label: "Apps", href: "/dashboard/merchant" },
+    { icon: <User size={20} />, label: "Admin", href: "/dashboard/merchant/admin" },
+    { icon: <ShieldCheck size={20} />, label: "Compliance", href: "/dashboard/merchant/compliance" },
+    { icon: <Code2 size={20} />, label: "Developer", href: "/dashboard/merchant/developer" },
   ]
 
   return (
     <div className="w-64 bg-[#F9F9FB] border-r border-gray-200 h-screen flex flex-col">
       {/* Logo */}
       <div className="p-6">
-        <h1 className="text-2xl font-bold text-[#2563EB]">Spring TD</h1>
+        <h1 className="text-2xl font-bold text-[#7C3AED]">PLATA</h1>
       </div>
 
       {/* Search */}
@@ -68,29 +52,19 @@ export default function MerchantAppsSidebar() {
       <nav className="flex-1 px-4 space-y-1">
         {navItems.map((item) => {
           const isActive = pathname === item.href
-          const disabled = !!(item.requiresApproval && lockNonCompliance)
-          const linkClass = `flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-            isActive
-              ? "bg-[#DBEAFE] text-[#1D4ED8]"
-              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-          } ${disabled ? "pointer-events-none opacity-50 cursor-not-allowed" : ""}`
-
           return (
-            <div key={item.href}>
-              {disabled ? (
-                <Tippy content={LOCK_MSG} placement="right" arrow theme="light">
-                  <span className={`block cursor-not-allowed ${linkClass}`}>
-                    {item.icon}
-                    {item.label}
-                  </span>
-                </Tippy>
-              ) : (
-                <Link href={item.href} className={linkClass}>
-                  {item.icon}
-                  {item.label}
-                </Link>
-              )}
-            </div>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-[#E0E7FF] text-[#7C3AED]" // Active state based on purple tint in screenshot
+                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+              }`}
+            >
+              {item.icon}
+              {item.label}
+            </Link>
           )
         })}
 
@@ -98,22 +72,13 @@ export default function MerchantAppsSidebar() {
            Section Title
         </div>
         
-        {lockNonCompliance ? (
-          <Tippy content={LOCK_MSG} placement="right" arrow theme="light">
-            <span className="mt-1 flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-gray-400 opacity-60 cursor-not-allowed">
-              <Settings size={20} />
-              Settings
-            </span>
-          </Tippy>
-        ) : (
-          <Link
-            href="/dashboard/merchant/settings"
-            className="mt-1 flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900"
-          >
-            <Settings size={20} />
-            Settings
-          </Link>
-        )}
+        <Link
+          href="/dashboard/merchant/settings"
+          className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 mt-1"
+        >
+          <Settings size={20} />
+          Settings
+        </Link>
       </nav>
 
       {/* User Profile */}

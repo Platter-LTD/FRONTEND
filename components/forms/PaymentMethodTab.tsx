@@ -160,7 +160,7 @@ export function PaymentMethodTab() {
         // Fallback to default bank details if API fails
         setBankDetails({
           accountNumber: "1234567890",
-          accountName: "SpringTD Limited",
+          accountName: "PLATA Limited",
           bankName: "Access Bank",
         });
         setBankDrawerOpen(true);
@@ -170,7 +170,7 @@ export function PaymentMethodTab() {
       // Fallback to default bank details
       setBankDetails({
         accountNumber: "1234567890",
-        accountName: "SpringTD Limited",
+        accountName: "PLATA Limited",
         bankName: "Access Bank",
       });
       setBankDrawerOpen(true);

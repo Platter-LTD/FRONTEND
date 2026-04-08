@@ -38,7 +38,7 @@ export default function FAQPage() {
                         <div className="bg-white rounded-[24px] px-6 py-2 shadow-sm border border-gray-100">
                             <AccordionItem value="item-1" className="border-none">
                                 <AccordionTrigger className="text-sm font-semibold text-[#1E293B] hover:no-underline">
-                                    Why is SpringTD
+                                    Why is PLATA
                                 </AccordionTrigger>
                                 <AccordionContent className="text-xs text-gray-500 leading-relaxed">
                                     Lorem ipsum dolor sit amet consectetur. Rhoncus purus sed vestibulum dignissim libero tellus. Et vitae in eget dui id lectus parturient magna.

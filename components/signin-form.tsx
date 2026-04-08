@@ -10,7 +10,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
-import { resolveMerchantPostLoginRoute } from "@/lib/merchantPostLoginRoute"
+import { ComplianceService } from "@/lib/services/complianceService"
+import { COMPLIANCE_COMPLETE_KEY } from "@/lib/compliance"
 
 export function SigninForm() {
   const [showPassword, setShowPassword] = useState(false)
@@ -25,6 +26,27 @@ export function SigninForm() {
     email: "",
     password: "",
   })
+
+  const resolvePostLoginRoute = async () => {
+    try {
+      const res = await ComplianceService.getKycStatusForCurrentUser()
+      const status = (res as { data?: { status?: string } })?.data?.status?.toLowerCase()
+      if (status === "approved") {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(COMPLIANCE_COMPLETE_KEY, "true")
+        }
+        return "/dashboard/create-app/all-apps"
+      }
+    } catch {
+      // Fall back to local storage if status API is unavailable.
+    }
+
+    if (typeof window !== "undefined" && window.localStorage.getItem(COMPLIANCE_COMPLETE_KEY) === "true") {
+      return "/dashboard/create-app/all-apps"
+    }
+
+    return "/dashboard/compliance"
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -43,7 +65,7 @@ export function SigninForm() {
       await signin(formData.email, formData.password)
       toast.success("Signin successful 🎉")
 
-      const nextRoute = await resolveMerchantPostLoginRoute()
+      const nextRoute = await resolvePostLoginRoute()
       setTimeout(() => {
         router.push(nextRoute)
       }, 1000)
@@ -151,7 +173,7 @@ export function SigninForm() {
             <Link
               href="/forgot-password"
               className="text-sm font-medium hover:underline"
-              style={{ color: "#7C3AED" }}
+              style={{ color: "#74612F" }}
             >
               Forgot password?
             </Link>
@@ -160,7 +182,7 @@ export function SigninForm() {
           <Button
             type="submit"
             className="w-full h-12 text-white hover:opacity-90"
-            style={{ backgroundColor: rateLimited ? "#9CA3AF" : "#7C3AED" }}
+            style={{ backgroundColor: rateLimited ? "#9CA3AF" : "#74612F" }}
             disabled={isSubmitting || rateLimited}
           >
             {rateLimited ? `Wait ${retryAfter}s...` : isSubmitting ? "Signing in..." : "Sign in"}
@@ -168,7 +190,7 @@ export function SigninForm() {
 
           <div className="text-center text-sm">
             <span className="text-muted-foreground">If you don't have an account </span>
-            <Link href="/signup" className="hover:underline" style={{ color: "#7C3AED" }}>
+            <Link href="/signup" className="hover:underline" style={{ color: "#74612F" }}>
               Sign Up
             </Link>
           </div>

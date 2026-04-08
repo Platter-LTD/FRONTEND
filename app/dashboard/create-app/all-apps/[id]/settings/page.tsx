@@ -180,6 +180,8 @@ export default function SettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [confirmText, setConfirmText] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [generatingKey, setGeneratingKey] = useState(false)
+  const [loadingKeys, setLoadingKeys] = useState(true)
 
   useEffect(() => {
     const fetchApp = async () => {
@@ -207,6 +209,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const loadKeys = async () => {
       try {
+        setLoadingKeys(true)
         const res = await fetch("/api/v1/keys", {
           method: "GET",
           credentials: "include",
@@ -217,16 +220,37 @@ export default function SettingsPage() {
 
         if (!res.ok) return
 
-        const payload = (json?.data ?? json) as unknown
-        if (!payload) return
-
-        // Endpoint may return either a single object or an array of bundles.
-        const chosen =
-          Array.isArray(payload) && payload.length ? (payload[0] as any) : (payload as any)
-
-        setKeysBundle(chosen ?? null)
+        // Handle the new API response structure: { success: true, data: { apiKeys: [...] } }
+        if (json.success && json.data && json.data.apiKeys) {
+          const apiKeysData = json.data.apiKeys
+          setApiKeys(apiKeysData)
+          // Set the first key as the current keysBundle for backward compatibility
+          setKeysBundle(apiKeysData.length > 0 ? apiKeysData[0] : null)
+        } else if (json.data && json.data.apiKeys) {
+          // Fallback for different response structure
+          const apiKeysData = json.data.apiKeys
+          setApiKeys(apiKeysData)
+          setKeysBundle(apiKeysData.length > 0 ? apiKeysData[0] : null)
+        } else {
+          // Handle legacy structure or empty response
+          const payload = (json?.data ?? json) as unknown
+          if (Array.isArray(payload)) {
+            setApiKeys(payload)
+            setKeysBundle(payload.length > 0 ? payload[0] : null)
+          } else if (payload) {
+            setApiKeys([payload])
+            setKeysBundle(payload as any)
+          } else {
+            setApiKeys([])
+            setKeysBundle(null)
+          }
+        }
       } catch (err) {
         console.error("Failed to fetch /api/v1/keys:", err)
+        setApiKeys([])
+        setKeysBundle(null)
+      } finally {
+        setLoadingKeys(false)
       }
     }
 
@@ -237,8 +261,9 @@ export default function SettingsPage() {
   const publicKeyValue = useMemo(() => pickPublicKeyValue(keysBundle ?? app), [keysBundle, app])
   const extraCredentialRows = useMemo(() => collectExtraCredentialRows(keysBundle ?? app), [keysBundle, app])
 
-  const [showSecretKey, setShowSecretKey] = useState(false)
-  const [showPublicKey, setShowPublicKey] = useState(false)
+  const [showSecretKey, setShowSecretKey] = useState<Record<string, boolean>>({})
+  const [showPublicKey, setShowPublicKey] = useState<Record<string, boolean>>({})
+  const [apiKeys, setApiKeys] = useState<any[]>([]) // Store multiple API keys
 
   const merchantOrAppId = useMemo(() => {
     const source = keysBundle ?? app
@@ -282,6 +307,67 @@ export default function SettingsPage() {
       toast.success(`${label} copied`)
     } catch {
       toast.error("Could not copy to clipboard")
+    }
+  }
+
+  const handleGenerateNewKey = async () => {
+    try {
+      setGeneratingKey(true)
+      
+      const response = await fetch("/api/v1/keys", {
+        method: "POST",
+        credentials: "include",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          appId: appId, // Pass the app ID to associate the key with this app
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate key: ${response.status}`)
+      }
+
+      const data = await response.json()
+      
+      if (data.success) {
+        toast.success("API Key created successfully! Store the secret key safely, it will not be shown again.")
+        
+        // Refresh keys to show the new key - call the updated loadKeys logic
+        try {
+          setLoadingKeys(true)
+          const res = await fetch("/api/v1/keys", {
+            method: "GET",
+            credentials: "include",
+            headers: getAuthHeaders(),
+            cache: "no-store",
+          })
+          const json = await res.json().catch(() => ({} as any))
+
+          if (!res.ok) return
+
+          // Handle the new API response structure
+          if (json.success && json.data && json.data.apiKeys) {
+            const apiKeysData = json.data.apiKeys
+            setApiKeys(apiKeysData)
+            setKeysBundle(apiKeysData.length > 0 ? apiKeysData[0] : null)
+          } else if (json.data && json.data.apiKeys) {
+            const apiKeysData = json.data.apiKeys
+            setApiKeys(apiKeysData)
+            setKeysBundle(apiKeysData.length > 0 ? apiKeysData[0] : null)
+          }
+        } catch (err) {
+          console.error("Failed to refresh keys:", err)
+        } finally {
+          setLoadingKeys(false)
+        }
+      } else {
+        toast.error(data.message || "Failed to generate API key")
+      }
+    } catch (error) {
+      console.error("Failed to generate key:", error)
+      toast.error("Failed to generate new API key")
+    } finally {
+      setGeneratingKey(false)
     }
   }
 
@@ -423,9 +509,14 @@ export default function SettingsPage() {
               <h2 className="text-lg font-semibold text-gray-900">API keys &amp; credentials</h2>
               <p className="text-sm text-gray-500">Same layout as Developer credentials: show or hide keys, then copy.</p>
             </div>
-            <Button type="button" className="bg-black text-white hover:bg-gray-800 shrink-0" disabled>
+            <Button 
+              type="button" 
+              className="bg-black text-white hover:bg-gray-800 shrink-0" 
+              onClick={handleGenerateNewKey}
+              disabled={generatingKey}
+            >
               <Plus className="w-4 h-4 mr-2" />
-              Generate New Keys
+              {generatingKey ? "Generating..." : "Generate New Key"}
             </Button>
           </div>
 
@@ -439,73 +530,106 @@ export default function SettingsPage() {
                 <div>Expires on</div>
                 <div>Download</div>
               </div>
-              <div className="grid grid-cols-6 gap-4 p-4 border-b border-gray-100 last:border-b-0 text-sm items-center">
-                <div className="font-medium font-mono text-xs break-all">{merchantOrAppId}</div>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="truncate font-mono text-xs" title={secretKeyValue || undefined}>
-                    {!secretKeyValue ? "—" : showSecretKey ? secretKeyValue : MASK}
-                  </span>
-                  {secretKeyValue ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setShowSecretKey((s) => !s)}
-                        className="shrink-0 text-gray-400 hover:text-gray-600"
-                        aria-label={showSecretKey ? "Hide private key" : "Show private key"}
-                      >
-                        {showSecretKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void copyToClipboard(secretKeyValue, "Private key")}
-                        className="shrink-0 text-gray-400 hover:text-gray-600"
-                        aria-label="Copy private key"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                    </>
-                  ) : null}
+              {loadingKeys ? (
+                // Skeleton loaders for loading state
+                Array.from({ length: 2 }).map((_, index) => (
+                  <div key={`skeleton-${index}`} className="grid grid-cols-6 gap-4 p-4 border-b border-gray-100">
+                    <Skeleton className="h-4 w-24 font-mono" />
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-8 w-20 rounded-md" />
+                  </div>
+                ))
+              ) : apiKeys.length === 0 ? (
+                <div className="p-8 text-center text-gray-500 border-b border-gray-100">
+                  No API keys found. Generate your first key to get started.
                 </div>
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="truncate font-mono text-xs" title={publicKeyValue || undefined}>
-                    {!publicKeyValue ? "—" : showPublicKey ? publicKeyValue : MASK}
-                  </span>
-                  {publicKeyValue ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setShowPublicKey((s) => !s)}
-                        className="shrink-0 text-gray-400 hover:text-gray-600"
-                        aria-label={showPublicKey ? "Hide public key" : "Show public key"}
-                      >
-                        {showPublicKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void copyToClipboard(publicKeyValue, "Public key")}
-                        className="shrink-0 text-gray-400 hover:text-gray-600"
-                        aria-label="Copy public key"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-                    </>
-                  ) : null}
-                </div>
-                <div className="text-gray-700">{generatedOn}</div>
-                <div className="text-gray-700">{expiresOn}</div>
-                <div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1"
-                    onClick={() => toast.info("Key bundle download will be available when your backend exposes a download URL.")}
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    Download
-                  </Button>
-                </div>
-              </div>
+              ) : (
+                apiKeys.map((key) => {
+                  const keyId = key.id || key._id || key.merchant_id || Math.random().toString()
+                  const secretValue = key.secret_key_hash || key.secret_key || key.secretKey // Handle the hash from API
+                  const publicValue = key.public_key || key.publicKey
+                  const merchantId = key.merchant_id || key.merchantId || merchantOrAppId
+                  const generatedDate = formatCredentialDate(
+                    key.created_at || key.createdAt || key.generatedOn || key.generated_at
+                  )
+                  const expiresDate = formatCredentialDate(
+                    key.expires_at || key.expiresAt || key.expires_on || key.expires_at
+                  )
+
+                  return (
+                    <div key={keyId} className="grid grid-cols-6 gap-4 p-4 border-b border-gray-100 last:border-b-0 text-sm items-center">
+                      <div className="font-medium font-mono text-xs break-all">{merchantId}</div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="truncate font-mono text-xs" title={secretValue || undefined}>
+                          {!secretValue ? "—" : showSecretKey[keyId] ? secretValue : MASK}
+                        </span>
+                        {secretValue ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setShowSecretKey((prev) => ({ ...prev, [keyId]: !prev[keyId] }))}
+                              className="shrink-0 text-gray-400 hover:text-gray-600"
+                              aria-label={showSecretKey[keyId] ? "Hide private key" : "Show private key"}
+                            >
+                              {showSecretKey[keyId] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void copyToClipboard(secretValue, "Private key")}
+                              className="shrink-0 text-gray-400 hover:text-gray-600"
+                              aria-label="Copy private key"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="truncate font-mono text-xs" title={publicValue || undefined}>
+                          {!publicValue ? "—" : showPublicKey[keyId] ? publicValue : MASK}
+                        </span>
+                        {publicValue ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setShowPublicKey((prev) => ({ ...prev, [keyId]: !prev[keyId] }))}
+                              className="shrink-0 text-gray-400 hover:text-gray-600"
+                              aria-label={showPublicKey[keyId] ? "Hide public key" : "Show public key"}
+                            >
+                              {showPublicKey[keyId] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void copyToClipboard(publicValue, "Public key")}
+                              className="shrink-0 text-gray-400 hover:text-gray-600"
+                              aria-label="Copy public key"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                      <div className="text-gray-700">{generatedDate}</div>
+                      <div className="text-gray-700">{expiresDate}</div>
+                      <div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => toast.info("Key bundle download will be available when your backend exposes a download URL.")}
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          Download
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
             </div>
           </div>
 

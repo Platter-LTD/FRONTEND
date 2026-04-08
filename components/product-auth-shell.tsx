@@ -15,7 +15,7 @@ export function ProductAuthShell({ children, contentClassName = "max-w-lg" }: Pr
         className="pointer-events-none absolute inset-0"
         style={{
           backgroundImage:
-            "linear-gradient(to right, rgba(124, 58, 237, 0.08) 2px, transparent 2px), linear-gradient(to bottom, rgba(124, 58, 237, 0.08) 2px, transparent 2px)",
+            "linear-gradient(to right, rgba(116, 97, 47, 0.06) 2px, transparent 2px), linear-gradient(to bottom, rgba(116, 97, 47, 0.06) 2px, transparent 2px)",
           // Slightly wider and taller, while keeping boxes taller than wide
           backgroundSize: "50px 70px",
         }}
@@ -23,8 +23,8 @@ export function ProductAuthShell({ children, contentClassName = "max-w-lg" }: Pr
       <div className="pointer-events-none absolute inset-0 bg-white/55" />
 
       <header className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-6 py-6">
-        <Link href="/" className="text-3xl font-extrabold tracking-tight text-[#7C3AED]">
-          Spring TD
+        <Link href="/" className="text-3xl font-extrabold tracking-tight text-[#8a7435]">
+          PLATA
         </Link>
       </header>
 

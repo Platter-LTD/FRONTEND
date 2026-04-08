@@ -68,7 +68,7 @@ export function ConfigurePricingSheet({ open, onOpenChange }: ConfigurePricingSh
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="spring-fee" className="font-normal text-gray-700">SpringTD Fee</Label>
+            <Label htmlFor="spring-fee" className="font-normal text-gray-700">PLATA Fee</Label>
             <Input id="spring-fee" className="h-14 border-[#E2E8F0] bg-white rounded-xl" />
           </div>
 

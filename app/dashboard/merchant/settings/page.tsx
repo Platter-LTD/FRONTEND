@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Copy, Trash2, ChevronRight, CircleHelp, Flag, Search, ChevronDown, ChevronUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,10 +12,12 @@ import { useCountries } from "@/hooks/useCountries"
 import { fetchWithAuth } from "@/lib/fetchWithAuth"
 import { BACKEND } from "@/lib/endpoints"
 import type { AuthUser, SessionDto } from "@/types/auth"
+import APIKeysSection from "@/components/APIKeysSection"
 
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState("account-settings")
     const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0)
+    const router = useRouter()
 
     const [profileLoading, setProfileLoading] = useState(false)
     const [profile, setProfile] = useState<AuthUser | null>(null)
@@ -76,7 +79,7 @@ export default function SettingsPage() {
 
     const faqs = [
         {
-            question: "Why is SpringTD",
+            question: "Why is PLATA",
             answer: "Lorem ipsum dolor sit amet consectetur. Rhoncus purus sed vestibulum dignissim libero tellus. Et vitae in eget dui id lectus parturient magna. Et vitae in eget dui id lectus parturient magna. Et vitae in eget dui id lectus parturient magna."
         },
         {
@@ -281,6 +284,7 @@ export default function SettingsPage() {
             setDeactivateLoading(true)
             const res = await fetchWithAuth(BACKEND.user.deactivate, { method: "POST", body: JSON.stringify({}) })
             if (!res.ok) return
+            router.push("/signin")
         } finally {
             setDeactivateLoading(false)
         }
@@ -297,7 +301,7 @@ export default function SettingsPage() {
                             activeTab={activeTab}
                             onTabChange={setActiveTab}
                             containerClassName="border-b-0"
-                            activeTabClassName="border-[#2563EB] text-[#2563EB]"
+                            activeTabClassName="border-[#7F56D9] text-[#7F56D9]"
                         />
                     </div>
                 </div>
@@ -366,7 +370,7 @@ export default function SettingsPage() {
                         </div>
                         <div>
                             <Button
-                                className="bg-[#2563EB] text-white hover:bg-[#1D4ED8] rounded-md px-6"
+                                className="bg-[#7F56D9] text-white hover:bg-[#6941C6] rounded-md px-6"
                                 onClick={() => void handleUpdateProfile()}
                                 disabled={profileUpdating}
                             >
@@ -424,7 +428,7 @@ export default function SettingsPage() {
                             </div>
 
                             <Button
-                                className="bg-[#2563EB] text-white hover:bg-[#1D4ED8] rounded-md px-6"
+                                className="bg-[#7F56D9] text-white hover:bg-[#6941C6] rounded-md px-6"
                                 onClick={() => void handleUpdateEmail()}
                                 disabled={emailUpdating || profileUpdating}
                             >
@@ -470,7 +474,7 @@ export default function SettingsPage() {
                             </div>
                             <div>
                                 <Button
-                                    className="bg-[#2563EB] text-white hover:bg-[#1D4ED8] rounded-md px-6"
+                                    className="bg-[#7F56D9] text-white hover:bg-[#6941C6] rounded-md px-6"
                                     onClick={() => void handleChangePassword()}
                                     disabled={passwordUpdating}
                                 >
@@ -519,49 +523,7 @@ export default function SettingsPage() {
                         </section>
 
                         {/* API Keys Section */}
-                        <section>
-                            <div className="flex justify-between items-center mb-6">
-                                <div className="space-y-1">
-                                    <h2 className="text-lg font-semibold text-gray-900">API Keys</h2>
-                                    <p className="text-sm text-gray-500">Manage your API keys for integration</p>
-                                </div>
-                                <Button className="bg-[#2563EB] text-white hover:bg-[#1D4ED8] rounded-md px-6">
-                                    Generate New Key
-                                </Button>
-                            </div>
-                            <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4">
-                                <div className="flex justify-between items-center bg-white p-4 rounded-md shadow-sm">
-                                    <div>
-                                        <p className="font-medium text-gray-900">Production Key</p>
-                                        <p className="text-sm text-gray-500">Created Dec 1, 2025</p>
-                                    </div>
-                                    <div className="flex gap-3">
-                                        <Copy className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-700" />
-                                        <Trash2 className="w-4 h-4 text-red-500 cursor-pointer hover:text-red-600" />
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center bg-white p-4 rounded-md shadow-sm">
-                                    <div>
-                                        <p className="font-medium text-gray-900">Development Key</p>
-                                        <p className="text-sm text-gray-500">Created Dec 5, 2025</p>
-                                    </div>
-                                    <div className="flex gap-3">
-                                        <Copy className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-700" />
-                                        <Trash2 className="w-4 h-4 text-red-500 cursor-pointer hover:text-red-600" />
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center bg-white p-4 rounded-md shadow-sm">
-                                    <div>
-                                        <p className="font-medium text-gray-900">Production Key</p>
-                                        <p className="text-sm text-gray-500">Created Dec 8, 2025</p>
-                                    </div>
-                                    <div className="flex gap-3">
-                                        <Copy className="w-4 h-4 text-gray-500 cursor-pointer hover:text-gray-700" />
-                                        <Trash2 className="w-4 h-4 text-red-500 cursor-pointer hover:text-red-600" />
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
+                        <APIKeysSection />
                     </div>
                 )}
 
@@ -569,7 +531,7 @@ export default function SettingsPage() {
                     <div className="max-w-5xl">
                         <div className="mb-6">
                             <h2 className="text-lg font-semibold text-gray-900">Frequently Asked Questions</h2>
-                            <p className="text-sm text-gray-500">Find answers to common questions about Spring TD</p>
+                            <p className="text-sm text-gray-500">Find answers to common questions about PLATA</p>
                         </div>
 
                         {/* Search Section */}
@@ -664,7 +626,7 @@ export default function SettingsPage() {
 
                                 <div className="space-y-1">
                                     <p className="font-bold text-gray-900">1. Introduction</p>
-                                    <p>Welcome to SpringTD. By using our mobile application or website, you agree to these Terms and Conditions. Please read them carefully.</p>
+                                    <p>Welcome to PLATA. By using our mobile application or website, you agree to these Terms and Conditions. Please read them carefully.</p>
                                 </div>
 
                                 <div className="space-y-1">

@@ -286,6 +286,7 @@ export default function ConfigureMortgageDrawer({
           signal: controller.signal,
         })
         const json = await res.json().catch(() => null)
+        console.log("[keys] /api/v1/keys response:", json)
 
         const payload = (json && typeof json === "object" ? (json as any).data ?? json : {}) as any
         const secretKey = payload?.airSignSecretKey ?? payload?.secretKey ?? payload?.secret ?? ""

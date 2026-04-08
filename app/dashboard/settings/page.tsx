@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { ChevronRight, CircleHelp, Copy, Flag, Trash2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,6 +12,7 @@ import { useCountries } from "@/hooks/useCountries"
 import { fetchWithAuth } from "@/lib/fetchWithAuth"
 import { BACKEND } from "@/lib/endpoints"
 import type { AuthUser, SessionDto } from "@/types/auth"
+import APIKeysSection from "@/components/APIKeysSection"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -25,6 +27,7 @@ import {
 export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState("account-settings")
     const [deactivateOpen, setDeactivateOpen] = useState(false)
+    const router = useRouter()
 
     const [profileLoading, setProfileLoading] = useState(false)
     const [profile, setProfile] = useState<AuthUser | null>(null)
@@ -239,6 +242,7 @@ export default function SettingsPage() {
             if (!res.ok) return
 
             setDeactivateOpen(false)
+            router.push("/signin")
         } finally {
             setDeactivateLoading(false)
         }
@@ -480,94 +484,8 @@ export default function SettingsPage() {
                             </div>
                         </section>
 
-                        {/* API Keys — integration keys (per-app keys live under each app’s Settings) */}
-                        <section>
-                            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
-                                <div className="space-y-1">
-                                    <h2 className="text-lg font-semibold text-gray-900">API Keys</h2>
-                                    <p className="text-sm text-gray-500">Manage your API keys for integration</p>
-                                </div>
-                                <Button
-                                    type="button"
-                                    className="bg-[#7F56D9] text-white hover:bg-[#6941C6] rounded-md px-6 shrink-0 w-full sm:w-auto"
-                                >
-                                    Generate New Key
-                                </Button>
-                            </div>
-                            <div className="bg-[#F0F2F5] rounded-lg border border-gray-200/80 p-6 space-y-4">
-                                <div className="flex justify-between items-center gap-4 bg-white p-4 rounded-md border border-gray-200 shadow-sm">
-                                    <div className="min-w-0">
-                                        <p className="font-medium text-gray-900">Production Key</p>
-                                        <p className="text-sm text-gray-500">Created Dec 1, 2025</p>
-                                    </div>
-                                    <div className="flex items-center gap-3 shrink-0">
-                                        <button
-                                            type="button"
-                                            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                                            aria-label="Copy key"
-                                        >
-                                            <Copy className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="rounded-md p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600"
-                                            aria-label="Delete key"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center gap-4 bg-white p-4 rounded-md border border-gray-200 shadow-sm">
-                                    <div className="min-w-0">
-                                        <p className="font-medium text-gray-900">Development Key</p>
-                                        <p className="text-sm text-gray-500">Created Dec 5, 2025</p>
-                                    </div>
-                                    <div className="flex items-center gap-3 shrink-0">
-                                        <button
-                                            type="button"
-                                            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                                            aria-label="Copy key"
-                                        >
-                                            <Copy className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="rounded-md p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600"
-                                            aria-label="Delete key"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="flex justify-between items-center gap-4 bg-white p-4 rounded-md border border-gray-200 shadow-sm">
-                                    <div className="min-w-0">
-                                        <p className="font-medium text-gray-900">Production Key</p>
-                                        <p className="text-sm text-gray-500">Created Dec 8, 2025</p>
-                                    </div>
-                                    <div className="flex items-center gap-3 shrink-0">
-                                        <button
-                                            type="button"
-                                            className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                                            aria-label="Copy key"
-                                        >
-                                            <Copy className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="rounded-md p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600"
-                                            aria-label="Delete key"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                            <p className="text-sm text-gray-500 mt-4">
-                                For credentials tied to a specific application, open it from{" "}
-                                <strong className="font-medium text-gray-700">All Apps</strong>, then use{" "}
-                                <strong className="font-medium text-gray-700">Settings</strong> in the app sidebar.
-                            </p>
-                        </section>
+                        {/* API Keys — integration keys (per-app keys live under each app's Settings) */}
+                        <APIKeysSection />
                     </div>
                 )}
 
@@ -575,7 +493,7 @@ export default function SettingsPage() {
                     <div className="max-w-5xl">
                         <div className="mb-6">
                             <h2 className="text-lg font-semibold text-gray-900">Frequently Asked Questions</h2>
-                            <p className="text-sm text-gray-500">Find answers to common questions about Spring TD</p>
+                            <p className="text-sm text-gray-500">Find answers to common questions about PLATA</p>
                         </div>
                         <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4">
                             <button className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm hover:bg-gray-50 transition-colors group">

@@ -210,12 +210,12 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
               className="mt-1 rounded-full"
             />
             <p className="text-[13px] font-medium leading-relaxed text-muted-foreground">
-              I accept the SpringTD{" "}
-              <Link href="#" className="hover:underline" style={{ color: "#7C3AED" }}>
+              I accept the PLATA{" "}
+              <Link href="#" className="hover:underline" style={{ color: "#74612F" }}>
                 Merchant Service Agreement
               </Link>{" "}
-              and the use of my personal data as outlined in the SpringTD{" "}
-              <Link href="#" className="hover:underline" style={{ color: "#7C3AED" }}>
+              and the use of my personal data as outlined in the PLATA{" "}
+              <Link href="#" className="hover:underline" style={{ color: "#74612F" }}>
                 Privacy Notice
               </Link>
               .
@@ -224,7 +224,7 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
 
           <div className="text-center text-sm">
             <span className="text-muted-foreground">Already have an account? </span>
-            <Link href="/signin" className="hover:underline font-medium" style={{ color: "#7C3AED" }}>
+            <Link href="/signin" className="hover:underline font-medium" style={{ color: "#74612F" }}>
               Sign in
             </Link>
           </div>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, Suspense } from "react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,6 @@ import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { Eye, EyeOff } from "lucide-react"
 import { ProductAuthShell } from "@/components/product-auth-shell"
-import { AuthFormSkeleton } from "@/components/ui/app-loading-skeleton"
 
 function ResetPasswordForm() {
   const [formData, setFormData] = useState({
@@ -24,6 +23,7 @@ function ResetPasswordForm() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   
+  const router = useRouter()
   const searchParams = useSearchParams()
   const token = searchParams.get("token")
 
@@ -55,6 +55,11 @@ function ResetPasswordForm() {
       
       setIsSuccess(true)
       toast.success("Password reset successfully")
+      
+      // Redirect after 3 seconds
+      setTimeout(() => {
+        router.push("/signin")
+      }, 3000)
     } catch (error: any) {
       console.error("Reset password error:", error)
       const errorMsg = error.response?.data?.message || error.response?.data?.error || "Failed to reset password"
@@ -84,7 +89,7 @@ function ResetPasswordForm() {
         <Link href="/signin">
           <Button 
             className="w-full h-12 text-white hover:opacity-90"
-            style={{ backgroundColor: "#7C3AED" }}
+            style={{ backgroundColor: "#74612F" }}
           >
             Sign in
           </Button>
@@ -152,7 +157,7 @@ function ResetPasswordForm() {
         <Button
           type="submit"
           className="w-full h-12 text-white hover:opacity-90"
-          style={{ backgroundColor: "#7C3AED" }}
+          style={{ backgroundColor: "#74612F" }}
           disabled={isSubmitting}
         >
           {isSubmitting ? "Resetting password..." : "Reset password"}
@@ -166,11 +171,11 @@ export default function ResetPasswordPage() {
   return (
     <ProductAuthShell>
       <div className="w-full px-4">
-        <Suspense
-          fallback={
-            <AuthFormSkeleton />
-          }
-        >
+        <Suspense fallback={
+          <div className="flex justify-center p-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#9A813F]"></div>
+          </div>
+        }>
           <ResetPasswordForm />
         </Suspense>
       </div>

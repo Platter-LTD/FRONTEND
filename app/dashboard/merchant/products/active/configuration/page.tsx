@@ -59,7 +59,7 @@ export default function ConfigurationPage() {
             <div className="col-span-2 h-px bg-gray-100" />
 
             <div>
-                <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">SpringTD Fee</label>
+                <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">PLATA Fee</label>
                 <p className="mt-1 text-base font-semibold text-gray-900">₦200.00</p>
             </div>
             <div>

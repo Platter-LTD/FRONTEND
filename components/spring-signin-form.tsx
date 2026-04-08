@@ -9,7 +9,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
-import { resolveMerchantPostLoginRoute } from "@/lib/merchantPostLoginRoute"
 
 export function SpringSigninForm() {
     const [showPassword, setShowPassword] = useState(false)
@@ -41,9 +40,8 @@ export function SpringSigninForm() {
             await signin(formData.email, formData.password)
             toast.success("Welcome back! 👋")
 
-            const nextRoute = await resolveMerchantPostLoginRoute()
             setTimeout(() => {
-                router.push(nextRoute)
+                router.push("/dashboard/merchant")
             }, 1000)
         } catch (err: any) {
             // Existing error handling logic preserved...

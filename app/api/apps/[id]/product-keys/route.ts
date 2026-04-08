@@ -3,7 +3,7 @@ import axios from 'axios';
 
 export const dynamic = 'force-dynamic';
 
-const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
+const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
 const APPS_BASE_URL = AUTH_SERVICE_URL.replace(/\/$/, '');
 
 // GET - Get product keys

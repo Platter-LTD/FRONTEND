@@ -8,7 +8,6 @@ import { ENDPOINTS } from "@/lib/endpoints"
 import { Button } from "@/components/ui/button"
 import { toast } from "react-toastify"
 import { ProductAuthShell } from "@/components/product-auth-shell"
-import { AuthFormSkeleton } from "@/components/ui/app-loading-skeleton"
 
 function VerifyEmailContent() {
   const [email, setEmail] = useState<string>("")
@@ -75,8 +74,10 @@ function VerifyEmailContent() {
         { identifier: email, channel: "email", purpose: "verification" },
         { includeAuth: false }
       )
+      console.log("[Resend code] SUCCESS — new verification code sent to", email)
       toast.success("✅ A new verification code has been sent to your email.")
     } catch (err: any) {
+      console.log("[Resend code] FAILED", err?.response?.data ?? err?.message)
       console.error("Resend request failed", err)
       const errorMsg = err?.response?.data?.error || err?.message || "Failed to resend verification code"
       toast.error(`❌ ${errorMsg}`)
@@ -170,7 +171,7 @@ function VerifyEmailContent() {
                 onKeyDown={(e) => handleKeyDown(index, e)}
                 disabled={isVerifying}
                 className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-300 dark:border-gray-600 rounded-lg 
-                         focus:border-[#7C3AED] focus:ring-2 focus:ring-[#7C3AED]/20 focus:outline-none
+                         focus:border-[#74612F] focus:ring-2 focus:ring-[#74612F]/20 focus:outline-none
                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                          disabled:opacity-50 disabled:cursor-not-allowed
                          transition-all duration-200"
@@ -182,7 +183,7 @@ function VerifyEmailContent() {
             onClick={() => handleVerifyOTP()}
             disabled={isVerifying || otp.some(digit => digit === "")}
             className="w-full h-12 text-white hover:opacity-90 disabled:opacity-50"
-            style={{ backgroundColor: "#7C3AED" }}
+            style={{ backgroundColor: "#74612F" }}
           >
             {isVerifying ? "Verifying..." : "Verify Email"}
           </Button>
@@ -192,7 +193,7 @@ function VerifyEmailContent() {
             <button
               onClick={handleResend}
               disabled={isResending}
-              className="text-[#7C3AED] hover:underline font-medium disabled:opacity-50"
+              className="text-[#74612F] hover:underline font-medium disabled:opacity-50"
             >
               {isResending ? "Sending..." : "Resend Code"}
             </button>
@@ -205,13 +206,13 @@ function VerifyEmailContent() {
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense
-      fallback={
-        <ProductAuthShell contentClassName="max-w-md">
-          <AuthFormSkeleton />
-        </ProductAuthShell>
-      }
-    >
+    <Suspense fallback={
+      <ProductAuthShell contentClassName="max-w-md">
+        <div className="py-4 text-center">
+          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </ProductAuthShell>
+    }>
       <VerifyEmailContent />
     </Suspense>
   )
