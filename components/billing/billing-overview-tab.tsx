@@ -49,13 +49,13 @@ export function BillingOverviewTab() {
       setBillingStats([
         {
           title: "Current Balance",
-          value: `$${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+          value: `NGN ${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
           change: "+12.5%",
           icon: DollarSign,
         },
         {
           title: "Monthly Spend",
-          value: `$${paidThisMonth.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+          value: `NGN ${paidThisMonth.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
           change: "+8.2%",
           icon: TrendingUp,
         },
@@ -71,8 +71,8 @@ export function BillingOverviewTab() {
       setError('Failed to load billing data')
       // Set fallback data
       setBillingStats([
-        { title: "Current Balance", value: "$0.00", change: "--", icon: DollarSign },
-        { title: "Monthly Spend", value: "$0.00", change: "--", icon: TrendingUp },
+        { title: "Current Balance", value: "NGN 0.00", change: "--", icon: DollarSign },
+        { title: "Monthly Spend", value: "NGN 0.00", change: "--", icon: TrendingUp },
         { title: "Outstanding Invoices", value: "0", change: "--", icon: FileText },
       ])
     } finally {
@@ -175,7 +175,7 @@ export function BillingOverviewTab() {
                         <div className="font-medium">{invoice.id.substring(0, 11)}</div>
                         <div className="text-gray-600">{formatDate(invoice.createdAt)}</div>
                         <div className="font-medium">
-                          {invoice.currency} ${invoice.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          {invoice.currency} NGN {invoice.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                         </div>
                         <div>
                           <Badge className={getStatusColor(statusLabel)}>{statusLabel}</Badge>

@@ -59,7 +59,7 @@ function mapToLocalApplication(pa: ProductApplication): Application {
     productType: pa.applicationType === "investment" ? "commodity" : pa.applicationType as Application["productType"],
     status: pa.status,
     amount: pa.applicationData?.amount ?? 0,
-    currency: pa.applicationData?.currency ?? "USD",
+    currency: pa.applicationData?.currency ?? "NGN",
     submittedAt: pa.submittedAt || pa.createdAt,
     reviewedAt: pa.reviewedAt,
     reference: pa.id.slice(0, 8).toUpperCase(),
@@ -313,7 +313,7 @@ export default function ApplicationsPage() {
               interestRate: selectedProduct.interestRate,
               minAmount: selectedProduct.minAmount,
               maxAmount: selectedProduct.maxAmount,
-              currency: "USD",
+              currency: "NGN",
             }}
             userId="user-001"
             onSuccess={(application) => {
@@ -331,7 +331,7 @@ export default function ApplicationsPage() {
               merchantId: "merchant-001",
               interestRate: selectedProduct.interestRate,
               minDeposit: selectedProduct.minDeposit || 100,
-              currency: "USD",
+              currency: "NGN",
             }}
             userId="user-001"
             onSuccess={(account) => {
@@ -349,7 +349,7 @@ export default function ApplicationsPage() {
               merchantId: "merchant-001",
               interestRate: selectedProduct.interestRate,
               maxLTV: selectedProduct.maxLTV || 80,
-              currency: "USD",
+              currency: "NGN",
             }}
             userId="user-001"
             onSuccess={(application) => {
@@ -367,7 +367,7 @@ export default function ApplicationsPage() {
               merchantId: "merchant-001",
               commodityType: selectedProduct.symbol || "XAU",
               unitPrice: selectedProduct.currentPrice || 2350,
-              currency: "USD",
+              currency: "NGN",
             }}
             userId="user-001"
             onSuccess={(purchase) => {

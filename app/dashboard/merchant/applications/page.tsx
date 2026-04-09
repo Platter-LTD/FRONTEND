@@ -259,7 +259,7 @@ export default function ApplicationsPage() {
     // Format currency
     const formatCurrency = (amount: number | undefined) => {
         if (!amount) return "N/A"
-        return `$${amount.toLocaleString()}`
+        return `NGN ${amount.toLocaleString()}`
     }
 
     return (

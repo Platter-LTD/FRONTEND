@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { useAppSelector } from "@/store/hooks"
 import { productApi } from "@/lib/services/product-api"
@@ -18,7 +18,7 @@ const formatMoney = (value: number | undefined) => {
   return new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 2 }).format(n)
 }
 
-export default function ProductOverviewStats() {
+function ProductOverviewStatsContent() {
   const searchParams = useSearchParams()
   const { selectedAppId } = useAppSelector((s) => s.merchantApps)
   const appId = searchParams.get("appId") || selectedAppId || null
@@ -81,5 +81,28 @@ export default function ProductOverviewStats() {
         ))}
       </div>
     </div>
+  )
+}
+
+function ProductOverviewStatsFallback() {
+  return (
+    <div className="bg-gray-900 rounded-lg p-8 mb-8">
+      <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 xl:grid-cols-5">
+        {["Requested", "Approved", "Total Transactions", "Total Savings", "Total Interest"].map((label) => (
+          <div key={label}>
+            <p className="text-gray-400 text-sm mb-2">{label}</p>
+            <p className="text-white text-2xl sm:text-3xl font-bold mb-1">Loading...</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+export default function ProductOverviewStats() {
+  return (
+    <Suspense fallback={<ProductOverviewStatsFallback />}>
+      <ProductOverviewStatsContent />
+    </Suspense>
   )
 }

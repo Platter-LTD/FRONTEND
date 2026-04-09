@@ -120,7 +120,7 @@ const SAVINGS_OPTIONS = [
   },
   {
     id: 'flex-dollar',
-    title: 'Flex Dollar',
+    title: 'Flex NGN',
     description: 'Flexible savings for emergencies. Free transfers, withdrawals etc. 8% p.a',
     rate: '2.00',
     icon: <Film className="w-6 h-6 text-orange-600" />,

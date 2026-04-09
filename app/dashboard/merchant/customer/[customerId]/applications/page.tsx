@@ -57,24 +57,24 @@ const FALLBACK_CUSTOMERS: Record<string, Customer> = {
 // Fallback mock applications
 const FALLBACK_APPLICATIONS: Record<string, Application[]> = {
     "cust-001": [
-        { id: "app-001", productName: "Personal Loan", productType: "loan", status: "approved", amount: 25000, currency: "USD", submittedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), reference: "LN-2024-001" },
-        { id: "app-002", productName: "High-Yield Savings", productType: "savings", status: "approved", amount: 10000, currency: "USD", submittedAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(), reference: "SV-2024-001" },
-        { id: "app-003", productName: "Home Mortgage", productType: "mortgage", status: "under_review", amount: 350000, currency: "USD", submittedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), reference: "MG-2024-001" },
+        { id: "app-001", productName: "Personal Loan", productType: "loan", status: "approved", amount: 25000, currency: "NGN", submittedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), reference: "LN-2024-001" },
+        { id: "app-002", productName: "High-Yield Savings", productType: "savings", status: "approved", amount: 10000, currency: "NGN", submittedAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(), reference: "SV-2024-001" },
+        { id: "app-003", productName: "Home Mortgage", productType: "mortgage", status: "under_review", amount: 350000, currency: "NGN", submittedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), reference: "MG-2024-001" },
     ],
     "cust-002": [
-        { id: "app-004", productName: "Business Loan", productType: "loan", status: "approved", amount: 75000, currency: "USD", submittedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), reference: "LN-2024-002" },
+        { id: "app-004", productName: "Business Loan", productType: "loan", status: "approved", amount: 75000, currency: "NGN", submittedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), reference: "LN-2024-002" },
     ],
     "cust-003": [
-        { id: "app-009", productName: "High-Yield Savings", productType: "savings", status: "approved", amount: 5000, currency: "USD", submittedAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(), reference: "SV-2024-003" },
+        { id: "app-009", productName: "High-Yield Savings", productType: "savings", status: "approved", amount: 5000, currency: "NGN", submittedAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(), reference: "SV-2024-003" },
     ],
     "cust-004": [
-        { id: "app-010", productName: "Home Mortgage", productType: "mortgage", status: "approved", amount: 450000, currency: "USD", submittedAt: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(), reference: "MG-2024-003" },
+        { id: "app-010", productName: "Home Mortgage", productType: "mortgage", status: "approved", amount: 450000, currency: "NGN", submittedAt: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(), reference: "MG-2024-003" },
     ],
     "cust-005": [
-        { id: "app-017", productName: "Personal Loan", productType: "loan", status: "pending", amount: 10000, currency: "USD", submittedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), reference: "LN-2024-006" },
+        { id: "app-017", productName: "Personal Loan", productType: "loan", status: "pending", amount: 10000, currency: "NGN", submittedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), reference: "LN-2024-006" },
     ],
     "cust-006": [
-        { id: "app-019", productName: "Home Mortgage", productType: "mortgage", status: "approved", amount: 320000, currency: "USD", submittedAt: new Date(Date.now() - 150 * 24 * 60 * 60 * 1000).toISOString(), reference: "MG-2024-004" },
+        { id: "app-019", productName: "Home Mortgage", productType: "mortgage", status: "approved", amount: 320000, currency: "NGN", submittedAt: new Date(Date.now() - 150 * 24 * 60 * 60 * 1000).toISOString(), reference: "MG-2024-004" },
     ],
 }
 
@@ -85,7 +85,7 @@ const transformApiApplication = (apiApp: ProductApplication): Application => {
         productType: apiApp.applicationType as Application["productType"],
         status: apiApp.status as Application["status"],
         amount: apiApp.applicationData?.amount || 0,
-        currency: apiApp.applicationData?.currency || "USD",
+        currency: apiApp.applicationData?.currency || "NGN",
         submittedAt: apiApp.submittedAt || apiApp.createdAt,
         reviewedAt: apiApp.reviewedAt,
         reference: apiApp.applicationData?.reference || apiApp.id,
@@ -325,28 +325,28 @@ export default function CustomerApplicationsPage() {
                     <LoanApplicationDrawer
                         isOpen={drawers.loanApplication}
                         onClose={() => closeDrawer("loanApplication")}
-                        product={{ id: selectedProduct.id, name: selectedProduct.name, merchantId: "merchant-001", interestRate: selectedProduct.interestRate, minAmount: selectedProduct.minAmount, maxAmount: selectedProduct.maxAmount, currency: "USD" }}
+                        product={{ id: selectedProduct.id, name: selectedProduct.name, merchantId: "merchant-001", interestRate: selectedProduct.interestRate, minAmount: selectedProduct.minAmount, maxAmount: selectedProduct.maxAmount, currency: "NGN" }}
                         userId={customerId}
                         onSuccess={(application) => { closeDrawer("loanApplication"); handleApplicationSuccess("loan", application?.id || application?.reference) }}
                     />
                     <SavingsApplicationDrawer
                         isOpen={drawers.savingsApplication}
                         onClose={() => closeDrawer("savingsApplication")}
-                        product={{ id: selectedProduct.id, name: selectedProduct.name, merchantId: "merchant-001", interestRate: selectedProduct.interestRate, minDeposit: selectedProduct.minDeposit || 100, currency: "USD" }}
+                        product={{ id: selectedProduct.id, name: selectedProduct.name, merchantId: "merchant-001", interestRate: selectedProduct.interestRate, minDeposit: selectedProduct.minDeposit || 100, currency: "NGN" }}
                         userId={customerId}
                         onSuccess={(account) => { closeDrawer("savingsApplication"); handleApplicationSuccess("savings", account?.id || account?.reference) }}
                     />
                     <MortgageApplicationDrawer
                         isOpen={drawers.mortgageApplication}
                         onClose={() => closeDrawer("mortgageApplication")}
-                        product={{ id: selectedProduct.id, name: selectedProduct.name, merchantId: "merchant-001", interestRate: selectedProduct.interestRate, maxLTV: selectedProduct.maxLTV || 80, currency: "USD" }}
+                        product={{ id: selectedProduct.id, name: selectedProduct.name, merchantId: "merchant-001", interestRate: selectedProduct.interestRate, maxLTV: selectedProduct.maxLTV || 80, currency: "NGN" }}
                         userId={customerId}
                         onSuccess={(application) => { closeDrawer("mortgageApplication"); handleApplicationSuccess("mortgage", application?.id || application?.reference) }}
                     />
                     <CommodityPurchaseDrawer
                         isOpen={drawers.commodityPurchase}
                         onClose={() => closeDrawer("commodityPurchase")}
-                        product={{ id: selectedProduct.id, name: selectedProduct.name, merchantId: "merchant-001", commodityType: selectedProduct.symbol || "XAU", unitPrice: selectedProduct.currentPrice || 2350, currency: "USD" }}
+                        product={{ id: selectedProduct.id, name: selectedProduct.name, merchantId: "merchant-001", commodityType: selectedProduct.symbol || "XAU", unitPrice: selectedProduct.currentPrice || 2350, currency: "NGN" }}
                         userId={customerId}
                         onSuccess={(purchase) => { closeDrawer("commodityPurchase"); handleApplicationSuccess("commodity", purchase?.id || purchase?.reference) }}
                     />
