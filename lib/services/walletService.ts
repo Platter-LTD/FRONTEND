@@ -62,7 +62,7 @@ function walletV1WalletsBase(): string {
   return `${WALLET_API_BASE}/api/v1/wallets`;
 }
 
-const DEFAULT_WALLET_CURRENCY = 'USD';
+const DEFAULT_WALLET_CURRENCY = 'NGN';
 
 /** Main spendable balance per wallet-ms docs (mainBalance with legacy balance fallback). */
 export function merchantWalletMainBalance(w: MerchantWallet | null | undefined): number {

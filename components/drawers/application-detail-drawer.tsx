@@ -146,9 +146,9 @@ export default function ApplicationDetailDrawer({
         })
     }
 
-    const formatCurrency = (amount: number | undefined, currency = "USD") => {
+    const formatCurrency = (amount: number | undefined, currency = "NGN") => {
         if (!amount) return "N/A"
-        const symbol = currency === "USD" ? "$" : currency === "GBP" ? "£" : "₦"
+        const symbol = currency === "NGN" ? "NGN " : currency === "GBP" ? "£" : "₦"
         return `${symbol}${amount.toLocaleString()}`
     }
 

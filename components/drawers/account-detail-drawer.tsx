@@ -126,8 +126,8 @@ export default function AccountDetailDrawer({
         }
     }
 
-    const formatCurrency = (amount: number, currency = "USD") => {
-        const symbol = currency === "USD" ? "$" : currency === "GBP" ? "£" : "₦"
+    const formatCurrency = (amount: number, currency = "NGN") => {
+        const symbol = currency === "NGN" ? "NGN " : currency === "GBP" ? "£" : "₦"
         return `${symbol}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
     }
 

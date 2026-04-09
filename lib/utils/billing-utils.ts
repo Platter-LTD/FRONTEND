@@ -6,7 +6,8 @@
 export function formatCurrency(amount: number, currency: string = 'NGN'): string {
     const symbols: Record<string, string> = {
         NGN: '₦',
-        USD: '$',
+        USD: 'NGN ',
+        NGN: 'NGN ',
         EUR: '€',
         GBP: '£',
     }

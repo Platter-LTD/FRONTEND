@@ -45,7 +45,7 @@ export function BillingUsageTab() {
         { name: 'API Calls', usage: totalPayments * 10, limit: 10000, unit: 'calls' },
         { name: 'Transactions', usage: loadedTransactions.length, limit: 1000, unit: 'txns' },
         { name: 'Data Transfer', usage: Math.round(totalTransfers * 2.5), limit: 100, unit: 'GB' },
-        { name: 'Volume Processed', usage: Math.round(totalAmount / 100), limit: 100000, unit: 'USD' },
+        { name: 'Volume Processed', usage: Math.round(totalAmount / 100), limit: 100000, unit: 'NGN' },
       ])
     } catch (err) {
       console.error('Failed to load usage data:', err)
@@ -55,7 +55,7 @@ export function BillingUsageTab() {
         { name: 'API Calls', usage: 0, limit: 10000, unit: 'calls' },
         { name: 'Transactions', usage: 0, limit: 1000, unit: 'txns' },
         { name: 'Data Transfer', usage: 0, limit: 100, unit: 'GB' },
-        { name: 'Volume Processed', usage: 0, limit: 100000, unit: 'USD' },
+        { name: 'Volume Processed', usage: 0, limit: 100000, unit: 'NGN' },
       ])
     } finally {
       setLoading(false)
@@ -126,7 +126,7 @@ export function BillingUsageTab() {
                   {transactions.slice(0, 5).map((txn) => (
                     <div key={txn.id} className="flex justify-between text-sm py-2 border-b border-gray-100">
                       <span className="capitalize">{txn.type}</span>
-                      <span className="font-medium">${txn.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                      <span className="font-medium">NGN {txn.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                     </div>
                   ))}
                 </div>

@@ -150,7 +150,7 @@ export default function CommodityPurchaseDrawer({
     }
   }
 
-  const currencySymbol = product.currency === "USD" ? "$" : product.currency === "GBP" ? "£" : "₦"
+  const currencySymbol = product.currency === "NGN" ? "NGN " : product.currency === "GBP" ? "£" : "₦"
   const priceChangePositive = (product.priceChange24h || 0) >= 0
 
   const breadcrumb = (

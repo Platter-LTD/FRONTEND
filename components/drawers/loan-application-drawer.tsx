@@ -179,7 +179,7 @@ export default function LoanApplicationDrawer({
     }
   }
 
-  const currencySymbol = product.currency === "USD" ? "$" : product.currency === "GBP" ? "£" : "₦"
+  const currencySymbol = product.currency === "NGN" ? "NGN " : product.currency === "GBP" ? "£" : "₦"
 
   const breadcrumb = (
     <div className="flex items-center gap-2 text-sm text-gray-500 mb-6">

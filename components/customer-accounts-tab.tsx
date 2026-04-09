@@ -37,7 +37,7 @@ const FALLBACK_ACCOUNTS: Account[] = [
         userId: "cust-001",
         type: "savings",
         balance: 15000,
-        currency: "USD",
+        currency: "NGN",
         status: "active",
         metadata: { interestRate: 5.5 },
         createdAt: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(),
@@ -48,7 +48,7 @@ const FALLBACK_ACCOUNTS: Account[] = [
         userId: "cust-001",
         type: "loan",
         balance: 25000,
-        currency: "USD",
+        currency: "NGN",
         status: "active",
         metadata: { interestRate: 12.5, term: 24, monthlyPayment: 1180 },
         createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
@@ -59,7 +59,7 @@ const FALLBACK_ACCOUNTS: Account[] = [
         userId: "cust-001",
         type: "mortgage",
         balance: 350000,
-        currency: "USD",
+        currency: "NGN",
         status: "active",
         metadata: { interestRate: 6.5, term: 25, propertyType: "Residential" },
         createdAt: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString(),
@@ -70,7 +70,7 @@ const FALLBACK_ACCOUNTS: Account[] = [
         userId: "cust-001",
         type: "commodity",
         balance: 8500,
-        currency: "USD",
+        currency: "NGN",
         status: "active",
         metadata: { commodityType: "Gold", quantity: 3.5, unitPrice: 2428 },
         createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
@@ -181,8 +181,8 @@ export default function CustomerAccountsTab({ customerId }: CustomerAccountsTabP
         }
     }
 
-    const formatCurrency = (amount: number, currency = "USD") => {
-        const symbol = currency === "USD" ? "$" : currency === "GBP" ? "£" : "₦"
+    const formatCurrency = (amount: number, currency = "NGN") => {
+        const symbol = currency === "NGN" ? "NGN " : currency === "GBP" ? "£" : "₦"
         return `${symbol}${amount.toLocaleString()}`
     }
 

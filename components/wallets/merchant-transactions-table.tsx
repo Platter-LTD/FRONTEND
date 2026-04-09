@@ -23,7 +23,7 @@ function formatWhen(iso: string | undefined) {
 export function MerchantTransactionsTable({
   transactions,
   loading,
-  currency = "USD",
+  currency = "NGN",
   searchTerm,
   onSearchChange,
   emptyMessage = "No transactions yet",
@@ -35,7 +35,7 @@ export function MerchantTransactionsTable({
   onSearchChange: (v: string) => void
   emptyMessage?: string
 }) {
-  const sym = currency === "USD" ? "$" : ""
+  const sym = currency === "NGN" ? "NGN " : ""
 
   const filtered = transactions.filter((tx) => {
     const q = searchTerm.toLowerCase().trim()
