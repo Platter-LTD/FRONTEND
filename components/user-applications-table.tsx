@@ -75,7 +75,7 @@ export default function UserApplicationsTable({
 
   // Format currency
   const formatCurrency = (amount: number, currency: string) => {
-    const symbol = currency === "USD" ? "$" : currency === "GBP" ? "£" : "₦"
+    const symbol = currency === "NGN" ? "NGN " : currency === "GBP" ? "£" : "₦"
     return `${symbol}${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
   }
 

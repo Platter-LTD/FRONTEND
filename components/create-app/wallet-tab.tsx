@@ -55,7 +55,7 @@ export function WalletTab() {
   const formatted = mainBal.toFixed(2).split(".")
   const dollars = Number(formatted[0]).toLocaleString()
   const cents = formatted[1] || "00"
-  const currency = treasury?.currency || "USD"
+  const currency = treasury?.currency || "NGN"
 
   if (!merchantId) {
     return (
@@ -103,7 +103,7 @@ export function WalletTab() {
                 {showBalance ? (
                   <>
                     <span className="text-white text-5xl font-semibold">
-                      {currency === "USD" ? "$ " : ""}
+                      {currency === "NGN" ? "NGN " : ""}
                       {dollars}
                     </span>
                     <span className="text-white text-2xl">.{cents}</span>
