@@ -9,6 +9,6 @@ export function getAccountMsPlataBaseUrl(): string {
     process.env.ACCOUNT_MS_PLATA_URL ||
     process.env.NEXT_PUBLIC_ACCOUNT_MS_PLATA_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "https://account-ms.fly.dev"
+    "https://account-ms-plata.fly.dev"
   ).replace(/\/$/, "")
 }

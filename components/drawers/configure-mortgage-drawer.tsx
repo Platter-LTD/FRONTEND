@@ -5,6 +5,11 @@ import { Upload, X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import { fileToBase64 } from "@/lib/fileUtils"
+import {
+  serializeOtherRequirementsForSubmit,
+  shouldUseOtherRequirementFileUpload,
+  type OtherRequirementDraft,
+} from "@/lib/otherRequirementPayload"
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import type { MortgageConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
@@ -45,11 +50,7 @@ interface MortgageTypeItem {
   description: string
 }
 
-interface OtherRequirementItem {
-  type: string
-  contentType: string
-  description: string
-}
+type OtherRequirementItem = OtherRequirementDraft
 
 interface FeeItem {
   name: string
@@ -131,8 +132,10 @@ export default function ConfigureMortgageDrawer({
   const [otherRequirementType, setOtherRequirementType] = useState("")
   const [otherRequirementContentType, setOtherRequirementContentType] = useState("")
   const [otherRequirementDescription, setOtherRequirementDescription] = useState("")
+  const [otherRequirementFile, setOtherRequirementFile] = useState<File | null>(null)
   const [otherRequirements, setOtherRequirements] = useState<OtherRequirementItem[]>([])
   const documentsInputRef = useRef<HTMLInputElement>(null)
+  const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
 
   const [contractId, setContractId] = useState("")
   const [airSignSecretKey, setAirSignSecretKey] = useState("")
@@ -327,19 +330,51 @@ export default function ConfigureMortgageDrawer({
     })
   }
 
+  const handleOtherRequirementTypeChange = (v: string) => {
+    setOtherRequirementType(v)
+    if (!shouldUseOtherRequirementFileUpload(v, otherRequirementContentType)) {
+      setOtherRequirementFile(null)
+      setOtherRequirementDescription("")
+    }
+  }
+
+  const handleOtherRequirementContentTypeChange = (v: string) => {
+    setOtherRequirementContentType(v)
+    if (!shouldUseOtherRequirementFileUpload(otherRequirementType, v)) {
+      setOtherRequirementFile(null)
+      setOtherRequirementDescription("")
+    }
+  }
+
   const addOtherRequirement = () => {
-    if (!otherRequirementType || !otherRequirementContentType || !otherRequirementDescription.trim()) return
-    setOtherRequirements((prev) => [
-      ...prev,
-      {
-        type: otherRequirementType,
-        contentType: otherRequirementContentType,
-        description: otherRequirementDescription.trim(),
-      },
-    ])
+    if (!otherRequirementType || !otherRequirementContentType) return
+    const docType = shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType)
+    if (docType) {
+      if (!otherRequirementFile) return
+      setOtherRequirements((prev) => [
+        ...prev,
+        {
+          type: otherRequirementType,
+          contentType: otherRequirementContentType,
+          description: otherRequirementDescription.trim() || otherRequirementFile.name,
+          file: otherRequirementFile,
+        },
+      ])
+    } else {
+      if (!otherRequirementDescription.trim()) return
+      setOtherRequirements((prev) => [
+        ...prev,
+        {
+          type: otherRequirementType,
+          contentType: otherRequirementContentType,
+          description: otherRequirementDescription.trim(),
+        },
+      ])
+    }
     setOtherRequirementType("")
     setOtherRequirementContentType("")
     setOtherRequirementDescription("")
+    setOtherRequirementFile(null)
   }
 
   const removeOtherRequirement = (index: number) => {
@@ -492,6 +527,8 @@ export default function ConfigureMortgageDrawer({
       previewImage: item.previewImages[0] ?? null,
     }))
 
+    const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
+
       onSubmit({
         ...mortgageData,
       name,
@@ -522,7 +559,7 @@ export default function ConfigureMortgageDrawer({
       equityRequirement,
       securityRequirements: selectedSecurities,
       documentRequirements: documentsPayload,
-      otherRequirements,
+      otherRequirements: otherRequirementsPayload,
       contractId,
       airSignSecretKey,
       airSignUid,
@@ -536,8 +573,11 @@ export default function ConfigureMortgageDrawer({
   }
 
   const otherRequirementSummary = (item: OtherRequirementItem) => {
-    const suffix = item.contentType === "Document upload" ? "Upload Required" : item.contentType
-    return `${item.type} → ${item.description} → ${suffix}`
+    const docish =
+      !!item.file || item.contentType.toLowerCase().includes("document")
+    const suffix = docish ? "Upload" : item.contentType
+    const main = item.file ? item.file.name : item.description
+    return `${item.type} → ${main} → ${suffix}`
   }
 
   return (
@@ -740,31 +780,79 @@ export default function ConfigureMortgageDrawer({
 
             <div className="space-y-3">
               <p className="text-sm font-medium text-gray-700">Other Requirements</p>
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_1fr]">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-start">
                 <ProductConfigSelect
                   label="Select requirement type"
                   placeholder="Select requirement type"
                   value={otherRequirementType}
                   options={otherRequirementOptions}
-                  onChange={setOtherRequirementType}
+                  onChange={handleOtherRequirementTypeChange}
                 />
                 <ProductConfigSelect
                   label="Content Type"
                   placeholder="Content type"
                   value={otherRequirementContentType}
                   options={contentTypeOptions}
-                  onChange={setOtherRequirementContentType}
+                  onChange={handleOtherRequirementContentTypeChange}
                 />
-                <ProductConfigInput
-                  label="Description"
-                  placeholder="Description"
-                  value={otherRequirementDescription}
-                  onChange={setOtherRequirementDescription}
-                        />
-                      </div>
-              <button type="button" onClick={addOtherRequirement} className="text-sm font-medium text-[#9A813F] hover:underline">
-                Add +
-              </button>
+                {shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType) ? (
+                  <div className="min-w-0 w-full">
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700" htmlFor="mortgage-other-requirement-file">
+                        Document
+                      </label>
+                      <button
+                        id="mortgage-other-requirement-file"
+                        type="button"
+                        onClick={() => otherRequirementUploadRef.current?.click()}
+                        title={otherRequirementFile?.name || undefined}
+                        aria-label="Choose document file"
+                        className="flex h-10 w-full min-w-0 max-w-full items-center gap-2 rounded-md border border-[#e5e7eb] bg-white px-3 text-left text-sm outline-none transition hover:bg-gray-50/80 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+                      >
+                        <span
+                          className={`min-w-0 flex-1 truncate ${otherRequirementFile ? "font-medium text-gray-900" : "text-gray-400"}`}
+                        >
+                          {otherRequirementFile ? otherRequirementFile.name : "No file selected"}
+                        </span>
+                        <Upload className="h-4 w-4 shrink-0 text-[#9A813F]" aria-hidden />
+                      </button>
+                    </div>
+                    <input
+                      ref={otherRequirementUploadRef}
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,image/*"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null
+                        setOtherRequirementFile(f)
+                        if (f && !otherRequirementDescription.trim()) {
+                          setOtherRequirementDescription(f.name)
+                        }
+                        e.target.value = ""
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <ProductConfigInput
+                    label="Description"
+                    placeholder="Description"
+                    value={otherRequirementDescription}
+                    onChange={setOtherRequirementDescription}
+                  />
+                )}
+                <div className="space-y-2">
+                  <span className="invisible block text-sm font-medium text-gray-700 select-none" aria-hidden>
+                    Select requirement type
+                  </span>
+                  <Button
+                    type="button"
+                    onClick={addOtherRequirement}
+                    className="h-10 bg-[#9A813F] text-white hover:bg-[#8A7335]"
+                  >
+                    Add
+                  </Button>
+                </div>
+              </div>
 
               {otherRequirements.length > 0 && (
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">

@@ -1,4 +1,5 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit"
+import { toastApiError, toastApiSuccess } from "@/lib/apiToast"
 import { apiClient } from "@/lib/api"
 
 const STORAGE_KEY = "spring_merchant_selected_app_v1"
@@ -170,6 +171,8 @@ const merchantAppsSlice = createSlice({
         state.loading = false
         state.fetchAttempted = true
         state.apps = action.payload
+        const n = action.payload.length
+        toastApiSuccess(n ? `Apps loaded (${n})` : "Apps loaded (none yet)", { id: "merchant-apps-ok" })
 
         if (state.selectedAppId && action.payload.length > 0) {
           const still = action.payload.find((a) => a.id === state.selectedAppId)
@@ -191,6 +194,7 @@ const merchantAppsSlice = createSlice({
         state.loading = false
         state.fetchAttempted = true
         state.error = action.payload || "Failed to load apps"
+        toastApiError(action.payload || "Failed to load apps", { id: "merchant-apps-err" })
       })
   },
 })

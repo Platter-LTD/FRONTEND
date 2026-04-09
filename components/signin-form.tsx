@@ -10,8 +10,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
-import { ComplianceService } from "@/lib/services/complianceService"
-import { COMPLIANCE_COMPLETE_KEY } from "@/lib/compliance"
+import { ComplianceService, COMPLIANCE_COMPLETE_KEY } from "@/lib/services/complianceService"
 
 export function SigninForm() {
   const [showPassword, setShowPassword] = useState(false)

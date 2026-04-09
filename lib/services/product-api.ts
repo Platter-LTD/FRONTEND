@@ -75,6 +75,8 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     interestMethod: configuration?.interestMethod,
     allowMoratorium: configuration?.allowMoratorium ?? configuration?.moratoriumEnabled,
     moratoriumDuration: configuration?.moratoriumDuration ?? configuration?.moratoriumDays,
+    moratoriumSelectDuration: configuration?.moratoriumSelectDuration,
+    moratoriumDurationOf: configuration?.moratoriumDurationOf,
     moratoriumType: mapMoratoriumType(configuration?.moratoriumType),
     repaymentWorkflow: mapRepaymentWorkflow(configuration?.repaymentWorkflow),
     repaymentSchedule: configuration?.repaymentSchedule,

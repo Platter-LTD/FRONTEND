@@ -64,7 +64,7 @@ export function ProductConfigInput({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 w-full space-y-2">
       {label ? <label className="block text-sm font-medium text-gray-700">{label}</label> : null}
       <input
         type={type}
@@ -73,7 +73,7 @@ export function ProductConfigInput({
         inputMode={numericOnly ? "decimal" : undefined}
         disabled={disabled}
         placeholder={placeholder}
-        className="h-10 w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+        className="h-10 min-w-0 w-full max-w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
       />
     </div>
   )
@@ -95,11 +95,11 @@ export function ProductConfigSelect({
   onChange,
 }: ProductConfigSelectProps) {
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 w-full space-y-2">
       {label ? <label className="block text-sm font-medium text-gray-700">{label}</label> : null}
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
-          className="h-10 data-[size=default]:h-10 w-full rounded-md border border-[#e5e7eb] bg-white px-3 py-0 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 shadow-none"
+          className="h-10 min-w-0 w-full max-w-full data-[size=default]:h-10 rounded-md border border-[#e5e7eb] bg-white px-3 py-0 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 shadow-none"
         >
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>

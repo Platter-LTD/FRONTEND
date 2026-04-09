@@ -2,14 +2,11 @@
  * Admin Service
  * Wraps Spring's account-ms and wallet-ms admin endpoints.
  *
- * Spring admin APIs live at:
- *   NEXT_PUBLIC_SPRING_ACCOUNT_SERVICE_URL → account-ms.fly.dev
- *   NEXT_PUBLIC_WALLET_SERVICE_URL → wallet-ms.fly.dev
- *   NEXT_PUBLIC_SPRING_PRODUCT_SERVICE_URL → product-ms.fly.dev
+ * Admin calls use `NEXT_PUBLIC_API_URL` (e.g. https://account-ms-plata.fly.dev) unless overridden below.
  */
 
 const ADMIN_ACCOUNT_BASE =
-    process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
+    process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
 const ADMIN_WALLET_BASE =
     process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
 const ADMIN_PRODUCT_BASE =

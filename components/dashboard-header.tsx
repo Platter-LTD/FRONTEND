@@ -26,11 +26,13 @@ const routeTitles: Record<string, { title: string; subtitle: string }> = {
 import { productApi } from "@/lib/services/product-api"
 import { useAuth } from "@/hooks/useAuth"
 import { getAccessToken } from "@/lib/cookieAuth"
+import { useAppSelector } from "@/store/hooks"
 
 export const DashboardHeader: React.FC = () => {
   const pathname = usePathname()
   const router = useRouter()
   const { user } = useAuth()
+  const reduxApps = useAppSelector((s) => s.merchantApps.apps)
   const [dynamicApps, setDynamicApps] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [currentProduct, setCurrentProduct] = useState<any>(null)
@@ -75,7 +77,9 @@ export const DashboardHeader: React.FC = () => {
 
           if (data.success && data.data) {
             // Filter products by type
-            const normalizedType = productTypeFromDetails?.charAt(0).toUpperCase() + productTypeFromDetails?.slice(1).toLowerCase()
+            const normalizedType = productTypeFromDetails
+              ? productTypeFromDetails.charAt(0).toUpperCase() + productTypeFromDetails.slice(1).toLowerCase()
+              : ""
             const filteredProducts = data.data.filter((p: any) => p.type === normalizedType)
             setProducts(filteredProducts)
 
@@ -118,7 +122,20 @@ export const DashboardHeader: React.FC = () => {
     }
   }
 
-  const currentApp = dynamicApps.find((app) => app.id === currentAppId) || dynamicApps[0] || { id: '', name: 'No App Selected' }
+  const resolveAppLabel = (app: { id?: string; name?: string; alias?: string } | null | undefined) => {
+    if (!app?.id) return "No app selected"
+    const raw = app.name
+    if (raw && String(raw).toLowerCase() !== "anonymous") return String(raw)
+    const fromRedux = reduxApps.find((a) => a.id === app.id)
+    if (fromRedux?.name && fromRedux.name.toLowerCase() !== "anonymous") return fromRedux.name
+    if (app.alias) return String(app.alias)
+    return app.id
+  }
+
+  const currentAppRaw = dynamicApps.find((app) => app.id === currentAppId) || dynamicApps[0] || null
+  const currentApp = currentAppRaw
+    ? { ...currentAppRaw, name: resolveAppLabel(currentAppRaw) }
+    : { id: "", name: "No app selected" }
 
   const handleAppSwitch = (appId: string) => {
     const currentPath =
@@ -152,7 +169,7 @@ export const DashboardHeader: React.FC = () => {
                   variant="outline"
                   className="bg-[#8B7355] text-white hover:bg-[#7A6449] hover:text-white border-none gap-2 text-sm h-8"
                 >
-                  {currentApp?.name || 'No App Selected'}
+                  {currentApp?.name || "No app selected"}
                   <ChevronDown className="h-3 w-3" />
                 </Button>
               </DropdownMenuTrigger>
@@ -168,7 +185,7 @@ export const DashboardHeader: React.FC = () => {
                       onClick={() => handleAppSwitch(app.id)}
                       className={currentApp?.id === app.id ? "bg-[#F0ECE2]" : ""}
                     >
-                      {app.name}
+                      {resolveAppLabel(app)}
                     </DropdownMenuItem>
                   ))
                 )}
@@ -255,7 +272,10 @@ export const DashboardHeader: React.FC = () => {
                   router.push(`/dashboard/create-app/all-apps/${currentAppId}/products/${productTypeFromDetails}`)
                 }}
               >
-                {productTypeFromDetails?.charAt(0).toUpperCase() + productTypeFromDetails?.slice(1)} Products
+                {productTypeFromDetails
+                  ? productTypeFromDetails.charAt(0).toUpperCase() + productTypeFromDetails.slice(1)
+                  : ""}{" "}
+                Products
               </span>
               <span>/</span>
               <span className="text-gray-900 font-medium">{currentProduct?.name || "Loading..."}</span>
@@ -272,7 +292,10 @@ export const DashboardHeader: React.FC = () => {
               <ChevronLeft className="h-5 w-5" />
             </Button>
             <h1 className="text-xl font-semibold">
-              {productTypeFromList?.charAt(0).toUpperCase() + productTypeFromList?.slice(1)} Products
+              {productTypeFromList
+                ? productTypeFromList.charAt(0).toUpperCase() + productTypeFromList.slice(1)
+                : ""}{" "}
+              Products
             </h1>
           </div>
         ) : isAppDetailsPage ? (

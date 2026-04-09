@@ -10,11 +10,11 @@ import { merchantWalletMainBalance } from "@/lib/services/walletService"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import {
   fetchAppMerchantWalletsThunk,
-  fetchOperationTransactionsThunk,
+  fetchKycTransactionsThunk,
 } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
 
-export default function RepaymentWalletPage() {
+export default function KycWalletPage() {
   const params = useParams()
   const appId = params.id as string
   const dispatch = useAppDispatch()
@@ -31,17 +31,17 @@ export default function RepaymentWalletPage() {
   useEffect(() => {
     if (!merchantId || !appId) return
     void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
-    void dispatch(fetchOperationTransactionsThunk({ merchantId, appId }))
+    void dispatch(fetchKycTransactionsThunk({ merchantId, appId }))
   }, [dispatch, merchantId, appId])
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
 
-  const operation = inScope ? walletState.operation : null
-  const txs = inScope ? walletState.operationTransactions : []
+  const kyc = inScope ? walletState.kyc : null
+  const txs = inScope ? walletState.kycTransactions : []
   const walletsLoading = inScope && walletState.walletsLoading
-  const txsLoading = inScope && walletState.operationTxLoading
+  const txsLoading = inScope && walletState.kycTxLoading
   const walletsError = inScope ? walletState.walletsError : null
-  const txsError = inScope ? walletState.operationTxError : null
+  const txsError = inScope ? walletState.kycTxError : null
 
   const formatBalance = (balance: number) => {
     const formatted = balance.toFixed(2)
@@ -49,9 +49,9 @@ export default function RepaymentWalletPage() {
     return { dollars: Number(dollars).toLocaleString(), cents }
   }
 
-  const mainBal = merchantWalletMainBalance(operation)
+  const mainBal = merchantWalletMainBalance(kyc)
   const balance = formatBalance(mainBal)
-  const currency = operation?.currency || "USD"
+  const currency = kyc?.currency || "USD"
 
   const bannerError = useMemo(() => {
     if (!merchantId) return "No merchant ID found. Please sign in again."
@@ -60,7 +60,7 @@ export default function RepaymentWalletPage() {
 
   return (
     <div className="flex-1 bg-white p-8">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">Repayment Wallet</h1>
+      <h1 className="text-2xl font-semibold text-gray-900 mb-6">KYC Wallet</h1>
 
       {bannerError && (
         <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6">
@@ -71,7 +71,7 @@ export default function RepaymentWalletPage() {
       <div className="bg-black rounded-lg p-8 mb-8 relative overflow-hidden">
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-gray-400 text-sm mb-2">Operation wallet — main balance</p>
+            <p className="text-gray-400 text-sm mb-2">KYC wallet — main balance</p>
             {walletsLoading ? (
               <div className="flex items-baseline gap-1">
                 <Skeleton className="h-12 w-32 bg-gray-600" />

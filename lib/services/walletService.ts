@@ -1,10 +1,78 @@
 // Wallet Service - Comprehensive API wrapper for wallet operations
 // Uses fetchWithAuth so 401 triggers silent refresh then retry (no logout on first 401).
 
-import { fetchWithAuth } from '@/lib/fetchWithAuth';
+import { fetchWithAuth, type FetchWithAuthOptions } from '@/lib/fetchWithAuth';
+import { getWalletMsRoleHeaders } from '@/lib/walletMsRoleHeaders';
 
-const WALLET_API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
-const WALLET_API_V1 = `${WALLET_API_BASE.replace(/\/+$/, "")}/api/v1`;
+export function walletMessageFromBody(data: unknown): string {
+  if (!data || typeof data !== 'object') return '';
+  const d = data as Record<string, unknown>;
+  const m = d.message ?? d.error ?? d.detail;
+  if (m == null || m === '') return '';
+  return String(m);
+}
+
+function logWalletMsResponse(res: Response, input: string | URL, data: unknown) {
+  const url = res.url || String(input);
+  if (!res.ok) {
+    console.warn('[wallet-ms]', res.status, url, data);
+    return;
+  }
+  if (process.env.NODE_ENV === 'development') {
+    console.info('[wallet-ms]', res.status, url, data);
+  }
+}
+
+/** All wallet-ms calls: Bearer + role hints + response logging (clone; body still readable by caller). */
+async function walletFetch(input: string | URL, init: FetchWithAuthOptions = {}): Promise<Response> {
+  const roleHeaders = typeof window !== 'undefined' ? getWalletMsRoleHeaders() : {};
+  const res = await fetchWithAuth(input, {
+    ...init,
+    additionalHeaders: { ...roleHeaders, ...init.additionalHeaders },
+  });
+
+  const c = res.clone();
+  void (async () => {
+    try {
+      const data = await c.json();
+      logWalletMsResponse(res, input, data);
+    } catch {
+      try {
+        const t = await res.clone().text();
+        if (!res.ok) console.warn('[wallet-ms]', res.status, String(input), t.slice(0, 500));
+      } catch {
+        /* ignore */
+      }
+    }
+  })();
+
+  return res;
+}
+
+/** Upstream base for server-side calls only. Browser uses same-origin `/api/wallets/*` proxy (CORS + IPv4). */
+const WALLET_API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(
+  /\/+$/,
+  '',
+);
+
+function walletV1WalletsBase(): string {
+  if (typeof window !== 'undefined') {
+    return '/api/wallets';
+  }
+  return `${WALLET_API_BASE}/api/v1/wallets`;
+}
+
+const DEFAULT_WALLET_CURRENCY = 'USD';
+
+/** Main spendable balance per wallet-ms docs (mainBalance with legacy balance fallback). */
+export function merchantWalletMainBalance(w: MerchantWallet | null | undefined): number {
+  if (!w) return 0;
+  const main = w.mainBalance;
+  if (typeof main === 'number' && !Number.isNaN(main)) return main;
+  const leg = w.balance;
+  if (typeof leg === 'number' && !Number.isNaN(leg)) return leg;
+  return 0;
+}
 
 // Types
 export interface Wallet {
@@ -55,6 +123,13 @@ export interface WalletApiResponse<T> {
   error?: string;
 }
 
+/** GET /wallets/merchant/:id/all may return any subset of the three app-scoped wallets. */
+export type MerchantWalletsBundle = Partial<{
+  treasury: MerchantWallet;
+  operation: MerchantWallet;
+  kyc: MerchantWallet;
+}>;
+
 // Merchant Wallet Operations
 export const merchantWalletApi = {
   /**
@@ -63,13 +138,15 @@ export const merchantWalletApi = {
   async createMerchantWallet(
     merchantId: string,
     walletType: 'TREASURY' | 'OPERATION' | 'KYC',
-    appId?: string
+    appId?: string,
+    currency: string = DEFAULT_WALLET_CURRENCY,
   ) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/merchant`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/merchant`, {
       method: 'POST',
       body: JSON.stringify({
         merchantId,
         merchantWalletType: walletType,
+        currency,
         ...(appId ? { appId } : {}),
       }),
     });
@@ -77,7 +154,7 @@ export const merchantWalletApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to create merchant wallet');
+      throw new Error(walletMessageFromBody(data) || 'Failed to create merchant wallet');
     }
 
     return data as WalletApiResponse<MerchantWallet>;
@@ -86,16 +163,20 @@ export const merchantWalletApi = {
   /**
    * Create all merchant wallets (Treasury, Operation, KYC)
    */
-  async createAllMerchantWallets(merchantId: string, appId?: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/merchant/all`, {
+  async createAllMerchantWallets(merchantId: string, appId?: string, currency: string = DEFAULT_WALLET_CURRENCY) {
+    const response = await walletFetch(`${walletV1WalletsBase()}/merchant/all`, {
       method: 'POST',
-      body: JSON.stringify({ merchantId, ...(appId ? { appId } : {}) }),
+      body: JSON.stringify({
+        merchantId,
+        currency,
+        ...(appId ? { appId } : {}),
+      }),
     });
 
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to create merchant wallets');
+      throw new Error(walletMessageFromBody(data) || 'Failed to create merchant wallets');
     }
 
     return data as WalletApiResponse<{ treasury: MerchantWallet; operation: MerchantWallet; kyc: MerchantWallet }>;
@@ -110,14 +191,14 @@ export const merchantWalletApi = {
     appId?: string
   ) {
     const query = appId ? `?appId=${encodeURIComponent(appId)}` : '';
-    const response = await fetchWithAuth(
-      `${WALLET_API_V1}/wallets/merchant/${merchantId}/type/${walletType}${query}`
+    const response = await walletFetch(
+      `${walletV1WalletsBase()}/merchant/${merchantId}/type/${walletType}${query}`
     );
 
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch merchant wallet');
+      throw new Error(walletMessageFromBody(data) || 'Failed to fetch merchant wallet');
     }
 
     // Normalize response: API returns { data: { wallet: {...} } }
@@ -138,23 +219,37 @@ export const merchantWalletApi = {
    */
   async getAllMerchantWallets(merchantId: string, appId?: string) {
     const query = appId ? `?appId=${encodeURIComponent(appId)}` : '';
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/merchant/${merchantId}/all${query}`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/merchant/${merchantId}/all${query}`, {
     });
 
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch merchant wallets');
+      throw new Error(walletMessageFromBody(data) || 'Failed to fetch merchant wallets');
     }
 
-    return data as WalletApiResponse<{ treasury: MerchantWallet; operation: MerchantWallet; kyc: MerchantWallet }>;
+    const inner = data.data ?? data;
+    const bundle =
+      inner?.treasury || inner?.operation || inner?.kyc
+        ? inner
+        : inner?.wallets ?? inner;
+
+    if (bundle?.treasury || bundle?.operation || bundle?.kyc) {
+      return {
+        success: data.success !== false,
+        data: bundle as MerchantWalletsBundle,
+        message: data.message,
+      };
+    }
+
+    return data as WalletApiResponse<MerchantWalletsBundle>;
   },
 
   /**
    * Update merchant wallet balance
    */
   async updateMerchantWalletBalance(merchantId: string, walletType: string, amount: number) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/merchant/balance`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/merchant/balance`, {
       method: 'PUT',
       body: JSON.stringify({ merchantId, walletType, amount }),
     });
@@ -162,7 +257,7 @@ export const merchantWalletApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to update merchant wallet balance');
+      throw new Error(walletMessageFromBody(data) || 'Failed to update merchant wallet balance');
     }
 
     return data as WalletApiResponse<MerchantWallet>;
@@ -175,7 +270,7 @@ export const userWalletApi = {
    * Create a user wallet
    */
   async createUserWallet(userId: string, merchantId: string, description?: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/user`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/user`, {
       method: 'POST',
       body: JSON.stringify({ userId, merchantId, description }),
     });
@@ -183,7 +278,7 @@ export const userWalletApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to create user wallet');
+      throw new Error(walletMessageFromBody(data) || 'Failed to create user wallet');
     }
 
     return data as WalletApiResponse<Wallet>;
@@ -193,13 +288,13 @@ export const userWalletApi = {
    * Get user wallet
    */
   async getUserWallet(userId: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/user/${userId}`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/user/${userId}`, {
     });
 
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch user wallet');
+      throw new Error(walletMessageFromBody(data) || 'Failed to fetch user wallet');
     }
 
     return data as WalletApiResponse<Wallet>;
@@ -209,7 +304,7 @@ export const userWalletApi = {
    * Update user wallet balance
    */
   async updateUserWalletBalance(userId: string, amount: number, description?: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/user/${userId}/balance`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/user/${userId}/balance`, {
       method: 'PUT',
       body: JSON.stringify({ amount, description }),
     });
@@ -217,7 +312,7 @@ export const userWalletApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to update user wallet balance');
+      throw new Error(walletMessageFromBody(data) || 'Failed to update user wallet balance');
     }
 
     return data as WalletApiResponse<Wallet>;
@@ -246,13 +341,13 @@ export const userWalletApi = {
       });
     }
 
-    const url = `${WALLET_API_V1}/wallets/user/${userId}/transactions?${queryParams.toString()}`;
-    const response = await fetchWithAuth(url, {});
+    const url = `${walletV1WalletsBase()}/user/${userId}/transactions?${queryParams.toString()}`;
+    const response = await walletFetch(url, {});
 
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch user transactions');
+      throw new Error(walletMessageFromBody(data) || 'Failed to fetch user transactions');
     }
 
     return data as WalletApiResponse<Transaction[]>;
@@ -269,7 +364,7 @@ export const userWalletApi = {
       description: string;
     }
   ) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/user/${userId}/transfer`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/user/${userId}/transfer`, {
       method: 'POST',
       body: JSON.stringify(transferData),
     });
@@ -277,7 +372,7 @@ export const userWalletApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to transfer funds');
+      throw new Error(walletMessageFromBody(data) || 'Failed to transfer funds');
     }
 
     return data as WalletApiResponse<{ wallet: Wallet; transaction: Transaction }>;
@@ -298,7 +393,7 @@ export const userWalletApi = {
       apiKey?: string;
     }
   ) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/user/${userId}/api-call`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/user/${userId}/api-call`, {
       method: 'POST',
       body: JSON.stringify(apiCallData),
     });
@@ -306,7 +401,7 @@ export const userWalletApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to make API call');
+      throw new Error(walletMessageFromBody(data) || 'Failed to make API call');
     }
 
     return data as WalletApiResponse<{ wallet: Wallet; transaction: Transaction; apiResponse: any }>;
@@ -316,13 +411,13 @@ export const userWalletApi = {
    * Get all user wallets for a merchant
    */
   async getUserWalletsByMerchant(merchantId: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/merchant/${merchantId}/users`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/merchant/${merchantId}/users`, {
     });
 
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch user wallets');
+      throw new Error(walletMessageFromBody(data) || 'Failed to fetch user wallets');
     }
 
     return data as WalletApiResponse<Wallet[]>;
@@ -335,7 +430,7 @@ export const walletTransferApi = {
    * Transfer from Operation wallet to KYC wallet
    */
   async transferOperationToKyc(merchantId: string, amount: number, description: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/operation-to-kyc`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/operation-to-kyc`, {
       method: 'POST',
       body: JSON.stringify({ merchantId, amount, description }),
     });
@@ -343,7 +438,7 @@ export const walletTransferApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to transfer funds');
+      throw new Error(walletMessageFromBody(data) || 'Failed to transfer funds');
     }
 
     return data as WalletApiResponse<{
@@ -357,7 +452,7 @@ export const walletTransferApi = {
    * Transfer from KYC wallet to Operation wallet
    */
   async transferKycToOperation(merchantId: string, amount: number, description: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/kyc-to-operation`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/kyc-to-operation`, {
       method: 'POST',
       body: JSON.stringify({ merchantId, amount, description }),
     });
@@ -365,7 +460,7 @@ export const walletTransferApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to transfer funds');
+      throw new Error(walletMessageFromBody(data) || 'Failed to transfer funds');
     }
 
     return data as WalletApiResponse<{
@@ -390,6 +485,8 @@ export const transactionApi = {
       status?: string;
       startDate?: string;
       endDate?: string;
+      /** When set, scopes results to this app’s merchant wallets (if supported by wallet-ms). */
+      appId?: string;
     }
   ) {
     const queryParams = new URLSearchParams();
@@ -401,19 +498,27 @@ export const transactionApi = {
       });
     }
 
-    const url = `${WALLET_API_V1}/wallets/treasury/${merchantId}/transactions?${queryParams.toString()}`;
-    const response = await fetchWithAuth(url, {});
+    const url = `${walletV1WalletsBase()}/treasury/${merchantId}/transactions?${queryParams.toString()}`;
+    const response = await walletFetch(url, {});
 
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch treasury transactions');
+      throw new Error(walletMessageFromBody(data) || 'Failed to fetch treasury transactions');
     }
 
     if (data.data?.transactions) {
       return {
         success: data.success,
         data: data.data.transactions,
+        message: data.message,
+      } as WalletApiResponse<Transaction[]>;
+    }
+
+    if (Array.isArray(data.transactions)) {
+      return {
+        success: data.success !== false,
+        data: data.transactions,
         message: data.message,
       } as WalletApiResponse<Transaction[]>;
     }
@@ -433,6 +538,7 @@ export const transactionApi = {
       status?: string;
       startDate?: string;
       endDate?: string;
+      appId?: string;
     }
   ) {
     const queryParams = new URLSearchParams();
@@ -444,13 +550,13 @@ export const transactionApi = {
       });
     }
 
-    const url = `${WALLET_API_V1}/wallets/operation/${merchantId}/transactions?${queryParams.toString()}`;
-    const response = await fetchWithAuth(url, {});
+    const url = `${walletV1WalletsBase()}/operation/${merchantId}/transactions?${queryParams.toString()}`;
+    const response = await walletFetch(url, {});
 
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch operation transactions');
+      throw new Error(walletMessageFromBody(data) || 'Failed to fetch operation transactions');
     }
 
     // Normalize response: API returns { data: { transactions: [...] } }
@@ -459,6 +565,14 @@ export const transactionApi = {
       return {
         success: data.success,
         data: data.data.transactions,
+        message: data.message,
+      } as WalletApiResponse<Transaction[]>;
+    }
+
+    if (Array.isArray(data.transactions)) {
+      return {
+        success: data.success !== false,
+        data: data.transactions,
         message: data.message,
       } as WalletApiResponse<Transaction[]>;
     }
@@ -478,6 +592,7 @@ export const transactionApi = {
       status?: string;
       startDate?: string;
       endDate?: string;
+      appId?: string;
     }
   ) {
     const queryParams = new URLSearchParams();
@@ -489,13 +604,29 @@ export const transactionApi = {
       });
     }
 
-    const url = `${WALLET_API_V1}/wallets/kyc/${merchantId}/transactions?${queryParams.toString()}`;
-    const response = await fetchWithAuth(url, {});
+    const url = `${walletV1WalletsBase()}/kyc/${merchantId}/transactions?${queryParams.toString()}`;
+    const response = await walletFetch(url, {});
 
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch KYC transactions');
+      throw new Error(walletMessageFromBody(data) || 'Failed to fetch KYC transactions');
+    }
+
+    if (data.data?.transactions) {
+      return {
+        success: data.success,
+        data: data.data.transactions,
+        message: data.message,
+      } as WalletApiResponse<Transaction[]>;
+    }
+
+    if (Array.isArray(data.transactions)) {
+      return {
+        success: data.success !== false,
+        data: data.transactions,
+        message: data.message,
+      } as WalletApiResponse<Transaction[]>;
     }
 
     return data as WalletApiResponse<Transaction[]>;
@@ -508,7 +639,7 @@ export const billingApi = {
    * Debit Operation wallet
    */
   async debitOperationWallet(merchantId: string, amount: number, description: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/operation/debit`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/operation/debit`, {
       method: 'POST',
       body: JSON.stringify({ merchantId, amount, description }),
     });
@@ -516,7 +647,7 @@ export const billingApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to debit operation wallet');
+      throw new Error(walletMessageFromBody(data) || 'Failed to debit operation wallet');
     }
 
     return data as WalletApiResponse<{ wallet: MerchantWallet; transaction: Transaction }>;
@@ -526,7 +657,7 @@ export const billingApi = {
    * Debit KYC wallet
    */
   async debitKycWallet(merchantId: string, amount: number, description: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/kyc/debit`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/kyc/debit`, {
       method: 'POST',
       body: JSON.stringify({ merchantId, amount, description }),
     });
@@ -534,7 +665,7 @@ export const billingApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to debit KYC wallet');
+      throw new Error(walletMessageFromBody(data) || 'Failed to debit KYC wallet');
     }
 
     return data as WalletApiResponse<{ wallet: MerchantWallet; transaction: Transaction }>;
@@ -544,7 +675,7 @@ export const billingApi = {
    * Process KYC fee
    */
   async processKycFee(merchantId: string, amount: number, description?: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/kyc/fee`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/kyc/fee`, {
       method: 'POST',
       body: JSON.stringify({ merchantId, amount, description: description || 'KYC Fee' }),
     });
@@ -552,7 +683,7 @@ export const billingApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to process KYC fee');
+      throw new Error(walletMessageFromBody(data) || 'Failed to process KYC fee');
     }
 
     return data as WalletApiResponse<{ wallet: MerchantWallet; transaction: Transaction }>;
@@ -562,7 +693,7 @@ export const billingApi = {
    * Debit user wallet (for billing)
    */
   async debitUserWallet(userId: string, amount: number, description: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/treasury/debit`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/treasury/debit`, {
       method: 'POST',
       body: JSON.stringify({ userId, amount, description }),
     });
@@ -570,7 +701,7 @@ export const billingApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to debit user wallet');
+      throw new Error(walletMessageFromBody(data) || 'Failed to debit user wallet');
     }
 
     return data as WalletApiResponse<{ wallet: Wallet; transaction: Transaction }>;
@@ -580,7 +711,7 @@ export const billingApi = {
    * Debit Treasury wallet
    */
   async debitTreasuryWallet(merchantId: string, amount: number, description: string) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/treasury/debit-merchant`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/treasury/debit-merchant`, {
       method: 'POST',
       body: JSON.stringify({ merchantId, amount, description }),
     });
@@ -588,7 +719,7 @@ export const billingApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to debit treasury wallet');
+      throw new Error(walletMessageFromBody(data) || 'Failed to debit treasury wallet');
     }
 
     return data as WalletApiResponse<{ wallet: MerchantWallet; transaction: Transaction }>;
@@ -608,7 +739,7 @@ export const fundingApi = {
     provider: string;
     metadata?: any;
   }) {
-    const response = await fetchWithAuth(`${WALLET_API_V1}/wallets/funding/callback`, {
+    const response = await walletFetch(`${walletV1WalletsBase()}/funding/callback`, {
       method: 'POST',
       body: JSON.stringify(callbackData),
     });
@@ -616,7 +747,7 @@ export const fundingApi = {
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to process funding callback');
+      throw new Error(walletMessageFromBody(data) || 'Failed to process funding callback');
     }
 
     return data as WalletApiResponse<{ wallet: Wallet; transaction: Transaction }>;
@@ -626,15 +757,15 @@ export const fundingApi = {
    * Check funding status
    */
   async checkFundingStatus(transactionId: string) {
-    const response = await fetchWithAuth(
-      `${WALLET_API_V1}/wallets/funding/status/${transactionId}`,
+    const response = await walletFetch(
+      `${walletV1WalletsBase()}/funding/status/${transactionId}`,
       {}
     );
 
     const data = await response.json();
     
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to check funding status');
+      throw new Error(walletMessageFromBody(data) || 'Failed to check funding status');
     }
 
     return data as WalletApiResponse<{

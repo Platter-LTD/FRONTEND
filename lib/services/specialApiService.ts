@@ -3,7 +3,7 @@
 
 import { getAccessToken } from '@/lib/cookieAuth';
 
-const SPECIAL_API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev').replace(/\/$/, '');
+const SPECIAL_API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(/\/$/, '');
 
 const getSpecialHeaders = () => {
   const token = typeof window !== 'undefined' ? getAccessToken() : null;

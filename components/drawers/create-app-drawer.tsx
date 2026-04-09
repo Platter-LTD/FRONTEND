@@ -4,7 +4,6 @@ import { useState } from "react"
 import { Drawer } from "@/components/drawer"
 import { Loader2 } from "lucide-react"
 import { WEBSITE_URL_PREFIX } from "@/lib/websiteUrl"
-import walletService from "@/lib/services/walletService"
 
 interface CreateAppDrawerProps {
   isOpen: boolean
@@ -100,21 +99,6 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
 
       if (result.success && result.data) {
         const createdApp = result.data.app || result.data
-        const createdAppId = createdApp.appId || createdApp.id
-
-        // Wallets are expected to exist as soon as an app is created.
-        // Call the wallet creation endpoint (idempotent on backend if implemented).
-        if (merchantId && createdAppId) {
-          try {
-            await walletService.merchant.createAllMerchantWallets(merchantId, createdAppId)
-          } catch (walletErr) {
-            console.error("Failed to create merchant wallets:", walletErr)
-            setErrors({
-              submit: "App created, but failed to create wallets. Please try again.",
-            })
-            return
-          }
-        }
 
         onSuccess(createdApp)
         setFormData({ name: "", websiteUrl: WEBSITE_URL_PREFIX, alias: "", description: "" })
@@ -122,7 +106,11 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
         onClose()
       } else {
         // Show more detailed error message
-        const errorMessage = result.error || result.message || result.details?.message || "Failed to create app";
+        let errorMessage = result.error || result.message || result.details?.message || "Failed to create app"
+        if (response.status >= 500 && /internal server error/i.test(String(errorMessage))) {
+          errorMessage =
+            "Could not create the app (server error). If you already created this app once, the name or alias may already be in use — open “All apps” instead of submitting the same form again."
+        }
         console.error('Create app error:', errorMessage, result);
         setErrors({ submit: errorMessage });
       }

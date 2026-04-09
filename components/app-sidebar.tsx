@@ -58,7 +58,8 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
       href: `/dashboard/create-app/all-apps/${appId}/wallets`,
       subItems: [
         { label: "Treasury wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury` },
-        { label: "Repayment Wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/repayment` },
+        { label: "Repayment wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/repayment` },
+        { label: "KYC wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/kyc` },
       ],
     },
     {

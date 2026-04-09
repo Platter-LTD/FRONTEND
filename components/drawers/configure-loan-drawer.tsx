@@ -5,6 +5,11 @@ import { Upload, X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import { fileToBase64 } from "@/lib/fileUtils"
+import {
+  serializeOtherRequirementsForSubmit,
+  shouldUseOtherRequirementFileUpload,
+  type OtherRequirementDraft,
+} from "@/lib/otherRequirementPayload"
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import type { LoanConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
@@ -28,16 +33,15 @@ interface ConfigureLoanDrawerProps {
 
 const STEPS = ["About Product", "Structure", "Requirements", "Fees & Charges"]
 
+/** Fallback when product-ms has no moratorium-duration labels yet (same key as mortgage configure). */
+const DEFAULT_MORATORIUM_DURATION_OPTIONS: string[] = []
+
 interface LoanTypeItem {
   name: string
   description: string
 }
 
-interface OtherRequirementItem {
-  type: string
-  contentType: string
-  description: string
-}
+type OtherRequirementItem = OtherRequirementDraft
 
 interface FeeItem {
   name: string
@@ -65,6 +69,7 @@ export default function ConfigureLoanDrawer({
   const [tenureOptions, setTenureOptions] = useState<string[]>([])
   const [interestMethodOptions, setInterestMethodOptions] = useState<string[]>([])
   const [moratoriumTypeOptions, setMoratoriumTypeOptions] = useState<string[]>([])
+  const [moratoriumDurationOptions, setMoratoriumDurationOptions] = useState<string[]>(DEFAULT_MORATORIUM_DURATION_OPTIONS)
   const [repaymentScheduleOptions, setRepaymentScheduleOptions] = useState<string[]>([])
   const [amortizationScheduleOptions, setAmortizationScheduleOptions] = useState<string[]>([])
   const [repaymentFrequencyOptions, setRepaymentFrequencyOptions] = useState<string[]>([])
@@ -88,7 +93,8 @@ export default function ConfigureLoanDrawer({
   const [interestRate, setInterestRate] = useState("")
   const [interestMethod, setInterestMethod] = useState("")
   const [allowMoratorium, setAllowMoratorium] = useState(false)
-  const [moratoriumDuration, setMoratoriumDuration] = useState("")
+  const [moratoriumSelectDuration, setMoratoriumSelectDuration] = useState("")
+  const [moratoriumDurationOf, setMoratoriumDurationOf] = useState("")
   const [moratoriumType, setMoratoriumType] = useState("")
   const [repaymentWorkflow, setRepaymentWorkflow] = useState<string>(DEFAULT_REPAYMENT_WORKFLOWS[0])
   const [minLoanAmount, setMinLoanAmount] = useState("")
@@ -105,8 +111,10 @@ export default function ConfigureLoanDrawer({
   const [otherRequirementType, setOtherRequirementType] = useState("")
   const [otherRequirementContentType, setOtherRequirementContentType] = useState("")
   const [otherRequirementDescription, setOtherRequirementDescription] = useState("")
+  const [otherRequirementFile, setOtherRequirementFile] = useState<File | null>(null)
   const [otherRequirements, setOtherRequirements] = useState<OtherRequirementItem[]>([])
   const documentsInputRef = useRef<HTMLInputElement>(null)
+  const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
 
   const [chargeName, setChargeName] = useState("")
   const [chargeFeeType, setChargeFeeType] = useState("")
@@ -156,6 +164,7 @@ export default function ConfigureLoanDrawer({
       setTenureOptions(prefetchedOptions.tenure)
       setInterestMethodOptions(prefetchedOptions.interestMethods)
       setMoratoriumTypeOptions(prefetchedOptions.moratoriumType)
+      setMoratoriumDurationOptions(prefetchedOptions.moratoriumDuration)
       setRepaymentScheduleOptions(prefetchedOptions.repaymentSchedule)
       setAmortizationScheduleOptions(prefetchedOptions.amortizationSchedule)
       setRepaymentFrequencyOptions(prefetchedOptions.repaymentFrequency)
@@ -174,6 +183,7 @@ export default function ConfigureLoanDrawer({
         tenure,
         interestMethods,
         moratoriumType,
+        moratoriumDuration,
         repaymentSchedule,
         amortizationSchedule,
         repaymentFrequency,
@@ -189,6 +199,7 @@ export default function ConfigureLoanDrawer({
         fetchOptionLabels("loan-tenure", []),
         fetchProductOptionLabels("interest-method", []),
         fetchOptionLabels("moratorium-type", []),
+        fetchProductOptionLabels("moratorium-duration", DEFAULT_MORATORIUM_DURATION_OPTIONS),
         fetchOptionLabels("repayment-schedule", []),
         fetchOptionLabels("amortization", []),
         fetchOptionLabels("repayment-cycle", []),
@@ -205,6 +216,7 @@ export default function ConfigureLoanDrawer({
       setTenureOptions(tenure)
       setInterestMethodOptions(interestMethods)
       setMoratoriumTypeOptions(moratoriumType)
+      setMoratoriumDurationOptions(moratoriumDuration)
       setRepaymentScheduleOptions(repaymentSchedule)
       setAmortizationScheduleOptions(amortizationSchedule)
       setRepaymentFrequencyOptions(repaymentFrequency)
@@ -234,19 +246,51 @@ export default function ConfigureLoanDrawer({
     })
   }
 
+  const handleOtherRequirementTypeChange = (v: string) => {
+    setOtherRequirementType(v)
+    if (!shouldUseOtherRequirementFileUpload(v, otherRequirementContentType)) {
+      setOtherRequirementFile(null)
+      setOtherRequirementDescription("")
+    }
+  }
+
+  const handleOtherRequirementContentTypeChange = (v: string) => {
+    setOtherRequirementContentType(v)
+    if (!shouldUseOtherRequirementFileUpload(otherRequirementType, v)) {
+      setOtherRequirementFile(null)
+      setOtherRequirementDescription("")
+    }
+  }
+
   const addOtherRequirement = () => {
-    if (!otherRequirementType || !otherRequirementContentType || !otherRequirementDescription.trim()) return
-    setOtherRequirements((prev) => [
-      ...prev,
-      {
-        type: otherRequirementType,
-        contentType: otherRequirementContentType,
-        description: otherRequirementDescription.trim(),
-      },
-    ])
+    if (!otherRequirementType || !otherRequirementContentType) return
+    const docType = shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType)
+    if (docType) {
+      if (!otherRequirementFile) return
+      setOtherRequirements((prev) => [
+        ...prev,
+        {
+          type: otherRequirementType,
+          contentType: otherRequirementContentType,
+          description: otherRequirementDescription.trim() || otherRequirementFile.name,
+          file: otherRequirementFile,
+        },
+      ])
+    } else {
+      if (!otherRequirementDescription.trim()) return
+      setOtherRequirements((prev) => [
+        ...prev,
+        {
+          type: otherRequirementType,
+          contentType: otherRequirementContentType,
+          description: otherRequirementDescription.trim(),
+        },
+      ])
+    }
     setOtherRequirementType("")
     setOtherRequirementContentType("")
     setOtherRequirementDescription("")
+    setOtherRequirementFile(null)
   }
 
   const addCharge = () => {
@@ -311,8 +355,12 @@ export default function ConfigureLoanDrawer({
         }
       : null
 
+    const loanPayload = { ...(loanData || {}) }
+    delete loanPayload.moratoriumDuration
+    delete loanPayload.moratoriumDays
+
     onSubmit({
-      ...loanData,
+      ...loanPayload,
       name,
       tenure,
       description,
@@ -321,7 +369,8 @@ export default function ConfigureLoanDrawer({
       interestRate,
       interestMethod,
       allowMoratorium,
-      moratoriumDuration,
+      moratoriumSelectDuration,
+      moratoriumDurationOf,
       moratoriumType,
       repaymentWorkflow,
       minLoanAmount,
@@ -404,19 +453,19 @@ export default function ConfigureLoanDrawer({
               onChange={setAllowMoratorium}
             />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <ProductConfigInput
+              <ProductConfigSelect
                 label="Select Duration"
-                placeholder="Duration"
-                value={moratoriumDuration}
-                onChange={setMoratoriumDuration}
-                numericOnly
+                placeholder="Select Section"
+                value={moratoriumSelectDuration}
+                options={moratoriumDurationOptions}
+                onChange={setMoratoriumSelectDuration}
               />
-              <ProductConfigInput
+              <ProductConfigSelect
                 label="Duration of Moratorium"
-                placeholder="e.g 3 Months"
-                value={moratoriumDuration}
-                onChange={setMoratoriumDuration}
-                numericOnly
+                placeholder="Select Section"
+                value={moratoriumDurationOf}
+                options={moratoriumDurationOptions}
+                onChange={setMoratoriumDurationOf}
               />
               <ProductConfigSelect
                 label="Type of Moratorium"
@@ -531,37 +580,83 @@ export default function ConfigureLoanDrawer({
 
           <div className="space-y-3">
             <p className="text-sm font-medium text-gray-700">Other Requirements</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-start">
               <ProductConfigSelect
                 label="Select requirement type"
                 placeholder="Select requirement type"
                 value={otherRequirementType}
                 options={otherRequirementOptions}
-                onChange={setOtherRequirementType}
+                onChange={handleOtherRequirementTypeChange}
               />
               <ProductConfigSelect
                 label="Content Type"
                 placeholder="Content type"
                 value={otherRequirementContentType}
                 options={contentTypeOptions}
-                onChange={setOtherRequirementContentType}
+                onChange={handleOtherRequirementContentTypeChange}
               />
-              <ProductConfigInput
-                label="Description"
-                placeholder="Description"
-                value={otherRequirementDescription}
-                onChange={setOtherRequirementDescription}
-              />
-              <Button type="button" onClick={addOtherRequirement} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
-                Add
-              </Button>
+              {shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType) ? (
+                <div className="min-w-0 w-full">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="other-requirement-file">
+                      Document
+                    </label>
+                    <button
+                      id="other-requirement-file"
+                      type="button"
+                      onClick={() => otherRequirementUploadRef.current?.click()}
+                      title={otherRequirementFile?.name || undefined}
+                      aria-label="Choose document file"
+                      className="flex h-10 w-full min-w-0 max-w-full items-center gap-2 rounded-md border border-[#e5e7eb] bg-white px-3 text-left text-sm outline-none transition hover:bg-gray-50/80 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+                    >
+                      <span
+                        className={`min-w-0 flex-1 truncate ${otherRequirementFile ? "font-medium text-gray-900" : "text-gray-400"}`}
+                      >
+                        {otherRequirementFile ? otherRequirementFile.name : "No file selected"}
+                      </span>
+                      <Upload className="h-4 w-4 shrink-0 text-[#9A813F]" aria-hidden />
+                    </button>
+                  </div>
+                  <input
+                    ref={otherRequirementUploadRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,image/*"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null
+                      setOtherRequirementFile(f)
+                      if (f && !otherRequirementDescription.trim()) {
+                        setOtherRequirementDescription(f.name)
+                      }
+                      e.target.value = ""
+                    }}
+                  />
+                </div>
+              ) : (
+                <ProductConfigInput
+                  label="Description"
+                  placeholder="Description"
+                  value={otherRequirementDescription}
+                  onChange={setOtherRequirementDescription}
+                />
+              )}
+              <div className="space-y-2">
+                <span className="invisible block text-sm font-medium text-gray-700 select-none" aria-hidden>
+                  Select requirement type
+                </span>
+                <Button type="button" onClick={addOtherRequirement} className="h-10 bg-[#9A813F] text-white hover:bg-[#8A7335]">
+                  Add
+                </Button>
+              </div>
             </div>
 
             {otherRequirements.length > 0 && (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {otherRequirements.map((item, index) => (
                   <div key={`${item.type}-${index}`} className="rounded-md bg-[#9A813F] px-3 py-2 text-sm text-white">
-                    {item.type} - {item.contentType} - {item.description}
+                    {item.file
+                      ? `${item.type} — ${item.file.name} — ${item.contentType}`
+                      : `${item.type} — ${item.description} — ${item.contentType}`}
                   </div>
                 ))}
               </div>
@@ -572,7 +667,7 @@ export default function ConfigureLoanDrawer({
 
       {step === 4 && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
             <ProductConfigInput label="Name of Charges or Fee" placeholder="e.g Processing Fee" value={chargeName} onChange={setChargeName} />
             <ProductConfigSelect
               label="Fee Type"

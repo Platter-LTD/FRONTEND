@@ -2,6 +2,9 @@ import { apiClient } from "@/lib/api";
 import { getAccessToken } from "@/lib/cookieAuth";
 import { ENDPOINTS } from "@/lib/endpoints";
 
+/** localStorage key for sign-in redirect fallback when KYC status API is unavailable */
+export const COMPLIANCE_COMPLETE_KEY = "plata_compliance_complete_v1";
+
 // Decode userId from JWT (mirrors logic in kycService)
 function decodeUserIdFromToken(t: string | null): string | null {
   try {

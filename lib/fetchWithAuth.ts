@@ -9,6 +9,8 @@ import { getAccessToken } from '@/lib/cookieAuth';
 export type FetchWithAuthOptions = RequestInit & {
   /** Skip adding Authorization header (e.g. for public endpoints) */
   skipAuth?: boolean;
+  /** Applied after defaults (e.g. wallet-ms role hints: x-user-role) */
+  additionalHeaders?: Record<string, string>;
 };
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -42,12 +44,16 @@ export async function fetchWithAuth(
   input: RequestInfo | URL,
   options: FetchWithAuthOptions = {}
 ): Promise<Response> {
-  const { skipAuth = false, ...init } = options;
-  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const { skipAuth = false, additionalHeaders, ...init } = options;
   const token = typeof window !== 'undefined' && !skipAuth ? getAccessToken() : null;
   const headers = new Headers(init.headers);
   if (token && !skipAuth) headers.set('Authorization', `Bearer ${token}`);
   if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (additionalHeaders) {
+    for (const [key, value] of Object.entries(additionalHeaders)) {
+      if (value != null && value !== '') headers.set(key, value);
+    }
+  }
 
   let res = await fetch(input, { ...init, headers, credentials: init.credentials ?? 'include' });
 

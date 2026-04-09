@@ -13,9 +13,9 @@ import { SearchIcon } from "lucide-react"
 import { useEffect } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
-import { COMPLIANCE_COMPLETE_KEY } from "@/lib/compliance"
-import { ComplianceService } from "@/lib/services/complianceService"
 import { useAuth } from "@/hooks/useAuth"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import { fetchKycStatusThunk } from "@/store/complianceSlice"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
 
@@ -34,7 +34,8 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
   const pathname = usePathname()
-  const [complianceComplete, setComplianceComplete] = useState(false)
+  const dispatch = useAppDispatch()
+  const complianceComplete = useAppSelector((s) => s.compliance.isApproved)
   const { user } = useAuth()
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null

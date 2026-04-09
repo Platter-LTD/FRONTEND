@@ -5,6 +5,7 @@ export type LoanConfigurePrefetched = {
   tenure: string[]
   interestMethods: string[]
   moratoriumType: string[]
+  moratoriumDuration: string[]
   repaymentSchedule: string[]
   amortizationSchedule: string[]
   repaymentFrequency: string[]
@@ -23,6 +24,7 @@ export async function prefetchLoanConfigureOptions(): Promise<LoanConfigurePrefe
     tenure,
     interestMethods,
     moratoriumType,
+    moratoriumDuration,
     repaymentSchedule,
     amortizationSchedule,
     repaymentFrequency,
@@ -38,6 +40,7 @@ export async function prefetchLoanConfigureOptions(): Promise<LoanConfigurePrefe
     fetchOptionLabels("loan-tenure", []),
     fetchProductOptionLabels("interest-method", []),
     fetchOptionLabels("moratorium-type", []),
+    fetchProductOptionLabels("moratorium-duration", []),
     fetchOptionLabels("repayment-schedule", []),
     fetchOptionLabels("amortization", []),
     fetchOptionLabels("repayment-cycle", []),
@@ -55,6 +58,7 @@ export async function prefetchLoanConfigureOptions(): Promise<LoanConfigurePrefe
     tenure,
     interestMethods,
     moratoriumType,
+    moratoriumDuration,
     repaymentSchedule,
     amortizationSchedule,
     repaymentFrequency,
