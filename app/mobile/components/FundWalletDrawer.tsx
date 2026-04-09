@@ -49,7 +49,7 @@ export function FundWalletDrawer({ open, onOpenChange }: FundWalletDrawerProps) 
                                         </div>
                                         <div>
                                             <h3 className="font-semibold text-gray-900">Add via bank transfer</h3>
-                                            <p className="text-sm text-gray-500">Fund your account by sending money to your unique USD bank account</p>
+                                            <p className="text-sm text-gray-500">Fund your account by sending money to your unique NGN bank account</p>
                                         </div>
                                     </button>
 

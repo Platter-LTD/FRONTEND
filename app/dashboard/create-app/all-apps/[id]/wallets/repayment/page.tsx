@@ -51,7 +51,7 @@ export default function RepaymentWalletPage() {
 
   const mainBal = merchantWalletMainBalance(operation)
   const balance = formatBalance(mainBal)
-  const currency = operation?.currency || "USD"
+  const currency = operation?.currency || "NGN"
 
   const bannerError = useMemo(() => {
     if (!merchantId) return "No merchant ID found. Please sign in again."
@@ -82,11 +82,11 @@ export default function RepaymentWalletPage() {
                 {showBalance ? (
                   <>
                     <span className="text-white text-5xl font-semibold">
-                      {currency === "USD" ? "$ " : ""}
+                      {currency === "NGN" ? "NGN " : ""}
                       {balance.dollars}
                     </span>
                     <span className="text-white text-2xl">.{balance.cents}</span>
-                    {currency !== "USD" && (
+                    {currency !== "NGN" && (
                       <span className="text-white/70 text-lg ml-2">{currency}</span>
                     )}
                   </>

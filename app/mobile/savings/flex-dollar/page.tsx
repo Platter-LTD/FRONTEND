@@ -28,8 +28,8 @@ export default function FlexDollarPage() {
                     </div>
 
                     <div className="text-center">
-                        <p className="text-white/90 text-sm mb-1">Flex Dollar Balance</p>
-                        <h1 className="text-3xl font-bold">$1,200.00</h1>
+                        <p className="text-white/90 text-sm mb-1">Flex NGN Balance</p>
+                        <h1 className="text-3xl font-bold">NGN 1,200.00</h1>
                     </div>
                 </div>
 
@@ -38,15 +38,15 @@ export default function FlexDollarPage() {
                     <button className="absolute top-4 right-4 text-orange-500">
                         <X size={16} />
                     </button>
-                    <h3 className="font-bold text-gray-900 text-sm mb-3">What is new on Flex Dollar?</h3>
+                    <h3 className="font-bold text-gray-900 text-sm mb-3">What is new on Flex NGN?</h3>
                     <ul className="space-y-3 text-xs text-gray-800 leading-relaxed">
                         <li className="flex gap-2">
                             <span className="block w-1 h-1 bg-gray-800 rounded-full mt-1.5 flex-shrink-0" />
-                            Fund your dollar wallet directly from your local bank card at the best rates.
+                            Fund your NGN wallet directly from your local bank card at the best rates.
                         </li>
                         <li className="flex gap-2">
                             <span className="block w-1 h-1 bg-gray-800 rounded-full mt-1.5 flex-shrink-0" />
-                            Save in dollars to protect your money from devaluation.
+                            Save in NGN for your local spending goals.
                         </li>
                         <li className="flex gap-2">
                             <span className="block w-1 h-1 bg-gray-800 rounded-full mt-1.5 flex-shrink-0" />
@@ -58,10 +58,10 @@ export default function FlexDollarPage() {
                 {/* Actions */}
                 <div className="flex gap-4">
                     <Button className="flex-1 h-12 bg-gray-900 hover:bg-gray-800 text-white rounded-full font-medium">
-                        Buy Dollar
+                        Buy NGN
                     </Button>
                     <Button variant="outline" className="flex-1 h-12 rounded-full font-medium border-gray-300">
-                        Sell Dollar
+                        Sell NGN
                     </Button>
                 </div>
 
@@ -79,7 +79,7 @@ export default function FlexDollarPage() {
                                 <h4 className="font-bold text-gray-900">Wallet Funding</h4>
                             </div>
                             <div className="text-right">
-                                <p className="font-bold text-green-600">+$200.00</p>
+                                <p className="font-bold text-green-600">+NGN 200.00</p>
                                 <p className="text-xs text-gray-400">12.00 pm</p>
                             </div>
                         </div>
@@ -89,7 +89,7 @@ export default function FlexDollarPage() {
                                 <h4 className="font-bold text-gray-900">Conversion to Naira</h4>
                             </div>
                             <div className="text-right">
-                                <p className="font-bold text-red-600">-$50.00</p>
+                                <p className="font-bold text-red-600">-NGN 50.00</p>
                                 <p className="text-xs text-gray-400">Yesterday</p>
                             </div>
                         </div>
