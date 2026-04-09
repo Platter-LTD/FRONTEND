@@ -108,10 +108,10 @@ export default function SpringProductTest() {
             <Card>
               <CardContent className="p-6 text-center">
                 <p className="text-muted-foreground">
-                  ✅ Integration working! No products found in Product Builder.
+                  ✅ Integration working! No products found in PLATA.
                 </p>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Create products in Product Builder to see them here.
+                  Create products in PLATA to see them here.
                 </p>
               </CardContent>
             </Card>

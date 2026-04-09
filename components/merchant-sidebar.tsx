@@ -10,7 +10,7 @@ import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { TbCodeCircle2Filled } from "react-icons/tb"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/hooks/useAuth"
@@ -38,6 +38,12 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
   const [isOperationWorkflowOpen, setIsOperationWorkflowOpen] = useState(
     pathname.startsWith("/dashboard/merchant/operation-workflow"),
   )
+  useEffect(() => {
+    setIsWalletsOpen(pathname.startsWith("/dashboard/merchant/wallets"))
+    setIsProductsOpen(pathname.startsWith("/dashboard/merchant/products"))
+    setIsApplicationsOpen(pathname.startsWith("/dashboard/merchant/applications"))
+    setIsOperationWorkflowOpen(pathname.startsWith("/dashboard/merchant/operation-workflow"))
+  }, [pathname])
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
@@ -145,7 +151,7 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
       <nav className="flex-1 px-4 py-4">
         <ul className="space-y-1">
           {navItems.map((item, index) => {
-            const isActive = pathname.startsWith(item.href)
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
             const hasSubItems = item.subItems && item.subItems.length > 0
             const isOpen =
               item.label === "Wallets"
@@ -187,7 +193,7 @@ const MerchantSidebar: React.FC<MerchantSidebarProps> = ({ className = "" }) => 
                     {isOpen && (
                       <ul className="mt-1 space-y-0.5">
                         {item.subItems?.map((subItem, subIndex) => {
-                          const isSubActive = pathname.startsWith(subItem.href)
+                          const isSubActive = pathname === subItem.href || pathname.startsWith(`${subItem.href}/`)
                           return (
                             <li key={subIndex}>
                               <Link

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { SpringRegistrationForm } from "@/components/spring-registration-form"
 import { toast } from "react-toastify"
 import api from "@/lib/api"
+import { registrationPasswordError } from "@/lib/passwordRules"
 
 export default function SignupPage() {
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -24,6 +25,11 @@ export default function SignupPage() {
         // Validate passwords match
         if (formData.password !== formData.confirmPassword) {
             toast.error("Passwords do not match")
+            return
+        }
+        const passwordError = registrationPasswordError(formData.password)
+        if (passwordError) {
+            toast.error(passwordError)
             return
         }
 

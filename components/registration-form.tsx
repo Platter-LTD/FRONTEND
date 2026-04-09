@@ -10,6 +10,7 @@ import { CountrySelect } from "@/components/ui/country-select"
 import { Progress } from "@/components/ui/progress"
 import { Eye, EyeOff, Check, X } from "lucide-react"
 import Link from "next/link"
+import { validateRegistrationPassword } from "@/lib/passwordRules"
 
 type RegistrationFormProps = {
   onSubmit: (formData: {
@@ -29,22 +30,22 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
-  // Password validation helper
   const validatePassword = (password: string) => {
-    const hasLowercase = /[a-z]/.test(password)
-    const hasUppercase = /[A-Z]/.test(password)
-    const hasNumber = /\d/.test(password)
-    const hasSpecial = /[@$!%*?&]/.test(password)
-    const isLongEnough = password.length >= 8
-
-    const requirements = [hasLowercase, hasUppercase, hasNumber, hasSpecial, isLongEnough]
+    const checks = validateRegistrationPassword(password)
+    const requirements = [
+      checks.hasLowercase,
+      checks.hasUppercase,
+      checks.hasNumber,
+      checks.hasRequiredSpecial,
+      checks.lengthValid,
+    ]
     const strength = requirements.filter(Boolean).length
     const score = (strength / 5) * 100
 
     return {
-      isValid: requirements.every(Boolean),
+      isValid: checks.isValid,
       score,
-      strength
+      strength,
     }
   }
 

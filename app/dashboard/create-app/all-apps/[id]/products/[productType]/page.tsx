@@ -20,7 +20,7 @@ export default function ProductTypeListPage() {
       try {
         setLoading(true)
 
-        // Fetch all products from Product Builder
+        // Fetch all products from PLATA
         const productsData = await productApi.getAllProductsFromBuilder()
 
         // Fetch app-specific product activations
@@ -99,7 +99,7 @@ export default function ProductTypeListPage() {
             <h2 className="text-lg font-medium">All {getProductTypeDisplayName()} Products</h2>
           </div>
           <p className="text-sm text-gray-600 ml-7">
-            {products.length} product(s) available from Product Builder
+            {products.length} product(s) available from PLATA
           </p>
         </div>
       </div>
@@ -112,7 +112,7 @@ export default function ProductTypeListPage() {
         <div className="bg-white border border-gray-200 rounded-lg p-12 text-center">
           <h3 className="text-lg font-medium text-gray-900 mb-2">No {getProductTypeDisplayName()} Products Available</h3>
           <p className="text-gray-600">
-            No {productType} products have been created in Product Builder yet.
+            No {productType} products have been created in PLATA yet.
           </p>
         </div>
       ) : (

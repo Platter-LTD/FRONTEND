@@ -99,9 +99,7 @@ const mapToGenericDocType = (id: string): string | null => {
 
 const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
   const { user } = useAuth();
-  const { businessFiles, setBusinessFile } = useComplianceForm();
-
-  const STORAGE_KEY = 'kyc.businessDocs.v1';
+  const { businessFiles, setBusinessFile, merchantBusinessSurvey } = useComplianceForm();
 
   const leftList = [
     { id: "coi", title: "COI (certificate of Inc)", hint: "PDF format • Max. 5MB" },
@@ -119,7 +117,6 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
   ];
 
   const allIds = [...leftList, ...rightList].map(i => i.id);
-  const requiredCoreIds = ["coi", "shareholders", "bank_statement"]; // must-have for middleware + sensible minimum
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -144,16 +141,15 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
         return;
       }
 
-      const raw = typeof window !== 'undefined' ? localStorage.getItem('kyc.businessInfo') : null;
-      if (!raw) {
+      const info = merchantBusinessSurvey;
+      if (!info.businessName || !info.country || !info.industry) {
         toast.error('Please fill Business Info before uploading documents.');
         return;
       }
-      const info = JSON.parse(raw || '{}');
 
       // derive numeric metrics
       const monthlyVol: number = (() => {
-        const rawVol = String(info.monthlyVolume ?? info.monthly_volume ?? '').trim();
+        const rawVol = String(info.monthlyVolume ?? "").trim();
         const n = Number(rawVol.replace(/[^0-9.]/g, ''));
         return Number.isFinite(n) && n > 0 ? n : 1;
       })();
@@ -244,12 +240,12 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
           countryOfIncorporation: info.country || 'NG',
           website: info.website || 'https://example.com',
           companyRegId: info.companyRegId,
-          companyLogoUrl: info.companyLogoUrl || 'https://via.placeholder.com/1',
+          companyLogoUrl: 'https://via.placeholder.com/1',
         },
         businessSurvey: {
-          businessType: (info.businessType || info.business_type || 'Other').slice(0, 100),
+          businessType: (info.businessType || 'Other').slice(0, 100),
           country: (info.country || 'NG').slice(0, 50),
-          businessModel: (info.businessModel || info.business_model || 'B2C').slice(0, 20),
+          businessModel: (info.businessModel || 'B2C').slice(0, 20),
           monthlyProcessedVolume: Math.max(0, Math.round(monthlyVol || 0)),
         },
         shareholders: [

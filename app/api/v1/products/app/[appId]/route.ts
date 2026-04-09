@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import axios from "axios"
 import https from "https"
 import dns from "dns"
+import { merchantRoleHeadersFromAuthorization } from "@/lib/server/merchantRoleHeaders"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const PRODUCT_SERVICE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://account-ms.fly.dev").replace(/\/$/, "")
+const PRODUCT_SERVICE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev").replace(/\/$/, "")
 
 const agent = new https.Agent({
   keepAlive: true,
@@ -41,7 +42,9 @@ export async function GET(
   const appUrl = `${PRODUCT_SERVICE_URL}/api/v1/products/app/${encodeURIComponent(appId)}`
 
   try {
-    const appResp = await http.get(appUrl, { headers: { Authorization: authHeader } })
+    const appResp = await http.get(appUrl, {
+      headers: { Authorization: authHeader, ...merchantRoleHeadersFromAuthorization(authHeader) },
+    })
 
     if (appResp.status >= 200 && appResp.status < 300) {
       return NextResponse.json(appResp.data)

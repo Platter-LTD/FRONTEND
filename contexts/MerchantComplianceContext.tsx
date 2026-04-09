@@ -53,7 +53,7 @@ function isCompliancePath(pathname: string) {
   return pathname === COMPLIANCE_PATH || pathname.startsWith(`${COMPLIANCE_PATH}/`)
 }
 
-const MERCHANT_APPS_PATH = "/dashboard/merchant"
+const MERCHANT_APPS_PATH = "/dashboard/create-app/all-apps"
 
 /** True when this document load was a full browser refresh (F5 / reload), not a client-side transition. */
 function isBrowserReload(): boolean {

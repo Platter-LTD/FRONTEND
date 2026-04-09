@@ -109,7 +109,7 @@ export function ProductDebugPanel({ appId, location }: ProductDebugPanelProps) {
                                 Product Debug Panel
                             </CardTitle>
                             <CardDescription>
-                                Location: <Badge variant="outline">{location === 'platter' ? 'Product Builder' : 'Spring App'}</Badge>
+                                Location: <Badge variant="outline">{location === 'platter' ? 'PLATA' : 'Spring App'}</Badge>
                             </CardDescription>
                         </div>
                         <div className="flex gap-2">
@@ -271,7 +271,7 @@ export function ProductDebugPanel({ appId, location }: ProductDebugPanelProps) {
                                 <div className="bg-orange-50 border border-orange-200 rounded p-3 text-sm">
                                     <strong className="text-orange-900">⚠️ No Products Found!</strong>
                                     <p className="text-orange-800 mt-1">
-                                        No products exist in the system. Create products in the Product Builder.
+                                        No products exist in the system. Create products in the PLATA.
                                     </p>
                                 </div>
                             )}

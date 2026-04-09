@@ -131,6 +131,50 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
 };
 
 export const productApi = {
+  async getProductOverview(appId: string) {
+    const response = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}/product-overview`, {
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || 'Failed to fetch product overview');
+    }
+    return data;
+  },
+
+  async getLoanWorkflow(params?: { loanWorkflowStatus?: string; limit?: number; skip?: number }) {
+    const q = new URLSearchParams();
+    if (params?.loanWorkflowStatus) q.set("loanWorkflowStatus", params.loanWorkflowStatus);
+    if (typeof params?.limit === "number") q.set("limit", String(params.limit));
+    if (typeof params?.skip === "number") q.set("skip", String(params.skip));
+    const path = `/api/v1/products/applications/me/loan-workflow${q.toString() ? `?${q.toString()}` : ""}`;
+
+    const response = await fetch(path, {
+      headers: getAuthHeaders(),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || 'Failed to fetch loan workflow');
+    }
+    return data;
+  },
+
+  async updateLoanWorkflowStatus(applicationId: string, loanWorkflowStatus: string) {
+    const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow`, {
+      method: "PATCH",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ loanWorkflowStatus }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || 'Failed to update loan workflow status');
+    }
+    return data;
+  },
+
   // Create a new product
   // P2-005 fix: always include isActive:true and status:'active' to prevent type mismatch
   async createProduct(productData: {
@@ -295,7 +339,7 @@ export const productApi = {
     return data;
   },
 
-  // Get all products from Product Builder (global pool)
+  // Get all products from PLATA (global pool)
   async getAllProductsFromBuilder() {
     const response = await fetch('/api/product-builder/all', {
       headers: getAuthHeaders(),
@@ -304,7 +348,7 @@ export const productApi = {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch products from Product Builder');
+      throw new Error(data.error || 'Failed to fetch products from PLATA');
     }
 
     return data;

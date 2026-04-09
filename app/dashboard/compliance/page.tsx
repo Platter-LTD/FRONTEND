@@ -1,7 +1,7 @@
 "use client"
 
 import Tabs from "@/components/Tabs"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { ComplianceFormProvider } from "@/providers/ComplianceFormProvider"
 
 import BusinessInfoTab from "@/components/compliance-forms/BusinessInfoTab"
@@ -9,13 +9,11 @@ import BusinessDocumentWrapper from "@/components/compliance-forms/BusinessDocum
 import ShareholderInfo from "@/components/compliance-forms/ShareholderInfo"
 import { ComplianceChatTab } from "@/components/compliance/compliance-chat-tab"
 
-const COMPLETION_KEY = "kyc.tabCompletion"
-
 interface TabCompletion {
     "business-info": boolean
     "business-document": boolean
     "shareholder-info": boolean
-    "compliance-chat": boolean
+    // "compliance-chat": boolean
 }
 
 export default function ComplianceDashboard() {
@@ -24,49 +22,11 @@ export default function ComplianceDashboard() {
         "business-info": false,
         "business-document": false,
         "shareholder-info": false,
-        "compliance-chat": false,
+        // "compliance-chat": false,
     })
 
-    // Hydrate completion state from localStorage
-    useEffect(() => {
-        try {
-            if (typeof window !== "undefined") {
-                const saved = localStorage.getItem(COMPLETION_KEY)
-                if (saved) {
-                    try {
-                        const parsed = JSON.parse(saved) as Partial<TabCompletion>
-                        setCompletion((prev) => ({ ...prev, ...parsed }))
-                    } catch {
-                        // ignore invalid saved state
-                    }
-                }
-                // Also check if business info exists (for users who already filled it)
-                const businessInfo = localStorage.getItem("kyc.businessInfo")
-                if (businessInfo) {
-                    const info = JSON.parse(businessInfo)
-                    // Check if essential fields are filled
-                    if (info.businessName && info.country && info.industry) {
-                        setCompletion((prev) => {
-                            const next = { ...prev, "business-info": true }
-                            localStorage.setItem(COMPLETION_KEY, JSON.stringify(next))
-                            return next
-                        })
-                    }
-                }
-            }
-        } catch (_) {
-            // ignore
-        }
-    }, [])
-
     const markComplete = (tabId: keyof TabCompletion) => {
-        setCompletion((prev) => {
-            const next = { ...prev, [tabId]: true }
-            try {
-                localStorage.setItem(COMPLETION_KEY, JSON.stringify(next))
-            } catch (_) { }
-            return next
-        })
+        setCompletion((prev) => ({ ...prev, [tabId]: true }))
     }
 
     const handleBusinessInfoContinue = () => {
@@ -98,12 +58,12 @@ export default function ComplianceDashboard() {
             locked: !completion["business-document"],
             completed: completion["shareholder-info"]
         },
-        {
-            id: "compliance-chat",
-            label: "Compliance chat",
-            locked: false,
-            completed: completion["compliance-chat"]
-        },
+        // {
+        //     id: "compliance-chat",
+        //     label: "Compliance chat",
+        //     locked: false,
+        //     completed: completion["compliance-chat"]
+        // },
     ]
 
     const renderTabContent = () => {
@@ -114,8 +74,8 @@ export default function ComplianceDashboard() {
                 return <BusinessDocumentWrapper onContinue={handleBusinessDocumentContinue} />
             case "shareholder-info":
                 return <ShareholderInfo />
-            case "compliance-chat":
-                return <ComplianceChatTab />
+            // case "compliance-chat":
+            //     return <ComplianceChatTab />
             default:
                 return <BusinessInfoTab onContinue={handleBusinessInfoContinue} />
         }

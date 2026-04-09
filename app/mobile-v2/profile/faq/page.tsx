@@ -71,10 +71,10 @@ export default function FAQPage() {
                         <div className="bg-white rounded-[24px] px-6 py-2 shadow-sm border border-gray-100">
                             <AccordionItem value="item-4" className="border-none">
                                 <AccordionTrigger className="text-sm font-semibold text-[#1E293B] hover:no-underline">
-                                    What is Product Builder?
+                                    What is PLATA?
                                 </AccordionTrigger>
                                 <AccordionContent className="text-xs text-gray-500 leading-relaxed">
-                                    Information about the Product Builder feature.
+                                    Information about the PLATA feature.
                                 </AccordionContent>
                             </AccordionItem>
                         </div>

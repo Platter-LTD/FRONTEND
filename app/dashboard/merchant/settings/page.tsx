@@ -91,8 +91,8 @@ export default function SettingsPage() {
             answer: "Anyone who meets the eligibility criteria..."
         },
         {
-            question: "What is Product Builder?",
-            answer: "Product Builder is a tool that allows you to create custom financial products..."
+            question: "What is PLATA?",
+            answer: "PLATA is a tool that allows you to create custom financial products..."
         },
         {
             question: "Who can use Mortgage?",

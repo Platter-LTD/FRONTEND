@@ -1,58 +1,93 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { MoreVertical } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { productApi } from "@/lib/services/product-api"
 
 const tabs = [
-  { label: "Loan requests", value: "requests" },
-  { label: "Under review", value: "review" },
+  { label: "Loan requests", value: "requested" },
+  { label: "Under review", value: "under_review" },
   { label: "Approved", value: "approved" },
   { label: "Declined", value: "declined" },
   { label: "Blacklisted", value: "blacklisted" },
 ]
 
-const loansData = {
-  requests: [
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Requested" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Requested" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 11, 2025", status: "Requested" },
-  ],
-  review: [
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Review" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Review" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 11, 2025", status: "Review" },
-  ],
-  approved: [
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Requested" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Requested" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 11, 2025", status: "Requested" },
-  ],
-  declined: [
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Declined" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Declined" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 11, 2025", status: "Declined" },
-  ],
-  blacklisted: [
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Declined" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Declined" },
-    { loanRequest: "Loan Name", name: "Gina Vera", ref: "235367B909", date: "Apr 11, 2025", status: "Declined" },
-  ],
+type WorkflowRow = {
+  id: string
+  loanRequest: string
+  name: string
+  ref: string
+  date: string
+  status: string
 }
 
 export default function LoanWorkflowPage() {
-  const [activeTab, setActiveTab] = useState("requests")
+  const [activeTab, setActiveTab] = useState("requested")
+  const [rows, setRows] = useState<WorkflowRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    productApi
+      .getLoanWorkflow({ loanWorkflowStatus: activeTab, limit: 100 })
+      .then((res) => {
+        if (cancelled) return
+        const raw = (res as { data?: unknown }).data
+        const list = Array.isArray(raw)
+          ? raw
+          : Array.isArray((raw as { items?: unknown[] } | undefined)?.items)
+            ? (raw as { items: unknown[] }).items
+            : []
+        const mapped: WorkflowRow[] = list
+          .map((x) => x as Record<string, unknown>)
+          .filter((x) => String(x.productType || "").toUpperCase() === "LOAN")
+          .map((x) => ({
+            id: String(x.id ?? x.applicationId ?? ""),
+            loanRequest: String(x.productName ?? x.globalProductName ?? x.reference ?? "Loan Application"),
+            name: String(x.userName ?? x.fullName ?? x.customerName ?? x.userId ?? "Unknown"),
+            ref: String(x.reference ?? x.applicationReference ?? x.id ?? "—"),
+            date: String(x.createdAt ?? x.applicationDate ?? "—"),
+            status: String(x.loanWorkflowStatus ?? "requested"),
+          }))
+        setRows(mapped)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setRows([])
+        setError(e instanceof Error ? e.message : "Failed to load loan workflow")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab])
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      Requested: "bg-[#E9D5FF] text-[#7C3AED] hover:bg-[#E9D5FF]",
-      Review: "bg-[#DBEAFE] text-[#2563EB] hover:bg-[#DBEAFE]",
-      Declined: "bg-[#FEE2E2] text-[#EF4444] hover:bg-[#FEE2E2]",
+      requested: "bg-[#E9D5FF] text-[#7C3AED] hover:bg-[#E9D5FF]",
+      under_review: "bg-[#DBEAFE] text-[#2563EB] hover:bg-[#DBEAFE]",
+      approved: "bg-[#DCFCE7] text-[#166534] hover:bg-[#DCFCE7]",
+      declined: "bg-[#FEE2E2] text-[#EF4444] hover:bg-[#FEE2E2]",
+      blacklisted: "bg-[#E5E7EB] text-[#374151] hover:bg-[#E5E7EB]",
     }
-    return styles[status as keyof typeof styles] || styles.Requested
+    return styles[status as keyof typeof styles] || styles.requested
   }
 
-  const loans = loansData[activeTab as keyof typeof loansData]
+  const loans = useMemo(
+    () =>
+      rows.map((r) => ({
+        ...r,
+        date: r.date !== "—" ? new Date(r.date).toLocaleDateString() : "—",
+      })),
+    [rows],
+  )
 
   return (
     <div className="p-8 bg-gray-50">
@@ -78,7 +113,8 @@ export default function LoanWorkflowPage() {
         </nav>
       </div>
 
-      {/* Table */}
+      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+
       <div className="bg-white rounded-lg border overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
@@ -92,14 +128,27 @@ export default function LoanWorkflowPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {loans.map((loan, index) => (
-              <tr key={index} className="hover:bg-gray-50">
+            {loading ? (
+              <tr>
+                <td className="px-6 py-6 text-sm text-gray-500" colSpan={6}>
+                  Loading workflow...
+                </td>
+              </tr>
+            ) : loans.length === 0 ? (
+              <tr>
+                <td className="px-6 py-6 text-sm text-gray-500" colSpan={6}>
+                  No applications found.
+                </td>
+              </tr>
+            ) : (
+              loans.map((loan) => (
+              <tr key={loan.id || loan.ref} className="hover:bg-gray-50">
                 <td className="px-6 py-4 text-sm text-gray-900">{loan.loanRequest}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{loan.name}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{loan.ref}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{loan.date}</td>
                 <td className="px-6 py-4">
-                  <Badge className={getStatusBadge(loan.status)}>{loan.status}</Badge>
+                  <Badge className={getStatusBadge(loan.status)}>{loan.status.replaceAll("_", " ")}</Badge>
                 </td>
                 <td className="px-6 py-4">
                   <button className="p-1 hover:bg-gray-100 rounded">
@@ -107,7 +156,7 @@ export default function LoanWorkflowPage() {
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
           </tbody>
         </table>
       </div>

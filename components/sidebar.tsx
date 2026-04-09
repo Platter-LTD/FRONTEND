@@ -69,7 +69,7 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
       {/* Logo */}
       <div className="p-6">
-        <span className="text-2xl font-bold text-[#9A813F]">Product Builder</span>
+        <span className="text-2xl font-bold text-[#9A813F]">PLATA</span>
       </div>
 
       {/* Search */}

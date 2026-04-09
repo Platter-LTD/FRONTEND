@@ -1,58 +1,93 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { MoreVertical } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { productApi } from "@/lib/services/product-api"
 
 const tabs = [
-  { label: "Loan requests", value: "requests" },
-  { label: "Under review", value: "review" },
+  { label: "Loan requests", value: "requested" },
+  { label: "Under review", value: "under_review" },
   { label: "Approved", value: "approved" },
   { label: "Declined", value: "declined" },
   { label: "Blacklisted", value: "blacklisted" },
 ]
 
-const mortgagesData = {
-  requests: [
-    { loanRequest: "Mortgage Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Requested" },
-    { loanRequest: "Mortgage Name", name: "John Doe", ref: "235367B910", date: "Apr 12, 2025", status: "Requested" },
-    { loanRequest: "Mortgage Name", name: "Jane Smith", ref: "235367B911", date: "Apr 11, 2025", status: "Requested" },
-  ],
-  review: [
-    { loanRequest: "Mortgage Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Review" },
-    { loanRequest: "Mortgage Name", name: "John Doe", ref: "235367B910", date: "Apr 12, 2025", status: "Review" },
-    { loanRequest: "Mortgage Name", name: "Jane Smith", ref: "235367B911", date: "Apr 11, 2025", status: "Review" },
-  ],
-  approved: [
-    { loanRequest: "Mortgage Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Requested" },
-    { loanRequest: "Mortgage Name", name: "John Doe", ref: "235367B910", date: "Apr 12, 2025", status: "Requested" },
-    { loanRequest: "Mortgage Name", name: "Jane Smith", ref: "235367B911", date: "Apr 11, 2025", status: "Requested" },
-  ],
-  declined: [
-    { loanRequest: "Mortgage Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Declined" },
-    { loanRequest: "Mortgage Name", name: "John Doe", ref: "235367B910", date: "Apr 12, 2025", status: "Declined" },
-    { loanRequest: "Mortgage Name", name: "Jane Smith", ref: "235367B911", date: "Apr 11, 2025", status: "Declined" },
-  ],
-  blacklisted: [
-    { loanRequest: "Mortgage Name", name: "Gina Vera", ref: "235367B909", date: "Apr 12, 2025", status: "Declined" },
-    { loanRequest: "Mortgage Name", name: "John Doe", ref: "235367B910", date: "Apr 12, 2025", status: "Declined" },
-    { loanRequest: "Mortgage Name", name: "Jane Smith", ref: "235367B911", date: "Apr 11, 2025", status: "Declined" },
-  ],
+type WorkflowRow = {
+  id: string
+  loanRequest: string
+  name: string
+  ref: string
+  date: string
+  status: string
 }
 
 export default function MortgageWorkflowPage() {
-  const [activeTab, setActiveTab] = useState("requests")
+  const [activeTab, setActiveTab] = useState("requested")
+  const [rows, setRows] = useState<WorkflowRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    productApi
+      .getLoanWorkflow({ loanWorkflowStatus: activeTab, limit: 100 })
+      .then((res) => {
+        if (cancelled) return
+        const raw = (res as { data?: unknown }).data
+        const list = Array.isArray(raw)
+          ? raw
+          : Array.isArray((raw as { items?: unknown[] } | undefined)?.items)
+            ? (raw as { items: unknown[] }).items
+            : []
+        const mapped: WorkflowRow[] = list
+          .map((x) => x as Record<string, unknown>)
+          .filter((x) => String(x.productType || "").toUpperCase() === "MORTGAGE")
+          .map((x) => ({
+            id: String(x.id ?? x.applicationId ?? ""),
+            loanRequest: String(x.productName ?? x.globalProductName ?? x.reference ?? "Mortgage Application"),
+            name: String(x.userName ?? x.fullName ?? x.customerName ?? x.userId ?? "Unknown"),
+            ref: String(x.reference ?? x.applicationReference ?? x.id ?? "—"),
+            date: String(x.createdAt ?? x.applicationDate ?? "—"),
+            status: String(x.loanWorkflowStatus ?? "requested"),
+          }))
+        setRows(mapped)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setRows([])
+        setError(e instanceof Error ? e.message : "Failed to load mortgage workflow")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab])
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      Requested: "bg-[#E9D5FF] text-[#7C3AED] hover:bg-[#E9D5FF]",
-      Review: "bg-[#DBEAFE] text-[#2563EB] hover:bg-[#DBEAFE]",
-      Declined: "bg-[#FEE2E2] text-[#EF4444] hover:bg-[#FEE2E2]",
+      requested: "bg-[#E9D5FF] text-[#7C3AED] hover:bg-[#E9D5FF]",
+      under_review: "bg-[#DBEAFE] text-[#2563EB] hover:bg-[#DBEAFE]",
+      approved: "bg-[#DCFCE7] text-[#166534] hover:bg-[#DCFCE7]",
+      declined: "bg-[#FEE2E2] text-[#EF4444] hover:bg-[#FEE2E2]",
+      blacklisted: "bg-[#E5E7EB] text-[#374151] hover:bg-[#E5E7EB]",
     }
-    return styles[status as keyof typeof styles] || styles.Requested
+    return styles[status as keyof typeof styles] || styles.requested
   }
 
-  const mortgages = mortgagesData[activeTab as keyof typeof mortgagesData]
+  const mortgages = useMemo(
+    () =>
+      rows.map((r) => ({
+        ...r,
+        date: r.date !== "—" ? new Date(r.date).toLocaleDateString() : "—",
+      })),
+    [rows],
+  )
 
   return (
     <div className="p-8 bg-gray-50">
@@ -78,7 +113,8 @@ export default function MortgageWorkflowPage() {
         </nav>
       </div>
 
-      {/* Table */}
+      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
+
       <div className="bg-white rounded-lg border overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
@@ -92,14 +128,27 @@ export default function MortgageWorkflowPage() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {mortgages.map((mortgage, index) => (
-              <tr key={index} className="hover:bg-gray-50">
+            {loading ? (
+              <tr>
+                <td className="px-6 py-6 text-sm text-gray-500" colSpan={6}>
+                  Loading workflow...
+                </td>
+              </tr>
+            ) : mortgages.length === 0 ? (
+              <tr>
+                <td className="px-6 py-6 text-sm text-gray-500" colSpan={6}>
+                  No applications found.
+                </td>
+              </tr>
+            ) : (
+              mortgages.map((mortgage) => (
+              <tr key={mortgage.id || mortgage.ref} className="hover:bg-gray-50">
                 <td className="px-6 py-4 text-sm text-gray-900">{mortgage.loanRequest}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{mortgage.name}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{mortgage.ref}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{mortgage.date}</td>
                 <td className="px-6 py-4">
-                  <Badge className={getStatusBadge(mortgage.status)}>{mortgage.status}</Badge>
+                  <Badge className={getStatusBadge(mortgage.status)}>{mortgage.status.replaceAll("_", " ")}</Badge>
                 </td>
                 <td className="px-6 py-4">
                   <button className="p-1 hover:bg-gray-100 rounded">
@@ -107,7 +156,7 @@ export default function MortgageWorkflowPage() {
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
           </tbody>
         </table>
       </div>

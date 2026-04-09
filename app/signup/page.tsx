@@ -7,6 +7,7 @@ import { toast } from "react-toastify"
 import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { ProductAuthShell } from "@/components/product-auth-shell"
+import { registrationPasswordError } from "@/lib/passwordRules"
 
 export default function SignupPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -25,6 +26,11 @@ export default function SignupPage() {
     // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
       toast.error("Passwords do not match")
+      return
+    }
+    const passwordError = registrationPasswordError(formData.password)
+    if (passwordError) {
+      toast.error(passwordError)
       return
     }
 

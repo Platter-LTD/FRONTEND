@@ -14,19 +14,19 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Load ALL products from Product Builder (global pool)
+  // Load ALL products from PLATA (global pool)
   useEffect(() => {
     const fetchProducts = async () => {
       try {
         setLoading(true)
-        // Fetch all products from Product Builder
+        // Fetch all products from PLATA
         const data = await productApi.getAllProductsFromBuilder()
 
         if (data.success && data.data) {
           setProducts(data.data)
         }
       } catch (error) {
-        console.error('Error fetching products from Product Builder:', error)
+        console.error('Error fetching products from PLATA:', error)
       } finally {
         setLoading(false)
       }

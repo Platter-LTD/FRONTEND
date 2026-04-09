@@ -40,7 +40,7 @@ const FloatingSelect: React.FC<FloatingSelectProps> = ({
   const pairs = optionPairs ?? options.map((opt) => ({ value: opt, label: opt }));
 
   return (
-    <div>
+    <div className="relative">
       <label className={labelClass}>{label}</label>
 
       <select
@@ -121,21 +121,6 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
     companyRegId: '',
   });
 
-  // hydrate from localStorage if present (no UI change)
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const raw = localStorage.getItem('kyc.businessInfo');
-        if (raw) {
-          const saved = JSON.parse(raw);
-          setFormData((prev) => ({ ...prev, ...saved }));
-        }
-      }
-    } catch (_) {
-      // ignore corrupt storage
-    }
-  }, []);
-
   // control collapsing animation for the businessModel select
   const [isBusinessModelVisible, setIsBusinessModelVisible] = useState(true);
 
@@ -173,18 +158,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
   }, []);
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => {
-      const next = { ...prev, [field]: value };
-      // persist to localStorage for cross-tab access
-      try {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('kyc.businessInfo', JSON.stringify(next));
-        }
-      } catch (_) {
-        // ignore storage errors
-      }
-      return next;
-    });
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   return (

@@ -17,18 +17,16 @@ export default function UserAppDetailsPage() {
   const [productsLoading, setProductsLoading] = useState(true)
   const [productsError, setProductsError] = useState<string | null>(null)
   const [togglingProductId, setTogglingProductId] = useState<string | null>(null)
+  const [overviewLoading, setOverviewLoading] = useState(false)
+  const [overviewError, setOverviewError] = useState<string | null>(null)
+  const [overview, setOverview] = useState<{
+    requestedAmount?: number
+    approvedAmount?: number
+    totalInterest?: number
+  } | null>(null)
 
-  // Mock data - in real app, fetch based on params.id
-  const appData = {
-    id: params.id,
-    name: "ABC",
-    requested: "N5,000,000",
-    requestedPeriod: "6 months",
-    approved: "N4,000,000",
-    approvedPeriod: "5 months",
-    totalInterest: "N1,200,000",
-    interestRate: "7% monthly",
-  }
+  const fmt = (n?: number) =>
+    new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 2 }).format(Number(n || 0))
 
   const fetchProducts = useCallback(async () => {
     if (!appId) return
@@ -58,6 +56,27 @@ export default function UserAppDetailsPage() {
   useEffect(() => {
     fetchProducts()
   }, [fetchProducts])
+
+  useEffect(() => {
+    if (!appId) return
+    setOverviewLoading(true)
+    setOverviewError(null)
+    productApi
+      .getProductOverview(appId)
+      .then((res) => {
+        const h = (res as { data?: { headline?: Record<string, number> } })?.data?.headline || {}
+        setOverview({
+          requestedAmount: Number(h.requestedAmount || 0),
+          approvedAmount: Number(h.approvedAmount || 0),
+          totalInterest: Number(h.totalInterest || 0),
+        })
+      })
+      .catch((e) => {
+        setOverview(null)
+        setOverviewError(e instanceof Error ? e.message : "Failed to load overview")
+      })
+      .finally(() => setOverviewLoading(false))
+  }, [appId])
 
   const customers = [
     {
@@ -147,21 +166,19 @@ export default function UserAppDetailsPage() {
 
       {/* Stats Card */}
       <div className="bg-[#2C3038] rounded-2xl p-8 mb-6">
+        {overviewError ? <p className="text-red-300 text-sm mb-3">{overviewError}</p> : null}
         <div className="grid grid-cols-3 gap-8">
           <div>
             <p className="text-gray-400 text-sm mb-2">Requested</p>
-            <p className="text-white text-3xl font-semibold mb-1">{appData.requested}</p>
-            <p className="text-gray-400 text-sm">{appData.requestedPeriod}</p>
+            <p className="text-white text-3xl font-semibold mb-1">{overviewLoading ? "Loading..." : fmt(overview?.requestedAmount)}</p>
           </div>
           <div>
             <p className="text-gray-400 text-sm mb-2">Approved</p>
-            <p className="text-white text-3xl font-semibold mb-1">{appData.approved}</p>
-            <p className="text-gray-400 text-sm">{appData.approvedPeriod}</p>
+            <p className="text-white text-3xl font-semibold mb-1">{overviewLoading ? "Loading..." : fmt(overview?.approvedAmount)}</p>
           </div>
           <div>
             <p className="text-gray-400 text-sm mb-2">Total interest</p>
-            <p className="text-white text-3xl font-semibold mb-1">{appData.totalInterest}</p>
-            <p className="text-gray-400 text-sm">{appData.interestRate}</p>
+            <p className="text-white text-3xl font-semibold mb-1">{overviewLoading ? "Loading..." : fmt(overview?.totalInterest)}</p>
           </div>
         </div>
       </div>

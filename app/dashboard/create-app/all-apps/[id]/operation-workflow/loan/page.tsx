@@ -1,58 +1,96 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { useParams } from "next/navigation"
 import { MoreVertical } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { productApi } from "@/lib/services/product-api"
+
+type WorkflowRow = {
+  id: string
+  loanRequest: string
+  name: string
+  ref: string
+  date: string
+  status: string
+}
 
 export default function LoanWorkflowPage() {
-  const [activeTab, setActiveTab] = useState("request")
+  const params = useParams()
+  const appId = String(params.id || "")
+  const [activeTab, setActiveTab] = useState("requested")
+  const [rows, setRows] = useState<WorkflowRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const tabs = [
-    { id: "request", label: "Loan Request" },
-    { id: "review", label: "Under Review" },
+    { id: "requested", label: "Loan Request" },
+    { id: "under_review", label: "Under Review" },
     { id: "approved", label: "Approved" },
     { id: "declined", label: "Declined" },
     { id: "blacklisted", label: "Blacklisted" },
   ]
 
-  const getStatusConfig = () => {
-    switch (activeTab) {
-      case "request":
-        return { text: "Requested", bgColor: "bg-[#D4C5B0]", textColor: "text-[#6B5D4F]" }
-      case "review":
-        return { text: "Review", bgColor: "bg-blue-100", textColor: "text-blue-700" }
-      case "approved":
-        return { text: "Requested", bgColor: "bg-green-100", textColor: "text-green-700" }
-      case "declined":
-        return { text: "Declined", bgColor: "bg-red-100", textColor: "text-red-700" }
-      case "blacklisted":
-        return { text: "Declined", bgColor: "bg-gray-200", textColor: "text-gray-700" }
-      default:
-        return { text: "Requested", bgColor: "bg-gray-100", textColor: "text-gray-700" }
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    productApi
+      .getLoanWorkflow({ loanWorkflowStatus: activeTab, limit: 100 })
+      .then((res) => {
+        if (cancelled) return
+        const raw = (res as { data?: unknown }).data
+        const list = Array.isArray(raw)
+          ? raw
+          : Array.isArray((raw as { items?: unknown[] } | undefined)?.items)
+            ? (raw as { items: unknown[] }).items
+            : []
+        const mapped: WorkflowRow[] = list
+          .map((x) => x as Record<string, unknown>)
+          .filter((x) => String(x.productType || "").toUpperCase() === "LOAN")
+          .filter((x) => !appId || String(x.appId || x.createAppId || "") === appId)
+          .map((x) => ({
+            id: String(x.id ?? x.applicationId ?? ""),
+            loanRequest: String(x.productName ?? x.globalProductName ?? x.reference ?? "Loan Application"),
+            name: String(x.userName ?? x.fullName ?? x.customerName ?? x.userId ?? "Unknown"),
+            ref: String(x.reference ?? x.applicationReference ?? x.id ?? "—"),
+            date: String(x.createdAt ?? x.applicationDate ?? "—"),
+            status: String(x.loanWorkflowStatus ?? "requested"),
+          }))
+        setRows(mapped)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setRows([])
+        setError(e instanceof Error ? e.message : "Failed to load loan workflow")
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
+  }, [activeTab, appId])
+
+  const getStatusBadge = (status: string) => {
+    const styles = {
+      requested: "bg-[#E9D5FF] text-[#7C3AED] hover:bg-[#E9D5FF]",
+      under_review: "bg-[#DBEAFE] text-[#2563EB] hover:bg-[#DBEAFE]",
+      approved: "bg-[#DCFCE7] text-[#166534] hover:bg-[#DCFCE7]",
+      declined: "bg-[#FEE2E2] text-[#EF4444] hover:bg-[#FEE2E2]",
+      blacklisted: "bg-[#E5E7EB] text-[#374151] hover:bg-[#E5E7EB]",
+    }
+    return styles[status as keyof typeof styles] || styles.requested
   }
 
-  const statusConfig = getStatusConfig()
-
-  const loans = [
-    {
-      loanRequest: "Loan Name",
-      name: "Gina Vera",
-      ref: "2353678909",
-      date: "Apr 12, 2025",
-    },
-    {
-      loanRequest: "Loan Name",
-      name: "Gina Vera",
-      ref: "2353678909",
-      date: "Apr 12, 2025",
-    },
-    {
-      loanRequest: "Loan Name",
-      name: "Gina Vera",
-      ref: "2353678909",
-      date: "Apr 11, 2025",
-    },
-  ]
+  const loans = useMemo(
+    () =>
+      rows.map((r) => ({
+        ...r,
+        date: r.date !== "—" ? new Date(r.date).toLocaleDateString() : "—",
+      })),
+    [rows],
+  )
 
   return (
     <div className="flex-1 bg-white p-8">
@@ -77,7 +115,7 @@ export default function LoanWorkflowPage() {
         </div>
       </div>
 
-      {/* Loans Table */}
+      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
       <div className="border border-gray-200 rounded-lg overflow-hidden">
         <table className="w-full">
           <thead className="bg-[#F5F5F5]">
@@ -91,18 +129,27 @@ export default function LoanWorkflowPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {loans.map((loan, index) => (
-              <tr key={index} className="hover:bg-gray-50">
+            {loading ? (
+              <tr>
+                <td className="px-6 py-6 text-sm text-gray-500" colSpan={6}>
+                  Loading workflow...
+                </td>
+              </tr>
+            ) : loans.length === 0 ? (
+              <tr>
+                <td className="px-6 py-6 text-sm text-gray-500" colSpan={6}>
+                  No applications found.
+                </td>
+              </tr>
+            ) : (
+              loans.map((loan) => (
+              <tr key={loan.id || loan.ref} className="hover:bg-gray-50">
                 <td className="px-6 py-4 text-sm text-gray-900">{loan.loanRequest}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{loan.name}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{loan.ref}</td>
                 <td className="px-6 py-4 text-sm text-gray-600">{loan.date}</td>
                 <td className="px-6 py-4">
-                  <span
-                    className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${statusConfig.bgColor} ${statusConfig.textColor}`}
-                  >
-                    {statusConfig.text}
-                  </span>
+                  <Badge className={getStatusBadge(loan.status)}>{loan.status.replaceAll("_", " ")}</Badge>
                 </td>
                 <td className="px-6 py-4">
                   <button className="text-gray-400 hover:text-gray-600">
@@ -110,7 +157,7 @@ export default function LoanWorkflowPage() {
                   </button>
                 </td>
               </tr>
-            ))}
+            )))}
           </tbody>
         </table>
       </div>

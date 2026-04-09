@@ -251,7 +251,7 @@ export default function ProductCards({ category = "Mortgage", appId }: ProductCa
         </div>
         <h3 className="text-lg font-semibold text-gray-900 mb-2">No {category} products</h3>
         <p className="text-sm text-gray-500 max-w-sm mb-4">
-          No {category.toLowerCase()} products in the catalog yet. Create them in Product Builder.
+          No {category.toLowerCase()} products in the catalog yet. Create them in PLATA.
         </p>
       </div>
     )

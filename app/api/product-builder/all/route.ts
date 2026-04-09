@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
         if (!response.ok) {
             return NextResponse.json(
-                { success: false, error: data.error || 'Failed to fetch products from Product Builder' },
+                { success: false, error: data.error || 'Failed to fetch products from PLATA' },
                 { status: response.status }
             );
         }
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
             data: data.data || data,
         });
     } catch (error) {
-        console.error('Error fetching products from Product Builder:', error);
+        console.error('Error fetching products from PLATA:', error);
         return NextResponse.json(
             { success: false, error: 'Internal server error' },
             { status: 500 }

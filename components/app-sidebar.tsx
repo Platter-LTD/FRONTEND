@@ -9,7 +9,7 @@ import { GitBranch } from "lucide-react"
 import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { ChevronDown, ChevronUp } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ShieldCheck } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -31,9 +31,9 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
   const pathname = usePathname()
   const { user } = useAuth()
 
-  const [isWalletsOpen, setIsWalletsOpen] = useState(true)
-  const [isProductsOpen, setIsProductsOpen] = useState(false)
-  const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
+  const [isWalletsOpen, setIsWalletsOpen] = useState(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/wallets`))
+  const [isProductsOpen, setIsProductsOpen] = useState(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/products`))
+  const [isWorkflowOpen, setIsWorkflowOpen] = useState(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/operation-workflow`))
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
 
@@ -45,6 +45,12 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
     ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
     : ""
   const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
+
+  useEffect(() => {
+    setIsWalletsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/wallets`))
+    setIsProductsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/products`))
+    setIsWorkflowOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/operation-workflow`))
+  }, [pathname, appId])
 
   const navItems: NavItem[] = [
     {
@@ -86,14 +92,14 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
     <div className={`w-64 bg-white border-r border-[#E0D8C3] h-screen flex flex-col ${className}`}>
       {/* Logo */}
       <div className="p-6">
-        <span className="text-xl font-bold text-[#9A813F]">Product Builder</span>
+        <span className="text-xl font-bold text-[#9A813F]">PLATA</span>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 px-4">
         <ul className="space-y-4">
           {navItems.map((item, index) => {
-            const isActive = pathname.startsWith(item.href)
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
             const hasSubItems = item.subItems && item.subItems.length > 0
             const isOpen =
               item.label === "Wallets"
@@ -132,7 +138,7 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
                     {isOpen && (
                       <ul className="mt-2 ml-9 space-y-2">
                         {item.subItems?.map((subItem, subIndex) => {
-                          const isSubActive = pathname === subItem.href
+                          const isSubActive = pathname === subItem.href || pathname.startsWith(`${subItem.href}/`)
                           return (
                             <li key={subIndex}>
                               <Link

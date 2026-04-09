@@ -4,9 +4,16 @@ import { AuthLayout } from "@/components/auth-layout"
 import { Button } from "@/components/ui/button"
 import { Check } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { useEffect } from "react"
 
 export default function VerifySuccessPage() {
     const router = useRouter()
+    useEffect(() => {
+        const t = window.setTimeout(() => {
+            router.replace("/spring/signin")
+        }, 1200)
+        return () => window.clearTimeout(t)
+    }, [router])
 
     return (
         <AuthLayout>
@@ -24,7 +31,7 @@ export default function VerifySuccessPage() {
                 </p>
 
                 <Button
-                    onClick={() => router.push("/spring/onboarding")}
+                    onClick={() => router.replace("/spring/signin")}
                     className="w-full h-12 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-medium rounded-lg text-base shadow-md hover:shadow-lg max-w-xs"
                 >
                     Continue
