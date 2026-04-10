@@ -12,6 +12,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Authorization required" }, { status: 401 })
     }
 
+    const incomingMerchantId =
+      request.headers.get("x-merchant-id") || request.headers.get("x-user-merchant-id") || undefined
+
     const { searchParams } = new URL(request.url)
     const qs = searchParams.toString()
     const target = `${BASE_URL}/api/v1/products/applications/me/loan-workflow${qs ? `?${qs}` : ""}`
@@ -21,6 +24,7 @@ export async function GET(request: NextRequest) {
         "Content-Type": "application/json",
         Authorization: authHeader,
         ...merchantRoleHeadersFromAuthorization(authHeader),
+        ...(incomingMerchantId ? { "x-merchant-id": incomingMerchantId, "x-user-merchant-id": incomingMerchantId } : {}),
       },
       cache: "no-store",
     })

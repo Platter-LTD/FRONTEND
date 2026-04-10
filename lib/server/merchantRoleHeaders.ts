@@ -50,13 +50,28 @@ function pickRole(payload: JwtPayload | null): string {
 
 function pickMerchantId(payload: JwtPayload | null): string | null {
   if (!payload) return null
-  const id =
-    payload.userMerchantId ||
-    payload.user_merchant_id ||
-    payload.merchantId ||
-    payload.merchant_id ||
-    null
-  return typeof id === "string" && id.trim() ? id.trim() : null
+  const candidates: unknown[] = [
+    payload.userMerchantId,
+    payload.user_merchant_id,
+    payload.merchantId,
+    payload.merchant_id,
+    payload.merchantID,
+    payload.user_merchantId,
+    payload.merchant,
+    payload.merchant_id,
+    (payload.user as Record<string, unknown> | undefined)?.merchantId,
+    (payload.user as Record<string, unknown> | undefined)?.merchant_id,
+    (payload.data as Record<string, unknown> | undefined)?.merchantId,
+    (payload.data as Record<string, unknown> | undefined)?.merchant_id,
+    // Last-resort fallbacks if token uses user ID as merchant owner id
+    payload.userId,
+    payload.id,
+    payload.sub,
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim()
+  }
+  return null
 }
 
 export function merchantRoleHeadersFromAuthorization(authorization: string | null): Record<string, string> {
@@ -68,6 +83,11 @@ export function merchantRoleHeadersFromAuthorization(authorization: string | nul
     "x-user-role": role,
     "x-user-type": role,
     "x-user-roles": role,
-    ...(merchantId ? { "x-merchant-id": merchantId } : {}),
+    ...(merchantId
+      ? {
+          "x-merchant-id": merchantId,
+          "x-user-merchant-id": merchantId,
+        }
+      : {}),
   }
 }

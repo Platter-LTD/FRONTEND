@@ -2,7 +2,7 @@
 
 import type React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { MdAddBox } from "react-icons/md"
 import { FaUsers } from "react-icons/fa"
 import { IoMdCube } from "react-icons/io"
@@ -34,17 +34,24 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
   const pathname = usePathname()
+  const router = useRouter()
   const dispatch = useAppDispatch()
   const complianceComplete = useAppSelector((s) => s.compliance.isApproved)
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
 
-  const displayName = effectiveUser
+  const rawDisplayName = effectiveUser
     ? [effectiveUser.firstName, effectiveUser.lastName].filter(Boolean).join(" ").trim()
     : ""
   const displayEmail = effectiveUser?.email ?? ""
+  const displayName = rawDisplayName || (displayEmail ? displayEmail.split("@")[0] : "User")
+  const handleLogout = async () => {
+    await logout()
+    router.replace("/signin")
+  }
+
   const initialsFromName = effectiveUser
     ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
     : ""
@@ -157,7 +164,14 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
               <p className="text-xs text-gray-500">{displayEmail}</p>
             </div>
           </div>
-          <FiLogOut size={20} className="text-gray-500 cursor-pointer" />
+          <button
+            type="button"
+            onClick={handleLogout}
+            aria-label="Logout"
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <FiLogOut size={20} className="cursor-pointer" />
+          </button>
         </div>
       </div>
     </div>

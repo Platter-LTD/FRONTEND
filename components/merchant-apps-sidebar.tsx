@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { LayoutGrid, User, ShieldCheck, Code2, Settings, Search, LogOut } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/hooks/useAuth"
@@ -10,14 +10,21 @@ import { getUserFromToken } from "@/lib/tokenManager"
 
 export default function MerchantAppsSidebar() {
   const pathname = usePathname()
-  const { user } = useAuth()
+  const router = useRouter()
+  const { user, logout } = useAuth()
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
 
-  const displayName = effectiveUser
+  const rawDisplayName = effectiveUser
     ? [effectiveUser.firstName, effectiveUser.lastName].filter(Boolean).join(" ").trim()
     : ""
   const displayEmail = effectiveUser?.email ?? ""
+  const displayName = rawDisplayName || (displayEmail ? displayEmail.split("@")[0] : "User")
+  const handleLogout = async () => {
+    await logout()
+    router.replace("/signin")
+  }
+
   const initialsFromName = effectiveUser
     ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
     : ""
@@ -98,7 +105,14 @@ export default function MerchantAppsSidebar() {
                 <p className="text-sm font-bold text-gray-900 truncate">{displayName}</p>
                 <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
             </div>
-            <LogOut size={18} className="text-gray-400 group-hover:text-gray-600" />
+            <button
+              type="button"
+              onClick={handleLogout}
+              aria-label="Logout"
+              className="text-gray-400 group-hover:text-gray-600"
+            >
+              <LogOut size={18} />
+            </button>
         </div>
       </div>
     </div>

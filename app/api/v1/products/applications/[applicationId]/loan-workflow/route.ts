@@ -16,6 +16,9 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Authorization required" }, { status: 401 })
     }
 
+    const incomingMerchantId =
+      request.headers.get("x-merchant-id") || request.headers.get("x-user-merchant-id") || undefined
+
     const body = await request.json().catch(() => ({}))
     const target = `${BASE_URL}/api/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow`
 
@@ -25,6 +28,7 @@ export async function PATCH(
         "Content-Type": "application/json",
         Authorization: authHeader,
         ...merchantRoleHeadersFromAuthorization(authHeader),
+        ...(incomingMerchantId ? { "x-merchant-id": incomingMerchantId, "x-user-merchant-id": incomingMerchantId } : {}),
       },
       body: JSON.stringify(body),
     })

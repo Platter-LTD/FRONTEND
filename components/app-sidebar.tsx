@@ -2,7 +2,7 @@
 
 import type React from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { FaWallet } from "react-icons/fa"
 import { IoMdCube } from "react-icons/io"
 import { GitBranch } from "lucide-react"
@@ -29,7 +29,8 @@ interface AppSidebarProps {
 
 const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
   const pathname = usePathname()
-  const { user } = useAuth()
+  const router = useRouter()
+  const { user, logout } = useAuth()
 
   const [isWalletsOpen, setIsWalletsOpen] = useState(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/wallets`))
   const [isProductsOpen, setIsProductsOpen] = useState(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/products`))
@@ -37,10 +38,16 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
 
-  const displayName = effectiveUser
+  const rawDisplayName = effectiveUser
     ? [effectiveUser.firstName, effectiveUser.lastName].filter(Boolean).join(" ").trim()
     : ""
   const displayEmail = effectiveUser?.email ?? ""
+  const displayName = rawDisplayName || (displayEmail ? displayEmail.split("@")[0] : "User")
+  const handleLogout = async () => {
+    await logout()
+    router.replace("/signin")
+  }
+
   const initialsFromName = effectiveUser
     ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
     : ""
@@ -208,7 +215,14 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
               <p className="text-xs text-gray-500">{displayEmail}</p>
             </div>
           </div>
-          <FiLogOut size={20} className="text-gray-500 cursor-pointer" />
+          <button
+            type="button"
+            onClick={handleLogout}
+            aria-label="Logout"
+            className="text-gray-500 hover:text-gray-700"
+          >
+            <FiLogOut size={20} className="cursor-pointer" />
+          </button>
         </div>
       </div>
     </div>

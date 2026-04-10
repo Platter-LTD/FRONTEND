@@ -5,6 +5,7 @@ import { useParams } from "next/navigation"
 import { MoreVertical } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { productApi } from "@/lib/services/product-api"
+import { TableSkeleton } from "@/components/ui/table-skeleton"
 
 type WorkflowRow = {
   id: string
@@ -116,26 +117,23 @@ export default function LoanWorkflowPage() {
       </div>
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-[#F5F5F5]">
-            <tr>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Loan Request</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Name</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Ref</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Date</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Status</th>
-              <th className="w-12"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {loading ? (
+      {loading ? (
+        <TableSkeleton columnCount={6} rowCount={6} />
+      ) : (
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-[#F5F5F5]">
               <tr>
-                <td className="px-6 py-6 text-sm text-gray-500" colSpan={6}>
-                  Loading workflow...
-                </td>
+                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Loan Request</th>
+                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Name</th>
+                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Ref</th>
+                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Date</th>
+                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Status</th>
+                <th className="w-12"></th>
               </tr>
-            ) : loans.length === 0 ? (
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {loans.length === 0 ? (
               <tr>
                 <td className="px-6 py-6 text-sm text-gray-500" colSpan={6}>
                   No applications found.
@@ -157,10 +155,11 @@ export default function LoanWorkflowPage() {
                   </button>
                 </td>
               </tr>
-            )))}
-          </tbody>
-        </table>
-      </div>
+              )))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

@@ -16,12 +16,16 @@ export async function GET(
       return NextResponse.json({ success: false, error: "Authorization required" }, { status: 401 })
     }
 
+    const incomingMerchantId =
+      request.headers.get("x-merchant-id") || request.headers.get("x-user-merchant-id") || undefined
+
     const target = `${BASE_URL}/api/v1/products/app/${encodeURIComponent(appId)}/product-overview`
     const response = await fetch(target, {
       headers: {
         "Content-Type": "application/json",
         Authorization: authHeader,
         ...merchantRoleHeadersFromAuthorization(authHeader),
+        ...(incomingMerchantId ? { "x-merchant-id": incomingMerchantId, "x-user-merchant-id": incomingMerchantId } : {}),
       },
       cache: "no-store",
     })

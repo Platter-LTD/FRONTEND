@@ -2,11 +2,37 @@
 
 import { getAccessToken } from '@/lib/cookieAuth';
 
+const decodeTokenMerchantId = (token: string | null): string | null => {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1] || '')) as Record<string, unknown>;
+    const candidates = [
+      payload.userMerchantId,
+      payload.user_merchant_id,
+      payload.merchantId,
+      payload.merchant_id,
+      (payload.user as Record<string, unknown> | undefined)?.merchantId,
+      (payload.user as Record<string, unknown> | undefined)?.merchant_id,
+      payload.userId,
+      payload.id,
+      payload.sub,
+    ];
+    for (const c of candidates) {
+      if (typeof c === 'string' && c.trim()) return c.trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
 const getAuthHeaders = () => {
   const token = typeof window !== 'undefined' ? getAccessToken() : null;
+  const merchantId = decodeTokenMerchantId(token);
   return {
     'Content-Type': 'application/json',
     ...(token && { 'Authorization': `Bearer ${token}` }),
+    ...(merchantId && { 'x-merchant-id': merchantId, 'x-user-merchant-id': merchantId }),
   };
 };
 
