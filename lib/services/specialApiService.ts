@@ -2,8 +2,9 @@
 // These endpoints allow merchants to access user data, subscriptions, and advanced features
 
 import { getAccessToken } from '@/lib/cookieAuth';
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 
-const SPECIAL_API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(/\/$/, '');
+const SPECIAL_API_BASE = getPlataApiBaseUrl();
 
 const getSpecialHeaders = () => {
   const token = typeof window !== 'undefined' ? getAccessToken() : null;

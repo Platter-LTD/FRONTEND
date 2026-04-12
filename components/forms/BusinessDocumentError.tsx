@@ -121,7 +121,7 @@ const BusinessDocumentWithError: React.FC<Props> = ({ missingIds = [] }) => {
                 key={item.id}
                 id={item.id}
                 title={item.title}
-                buttonColor={markError(item.id) ? "#DC2626" : "#2563EB"}
+                buttonColor={markError(item.id) ? "#DC2626" : "#9A813F"}
                 error={markError(item.id)}
                 onFileSelected={(file) => setSelected((p) => ({ ...p, [item.id]: file }))}
               />
@@ -133,7 +133,7 @@ const BusinessDocumentWithError: React.FC<Props> = ({ missingIds = [] }) => {
                 key={item.id}
                 id={item.id}
                 title={item.title}
-                buttonColor={markError(item.id) ? "#DC2626" : "#2563EB"}
+                buttonColor={markError(item.id) ? "#DC2626" : "#9A813F"}
                 error={markError(item.id)}
                 onFileSelected={(file) => setSelected((p) => ({ ...p, [item.id]: file }))}
               />
@@ -147,7 +147,7 @@ const BusinessDocumentWithError: React.FC<Props> = ({ missingIds = [] }) => {
         <button
           type="button"
           className="px-4 py-2 rounded-md text-sm font-medium shadow-sm cursor-pointer disabled:opacity-60"
-          style={{ backgroundColor: "#2563EB", color: "#fff" }}
+          style={{ backgroundColor: "#9A813F", color: "#fff" }}
           onClick={handleSubmit}
           disabled={submitting}
         >

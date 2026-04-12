@@ -12,6 +12,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { useComplianceForm } from "@/providers/ComplianceFormProvider"
 import type { ShareholderRow } from "@/providers/ComplianceFormProvider"
 import { Skeleton } from "@/components/ui/skeleton"
+import { pickShareholderPhone } from "@/lib/pickShareholderPhone"
 
 export function ShareholderInfo() {
   const { user, loading: authLoading } = useAuth()
@@ -30,7 +31,7 @@ export function ShareholderInfo() {
         const mapped: ShareholderRow[] = list.map((s: any) => ({
           name: s.fullName || s.name || "Unknown",
           email: s.email || "",
-          phone: s.phoneNumber || s.phone || "",
+          phone: pickShareholderPhone(s),
           date: (s.submittedAt || new Date().toISOString()).slice(0, 16).replace("T", " "),
           kyc: "Copy Kyc",
           status:
@@ -70,24 +71,12 @@ export function ShareholderInfo() {
     }
   }
 
+  const colCount = 8
+
   return (
     <div className="space-y-6">
-      {loading && (
-        <div className="space-y-3 py-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4 rounded-lg border border-gray-100 bg-white p-4">
-              <Skeleton className="h-10 w-10 rounded-full" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-3 w-56" />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       <div className="flex justify-end">
-        <Button onClick={() => setShareholderDrawerOpen(true)} className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white">
+        <Button onClick={() => setShareholderDrawerOpen(true)} className="bg-[#9A813F] hover:bg-[#8A7335] text-white">
           <Copy className="w-4 h-4 mr-2" />
           Create shareholder
         </Button>
@@ -110,32 +99,69 @@ export function ShareholderInfo() {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {shareholders.map((row, idx) => (
-              <tr key={idx}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.name}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.email}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.phone}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.date}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <Button variant="ghost" size="sm" className="text-[#2563EB] hover:text-[#1D4ED8]">
-                    {row.kyc}
-                  </Button>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <Button variant="ghost" size="sm" className="text-[#2563EB] hover:text-[#1D4ED8]">
-                    Upload
-                  </Button>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <Badge className={getStatusColor(row.status)}>{row.status}</Badge>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <button className="text-gray-400 hover:text-gray-600">
-                    <CiMenuKebab className="w-5 h-5" />
-                  </button>
+            {loading ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <tr key={`sk-${i}`}>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-4 w-36" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-4 w-44" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-4 w-28" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-4 w-32" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-8 w-20" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-8 w-16" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                  </td>
+                  <td className="px-6 py-4">
+                    <Skeleton className="h-5 w-5 rounded" />
+                  </td>
+                </tr>
+              ))
+            ) : shareholders.length === 0 ? (
+              <tr>
+                <td colSpan={colCount} className="px-6 py-12 text-center text-sm text-gray-500">
+                  No shareholders yet. Use &quot;Create shareholder&quot; to add one.
                 </td>
               </tr>
-            ))}
+            ) : (
+              shareholders.map((row, idx) => (
+                <tr key={idx}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.name}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.email}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.phone}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.date}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <Button variant="ghost" size="sm" className="text-[#9A813F] hover:text-[#7A6449]">
+                      {row.kyc}
+                    </Button>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <Button variant="ghost" size="sm" className="text-[#9A813F] hover:text-[#7A6449]">
+                      Upload
+                    </Button>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <Badge className={getStatusColor(row.status)}>{row.status}</Badge>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <button type="button" className="text-gray-400 hover:text-gray-600">
+                      <CiMenuKebab className="w-5 h-5" />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import https from 'https';
 import dns from 'dns';
+import { merchantRoleHeadersFromAuthorization } from '@/lib/server/merchantRoleHeaders';
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 // Base URL for all APIs (account-ms). Endpoints match Product API doc:
 // POST /api/v1/products/select-type, POST /api/v1/products/create-after-type, POST /api/v1/products (legacy),
 // GET /api/v1/products (catalog). App-scoped enabled list: GET /api/v1/products/app/:appId (see app/api/v1/products/app/[appId]/route.ts).
-const PRODUCT_SERVICE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(/\/$/, '');
+const PRODUCT_SERVICE_URL = (getPlataApiBaseUrl()).replace(/\/$/, '');
 
 const agent = new https.Agent({
   keepAlive: true,
@@ -25,6 +27,11 @@ const http = axios.create({
   validateStatus: () => true,
   headers: { 'Content-Type': 'application/json' },
 });
+
+function upstreamAuthHeaders(authHeader: string | null) {
+  if (!authHeader) return {};
+  return { Authorization: authHeader, ...merchantRoleHeadersFromAuthorization(authHeader) };
+}
 
 function logAxiosError(prefix: string, err: unknown, url?: string) {
   const ax = err && typeof err === 'object' && 'isAxiosError' in err ? (err as import('axios').AxiosError) : null;
@@ -65,7 +72,7 @@ export async function POST(request: NextRequest) {
     let selectResp;
     try {
       selectResp = await http.post(selectUrl, { appId, type, ...rest }, {
-        headers: { Authorization: authHeader },
+        headers: upstreamAuthHeaders(authHeader),
       });
     } catch (err) {
       logAxiosError('select-type request failed', err, selectUrl);
@@ -83,7 +90,7 @@ export async function POST(request: NextRequest) {
       let legacyResp;
       try {
         legacyResp = await http.post(legacyUrl, { appId, type, name, description, ...rest }, {
-          headers: { Authorization: authHeader },
+          headers: upstreamAuthHeaders(authHeader),
         });
       } catch (err) {
         logAxiosError('legacy create request failed', err, legacyUrl);
@@ -109,7 +116,7 @@ export async function POST(request: NextRequest) {
     let createResp;
     try {
       createResp = await http.post(createUrl, { productId, name, description }, {
-        headers: { Authorization: authHeader },
+        headers: upstreamAuthHeaders(authHeader),
       });
     } catch (err) {
       logAxiosError('create-after-type request failed', err, createUrl);
@@ -154,7 +161,7 @@ export async function GET(request: NextRequest) {
     let response;
     try {
       response = await http.get(url, {
-        headers: { Authorization: authHeader },
+        headers: upstreamAuthHeaders(authHeader),
       });
     } catch (err) {
       logAxiosError('GET products request failed', err, url);

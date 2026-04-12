@@ -8,6 +8,8 @@ import { ComplianceService } from "@/lib/services/complianceService"
 import { useAuth } from "@/hooks/useAuth"
 import { toast } from "react-toastify"
 import { useComplianceForm } from "@/providers/ComplianceFormProvider"
+import { pickShareholderPhone } from "@/lib/pickShareholderPhone"
+import { isPdfFile } from "@/lib/isPdfFile"
 
 const formatFileSize = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -34,12 +36,34 @@ export const CreateShareholderDrawer: React.FC = () => {
   }
 
   const handleUboSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] || null
+    const input = e.target
+    const f = input.files?.[0] ?? null
+    input.value = ""
+    if (!f) {
+      setUboFile(null)
+      return
+    }
+    if (!isPdfFile(f)) {
+      toast.error(`${f.name} must be a PDF file`)
+      setUboFile(null)
+      return
+    }
     setUboFile(f)
   }
 
   const handleBankSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] || null
+    const input = e.target
+    const f = input.files?.[0] ?? null
+    input.value = ""
+    if (!f) {
+      setBankFile(null)
+      return
+    }
+    if (!isPdfFile(f)) {
+      toast.error(`${f.name} must be a PDF file`)
+      setBankFile(null)
+      return
+    }
     setBankFile(f)
   }
 
@@ -147,7 +171,7 @@ export const CreateShareholderDrawer: React.FC = () => {
       addShareholder({
         name: shareholder.fullName || formData.fullName,
         email: shareholder.email || formData.email,
-        phone: shareholder.phoneNumber || formData.phoneNumber || "",
+        phone: pickShareholderPhone(shareholder) || formData.phoneNumber.trim() || "",
         date: new Date().toISOString().slice(0, 16).replace("T", " "),
         kyc: "Copy Kyc",
         status: shareholder.status === "APPROVED" ? "Successful" : "Pending",
@@ -189,7 +213,7 @@ export const CreateShareholderDrawer: React.FC = () => {
             exit={{ x: "100%" }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className={cn(
-              "relative ml-auto w-[45%] min-w-[400px] bg-white shadow-2xl",
+              "relative ml-auto w-full max-w-[880px] min-w-0 sm:w-[min(92vw,880px)] bg-white shadow-2xl",
               "border-l border-gray-200 flex flex-col h-screen max-h-screen",
               "rounded-tl-[40px] rounded-bl-[40px] pointer-events-auto",
             )}
@@ -203,121 +227,143 @@ export const CreateShareholderDrawer: React.FC = () => {
 
             <form
               onSubmit={handleSubmit}
-              className="flex-1 flex flex-col min-h-0 mt-16 px-8 py-10 space-y-6 max-w-md mx-auto w-full overflow-y-auto"
+              className="flex-1 flex flex-col min-h-0 mt-16 px-6 sm:px-10 py-10 w-full max-w-full mx-auto overflow-y-auto"
             >
-              <div className="flex items-center justify-between border rounded-lg p-5 bg-white shadow-sm flex-wrap gap-2">
-                <div className="flex items-center space-x-3 min-w-0 flex-1">
-                  <Upload className="w-5 h-5 text-gray-400 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-700">Ultimate Beneficial Owner (UBO)</p>
-                    <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
-                    {uboFile && (
-                      <div className="mt-2 flex items-center gap-2 flex-wrap">
-                        <span className="inline-flex items-center gap-1 text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded">
-                          <FileText className="w-4 h-4 text-gray-500" />
-                          <span className="truncate max-w-[180px]" title={uboFile.name}>{uboFile.name}</span>
-                          <span className="text-gray-500 text-xs">({formatFileSize(uboFile.size)})</span>
-                        </span>
-                        <button type="button" onClick={clearUbo} className="text-xs text-red-600 hover:underline">
-                          Remove
-                        </button>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full min-w-0">
+                <div className="flex flex-col gap-6 min-w-0">
+                  <div className="flex items-center justify-between border rounded-lg p-5 bg-white shadow-sm flex-wrap gap-2">
+                    <div className="flex items-center space-x-3 min-w-0 flex-1">
+                      <Upload className="w-5 h-5 text-gray-400 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-700">Ultimate Beneficial Owner (UBO)</p>
+                        <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
+                        {uboFile && (
+                          <div className="mt-2 flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                              <FileText className="w-4 h-4 text-gray-500" />
+                              <span className="truncate max-w-[160px]" title={uboFile.name}>
+                                {uboFile.name}
+                              </span>
+                              <span className="text-gray-500 text-xs">({formatFileSize(uboFile.size)})</span>
+                            </span>
+                            <button type="button" onClick={clearUbo} className="text-xs text-red-600 hover:underline">
+                              Remove
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
+                    <label
+                      className="px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors shrink-0 cursor-pointer"
+                      style={{ backgroundColor: "#9A813F", color: "#fff" }}
+                    >
+                      <input
+                        ref={uboInputRef}
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,application/pdf"
+                        onChange={handleUboSelect}
+                      />
+                      {uboFile ? "Change file" : "Upload"}
+                    </label>
+                  </div>
+
+                  <div className="border rounded-lg p-5 bg-white shadow-sm">
+                    <input
+                      type="text"
+                      placeholder="Full Name"
+                      value={formData.fullName}
+                      onChange={(e) => handleChange("fullName", e.target.value)}
+                      className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
+                    />
+                  </div>
+
+                  <div className="border rounded-lg p-5 bg-white shadow-sm">
+                    <input
+                      type="email"
+                      placeholder="Email"
+                      value={formData.email}
+                      onChange={(e) => handleChange("email", e.target.value)}
+                      className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
+                    />
+                  </div>
+
+                  <div className="border rounded-lg p-5 bg-white shadow-sm">
+                    <input
+                      type="tel"
+                      placeholder="Phone Number"
+                      value={formData.phoneNumber}
+                      onChange={(e) => handleChange("phoneNumber", e.target.value)}
+                      className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
+                    />
                   </div>
                 </div>
-                <label
-                  className="px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors shrink-0 cursor-pointer"
-                  style={{ backgroundColor: "#2563EB", color: "#fff" }}
-                >
-                  <input ref={uboInputRef} type="file" className="hidden" accept="application/pdf,image/*" onChange={handleUboSelect} />
-                  {uboFile ? "Change file" : "Upload"}
-                </label>
-              </div>
 
-              <div className="border rounded-lg p-5 bg-white shadow-sm">
-                <input
-                  type="text"
-                  placeholder="Full Name"
-                  value={formData.fullName}
-                  onChange={(e) => handleChange("fullName", e.target.value)}
-                  className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-                />
-              </div>
+                <div className="flex flex-col gap-6 min-w-0">
+                  <div className="border rounded-lg p-5 bg-white shadow-sm">
+                    <input
+                      type="text"
+                      placeholder="BVN"
+                      value={formData.bvn}
+                      onChange={(e) => handleChange("bvn", e.target.value)}
+                      className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
+                    />
+                  </div>
 
-              <div className="border rounded-lg p-5 bg-white shadow-sm">
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={formData.email}
-                  onChange={(e) => handleChange("email", e.target.value)}
-                  className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-                />
-              </div>
+                  <div className="border rounded-lg p-5 bg-white shadow-sm">
+                    <input
+                      type="text"
+                      placeholder="Bank Account"
+                      value={formData.bankAccount}
+                      onChange={(e) => handleChange("bankAccount", e.target.value)}
+                      className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
+                    />
+                  </div>
 
-              <div className="border rounded-lg p-5 bg-white shadow-sm">
-                <input
-                  type="tel"
-                  placeholder="Phone Number"
-                  value={formData.phoneNumber}
-                  onChange={(e) => handleChange("phoneNumber", e.target.value)}
-                  className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-                />
-              </div>
-
-              <div className="border rounded-lg p-5 bg-white shadow-sm">
-                <input
-                  type="text"
-                  placeholder="BVN"
-                  value={formData.bvn}
-                  onChange={(e) => handleChange("bvn", e.target.value)}
-                  className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-                />
-              </div>
-
-              <div className="border rounded-lg p-5 bg-white shadow-sm">
-                <input
-                  type="text"
-                  placeholder="Bank Account"
-                  value={formData.bankAccount}
-                  onChange={(e) => handleChange("bankAccount", e.target.value)}
-                  className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-                />
-              </div>
-
-              <div className="flex items-center justify-between border rounded-lg p-5 bg-white shadow-sm flex-wrap gap-2">
-                <div className="flex items-center space-x-3 min-w-0 flex-1">
-                  <Upload className="w-5 h-5 text-gray-400 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-700">Bank Statement</p>
-                    <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
-                    {bankFile && (
-                      <div className="mt-2 flex items-center gap-2 flex-wrap">
-                        <span className="inline-flex items-center gap-1 text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded">
-                          <FileText className="w-4 h-4 text-gray-500" />
-                          <span className="truncate max-w-[180px]" title={bankFile.name}>{bankFile.name}</span>
-                          <span className="text-gray-500 text-xs">({formatFileSize(bankFile.size)})</span>
-                        </span>
-                        <button type="button" onClick={clearBank} className="text-xs text-red-600 hover:underline">
-                          Remove
-                        </button>
+                  <div className="flex items-center justify-between border rounded-lg p-5 bg-white shadow-sm flex-wrap gap-2">
+                    <div className="flex items-center space-x-3 min-w-0 flex-1">
+                      <Upload className="w-5 h-5 text-gray-400 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-700">Bank Statement</p>
+                        <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
+                        {bankFile && (
+                          <div className="mt-2 flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                              <FileText className="w-4 h-4 text-gray-500" />
+                              <span className="truncate max-w-[160px]" title={bankFile.name}>
+                                {bankFile.name}
+                              </span>
+                              <span className="text-gray-500 text-xs">({formatFileSize(bankFile.size)})</span>
+                            </span>
+                            <button type="button" onClick={clearBank} className="text-xs text-red-600 hover:underline">
+                              Remove
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    </div>
+                    <label
+                      className="px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors shrink-0 cursor-pointer"
+                      style={{ backgroundColor: "#9A813F", color: "#fff" }}
+                    >
+                      <input
+                        ref={bankInputRef}
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,application/pdf"
+                        onChange={handleBankSelect}
+                      />
+                      {bankFile ? "Change file" : "Upload"}
+                    </label>
                   </div>
                 </div>
-                <label
-                  className="px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors shrink-0 cursor-pointer"
-                  style={{ backgroundColor: "#2563EB", color: "#fff" }}
-                >
-                  <input ref={bankInputRef} type="file" className="hidden" accept="application/pdf,image/*" onChange={handleBankSelect} />
-                  {bankFile ? "Change file" : "Upload"}
-                </label>
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full text-white py-3 rounded-md font-medium hover:opacity-90 transition-colors disabled:opacity-50"
-                style={{ backgroundColor: "#2563EB" }}
+                className="mt-8 w-full text-white py-3 rounded-md font-medium hover:opacity-90 transition-colors disabled:opacity-50 shrink-0"
+                style={{ backgroundColor: "#9A813F" }}
               >
                 {loading ? "Saving..." : "Save Shareholder"}
               </button>

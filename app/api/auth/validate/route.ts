@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BACKEND } from '@/lib/endpoints';
 
-const AUTH_SERVICE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev').replace(/\/+$/, '');
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import { namesFromJwtPayload } from "@/lib/userNameFromClaims"
+
+const AUTH_SERVICE_URL = (getPlataApiBaseUrl()).replace(/\/+$/, '');
 const cookieOpts = (maxAge: number, httpOnly: boolean) => ({
   httpOnly,
   secure: process.env.NODE_ENV === 'production',
@@ -11,11 +14,12 @@ const cookieOpts = (maxAge: number, httpOnly: boolean) => ({
 });
 
 function userFromPayload(payload: Record<string, unknown>) {
+  const { firstName, lastName } = namesFromJwtPayload(payload)
   return {
     id: (payload.userId ?? payload.sub) as string,
     email: (payload.email ?? '') as string,
-    firstName: (payload.firstName ?? payload.first_name ?? '') as string,
-    lastName: (payload.lastName ?? payload.last_name ?? '') as string,
+    firstName,
+    lastName,
     role: (payload.userType ?? payload.role) as string | undefined,
   };
 }

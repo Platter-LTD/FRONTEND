@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const dynamic = "force-dynamic"
 
 // Product microservice base (proxy target)
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev").replace(/\/+$/, "")
+const BASE_URL = (getPlataApiBaseUrl()).replace(/\/+$/, "")
 
 // GET /api/v1/products/:id/action
 export async function GET(

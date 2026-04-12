@@ -4,6 +4,7 @@
  */
 
 import { getAccessToken } from './cookieAuth'
+import { namesFromJwtPayload } from '@/lib/userNameFromClaims'
 
 /**
  * Store tokens: set cookies via API (persists; no localStorage)
@@ -141,13 +142,14 @@ export function getUserFromToken(): { id: string; email: string; firstName: stri
   const token = getAccessToken()
   if (!token) return null
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
+    const payload = JSON.parse(atob(token.split('.')[1])) as Record<string, unknown>
+    const { firstName, lastName } = namesFromJwtPayload(payload)
     return {
-      id: payload.userId ?? payload.sub,
-      email: payload.email ?? '',
-      firstName: payload.firstName ?? payload.first_name ?? '',
-      lastName: payload.lastName ?? payload.last_name ?? '',
-      role: payload.userType ?? payload.role,
+      id: (payload.userId ?? payload.sub) as string,
+      email: (payload.email ?? '') as string,
+      firstName,
+      lastName,
+      role: (payload.userType ?? payload.role) as string | undefined,
     }
   } catch {
     return null

@@ -6,6 +6,7 @@ import { toast } from "react-toastify";
 import { fileToBase64 } from "@/lib/fileUtils";
 import { getAccessToken } from "@/lib/cookieAuth";
 import { ComplianceService } from "@/lib/services/complianceService";
+import { isPdfFile } from "@/lib/isPdfFile";
 import { useAuth } from "@/hooks/useAuth";
 import { useComplianceForm } from "@/providers/ComplianceFormProvider";
 
@@ -124,10 +125,19 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
 
   // Remove previous sessionStorage hydration; we now keep in context
 
+  const MAX_DOC_BYTES = 5 * 1024 * 1024;
+
   const handleFile = (key: string, file: File | null) => {
-    // enforce type early
-    if (file && file.type !== 'application/pdf') {
+    if (!file) {
+      setBusinessFile(key, null);
+      return;
+    }
+    if (!isPdfFile(file)) {
       toast.error(`${file.name} must be a PDF`);
+      return;
+    }
+    if (file.size > MAX_DOC_BYTES) {
+      toast.error(`${file.name} must be 5MB or smaller`);
       return;
     }
     setBusinessFile(key, file);
@@ -290,7 +300,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
   };
 
   return (
-    <div className="px-12 py-6">
+    <div className="">
       {/* Header inside big rounded pale card */}
       <div className="bg-gray-100 rounded-2xl p-6 border border-gray-200">
         <div className="text-center mb-4">
@@ -308,7 +318,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
                 id={item.id}
                 title={item.title}
                 hint={item.hint}
-                buttonColor="#2563EB"
+                buttonColor="#9A813F"
                 onFileSelected={(file) => handleFile(item.id, file)}
                 initialFile={businessFiles[item.id] || null}
               />
@@ -323,7 +333,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
                 id={item.id}
                 title={item.title}
                 hint={item.hint}
-                buttonColor="#2563EB"
+                buttonColor="#9A813F"
                 onFileSelected={(file) => handleFile(item.id, file)}
                 initialFile={businessFiles[item.id] || null}
               />
@@ -337,7 +347,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
         <button
           type="button"
           className="px-4 py-2 rounded-md text-sm font-medium shadow-sm cursor-pointer disabled:opacity-60"
-          style={{ backgroundColor: "#2563EB", color: "#fff" }}
+          style={{ backgroundColor: "#9A813F", color: "#fff" }}
           onClick={submit}
           disabled={submitting}
         >

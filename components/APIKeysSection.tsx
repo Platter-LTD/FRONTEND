@@ -71,7 +71,7 @@ export default function APIKeysSection({
         </div>
         <Button
           type="button"
-          className="bg-[#7F56D9] text-white hover:bg-[#6941C6] rounded-md px-6 shrink-0 w-full sm:w-auto"
+          className="bg-[#9A813F] text-white hover:bg-[#8A7335] rounded-md px-6 shrink-0 w-full sm:w-auto"
           onClick={onGenerateNewKey}
         >
           Generate New Key

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const dynamic = "force-dynamic"
 
 // Proxies to backend GET /api/v1/keys
 export async function GET(request: NextRequest) {
   try {
-    const AUTH_MS_URL = process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev"
+    const AUTH_MS_URL = getPlataApiBaseUrl()
 
     const cookieAccessToken = request.cookies.get("accessToken")?.value
     const authHeader =
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
 // Proxies to backend POST /api/v1/keys (generate new keys)
 export async function POST(request: NextRequest) {
   try {
-    const AUTH_MS_URL = process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev"
+    const AUTH_MS_URL = getPlataApiBaseUrl()
 
     const cookieAccessToken = request.cookies.get("accessToken")?.value
     const authHeader =

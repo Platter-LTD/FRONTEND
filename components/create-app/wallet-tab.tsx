@@ -1,41 +1,70 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { FiEyeOff, FiEye } from "react-icons/fi"
 import { Skeleton } from "@/components/ui/skeleton"
+import { getAccessToken } from "@/lib/cookieAuth"
 import { getMerchantIdFromAccessToken } from "@/lib/merchantIdFromToken"
 import { merchantWalletMainBalance } from "@/lib/services/walletService"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchMerchantAppsThunk } from "@/store/merchantAppsSlice"
-import {
-  fetchAppMerchantWalletsThunk,
-  fetchTreasuryTransactionsThunk,
-} from "@/store/walletSlice"
+import { fetchAppMerchantWalletsThunk, fetchTreasuryTransactionsThunk } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+
+type AppRow = { id: string; name?: string; alias?: string }
 
 export function WalletTab() {
   const dispatch = useAppDispatch()
-  const { selectedAppId, selectedAppName, loading: appsLoading, fetchAttempted } = useAppSelector(
-    (s) => s.merchantApps,
-  )
   const walletState = useAppSelector((s) => s.wallet)
 
   const [merchantId, setMerchantId] = useState<string | null>(null)
+  const [apps, setApps] = useState<AppRow[]>([])
+  const [appsLoading, setAppsLoading] = useState(true)
+  const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+
+  const loadApps = useCallback(async () => {
+    setAppsLoading(true)
+    try {
+      const token = typeof window !== "undefined" ? getAccessToken() : null
+      const response = await fetch("/api/apps", {
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      })
+      const result = await response.json()
+      const list: AppRow[] = result.success && Array.isArray(result.data) ? result.data : []
+      setApps(list)
+      setSelectedAppId((prev) => {
+        if (prev && list.some((a) => a.id === prev)) return prev
+        return list[0]?.id ?? null
+      })
+    } catch {
+      setApps([])
+      setSelectedAppId(null)
+    } finally {
+      setAppsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     setMerchantId(getMerchantIdFromAccessToken())
   }, [])
 
   useEffect(() => {
-    if (!fetchAttempted && !appsLoading) {
-      void dispatch(fetchMerchantAppsThunk())
-    }
-  }, [dispatch, fetchAttempted, appsLoading])
+    void loadApps()
+  }, [loadApps])
 
   const appId = selectedAppId
+  const selectedApp = apps.find((a) => a.id === appId)
+  const selectedAppName =
+    selectedApp?.name && selectedApp.name.toLowerCase() !== "anonymous"
+      ? selectedApp.name
+      : selectedApp?.alias || appId || ""
 
   useEffect(() => {
     if (!merchantId || !appId) return
@@ -65,51 +94,75 @@ export function WalletTab() {
     )
   }
 
+  if (appsLoading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-10 w-full max-w-md" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    )
+  }
+
   if (!appId) {
     return (
       <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-        {appsLoading
-          ? "Loading apps…"
-          : "Select an app from the sidebar (or create one) to view this app’s treasury wallet and transactions."}
+        No applications found. Create an app under <span className="font-medium">All Apps</span> to view treasury
+        wallet and transactions.
       </div>
     )
   }
 
   return (
     <>
-      <p className="text-sm text-gray-600 mb-4">
-        Showing treasury wallet for{" "}
-        <span className="font-medium text-gray-900">{selectedAppName || appId}</span>
-        .
-      </p>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-gray-600">
+          Showing treasury wallet for <span className="font-medium text-gray-900">{selectedAppName}</span>.
+        </p>
+        {apps.length > 1 ? (
+          <div className="w-full sm:w-64">
+            <Select value={appId} onValueChange={setSelectedAppId}>
+              <SelectTrigger className="h-9 border-gray-300 bg-white text-sm">
+                <SelectValue placeholder="Select app" />
+              </SelectTrigger>
+              <SelectContent>
+                {apps.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name && a.name.toLowerCase() !== "anonymous" ? a.name : a.alias || a.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
+      </div>
 
       {(walletsError || txsError) && (
-        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6 text-sm">
+        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
           {walletsError || txsError}
         </div>
       )}
 
-      <div className="bg-black rounded-lg p-8 mb-8 relative overflow-hidden">
+      <div className="relative mb-8 overflow-hidden rounded-lg bg-black p-8">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-white/70 text-sm mb-2">Treasury — main balance</p>
+            <p className="mb-2 text-sm text-white/70">Treasury — main balance</p>
             {walletsLoading ? (
               <div className="flex items-baseline gap-1">
                 <Skeleton className="h-12 w-32 bg-gray-600" />
-                <Skeleton className="h-8 w-8 bg-gray-600 ml-1" />
+                <Skeleton className="ml-1 h-8 w-8 bg-gray-600" />
               </div>
             ) : (
               <div className="flex items-baseline gap-1">
                 {showBalance ? (
                   <>
-                    <span className="text-white text-5xl font-semibold">
+                    <span className="text-5xl font-semibold text-white">
                       {currency === "NGN" ? "NGN " : ""}
                       {dollars}
                     </span>
-                    <span className="text-white text-2xl">.{cents}</span>
+                    <span className="text-2xl text-white">.{cents}</span>
                   </>
                 ) : (
-                  <span className="text-white text-5xl font-semibold">••••</span>
+                  <span className="text-5xl font-semibold text-white">••••</span>
                 )}
               </div>
             )}
@@ -120,12 +173,12 @@ export function WalletTab() {
               <button
                 type="button"
                 onClick={() => setShowBalance(!showBalance)}
-                className="text-white/50 hover:text-white/70 transition-colors"
+                className="text-white/50 transition-colors hover:text-white/70"
               >
                 {showBalance ? <FiEyeOff size={24} /> : <FiEye size={24} />}
               </button>
             )}
-            <Button className="bg-[#9A813F] hover:bg-[#8A7335] text-white px-8" disabled={walletsLoading}>
+            <Button className="bg-[#9A813F] px-8 text-white hover:bg-[#8A7335]" disabled={walletsLoading}>
               Withdraw
             </Button>
           </div>

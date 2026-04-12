@@ -1,13 +1,14 @@
 "use client"
 
 import Tabs from "@/components/Tabs"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ComplianceFormProvider } from "@/providers/ComplianceFormProvider"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import { fetchKycStatusThunk } from "@/store/complianceSlice"
 
-import BusinessInfoTab from "@/components/compliance-forms/BusinessInfoTab"
-import BusinessDocumentWrapper from "@/components/compliance-forms/BusinessDocumentWrapper"
-import ShareholderInfo from "@/components/compliance-forms/ShareholderInfo"
-import { ComplianceChatTab } from "@/components/compliance/compliance-chat-tab"
+import BusinessInfoTab from "@/components/forms/BusinessInfoTab"
+import BusinessDocumentWrapper from "@/components/forms/BusinessDocumentWrapper"
+import ShareholderInfo from "@/components/forms/ShareholderInfo"
 
 interface TabCompletion {
     "business-info": boolean
@@ -17,13 +18,20 @@ interface TabCompletion {
 }
 
 export default function ComplianceDashboard() {
+    const dispatch = useAppDispatch()
+    /** Same KYC status as the sidebar (`fetchKycStatusThunk` → approved unlocks merchant nav). */
+    const kycApproved = useAppSelector((s) => s.compliance.isApproved)
+
     const [activeTab, setActiveTab] = useState("business-info")
     const [completion, setCompletion] = useState<TabCompletion>({
         "business-info": false,
         "business-document": false,
         "shareholder-info": false,
-        // "compliance-chat": false,
     })
+
+    useEffect(() => {
+        void dispatch(fetchKycStatusThunk())
+    }, [dispatch])
 
     const markComplete = (tabId: keyof TabCompletion) => {
         setCompletion((prev) => ({ ...prev, [tabId]: true }))
@@ -39,32 +47,29 @@ export default function ComplianceDashboard() {
         setActiveTab("shareholder-info")
     }
 
-    const tabs = [
-        {
-            id: "business-info",
-            label: "Business Info",
-            locked: false,
-            completed: completion["business-info"]
-        },
-        {
-            id: "business-document",
-            label: "Business Document",
-            locked: !completion["business-info"],
-            completed: completion["business-document"]
-        },
-        {
-            id: "shareholder-info",
-            label: "Shareholder's Info",
-            locked: !completion["business-document"],
-            completed: completion["shareholder-info"]
-        },
-        // {
-        //     id: "compliance-chat",
-        //     label: "Compliance chat",
-        //     locked: false,
-        //     completed: completion["compliance-chat"]
-        // },
-    ]
+    const tabs = useMemo(
+        () => [
+            {
+                id: "business-info",
+                label: "Business Info",
+                locked: false,
+                completed: kycApproved || completion["business-info"],
+            },
+            {
+                id: "business-document",
+                label: "Business Document",
+                locked: !kycApproved && !completion["business-info"],
+                completed: kycApproved || completion["business-document"],
+            },
+            {
+                id: "shareholder-info",
+                label: "Shareholder's Info",
+                locked: !kycApproved && !completion["business-document"],
+                completed: kycApproved || completion["shareholder-info"],
+            },
+        ],
+        [kycApproved, completion],
+    )
 
     const renderTabContent = () => {
         switch (activeTab) {

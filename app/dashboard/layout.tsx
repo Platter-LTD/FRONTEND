@@ -14,9 +14,7 @@ export default function DashboardLayout({
   const isScamAlertPage = pathname?.includes("/scam-alert")
   const isAppDetailsPage = pathname?.match(/\/dashboard\/create-app\/all-apps\/[a-zA-Z0-9]+/)
 
-  const isMerchantPage = pathname?.startsWith("/dashboard/merchant")
-
-  if (isAppDetailsPage || isMerchantPage) {
+  if (isAppDetailsPage) {
     return <>{children}</>
   }
 

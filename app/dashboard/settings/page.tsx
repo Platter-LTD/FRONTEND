@@ -9,9 +9,20 @@ import { Label } from "@/components/ui/label"
 import Tabs from "@/components/Tabs"
 import { CountrySelect } from "@/components/ui/country-select"
 import { useCountries } from "@/hooks/useCountries"
-import { fetchWithAuth } from "@/lib/fetchWithAuth"
-import { BACKEND } from "@/lib/endpoints"
-import type { AuthUser, SessionDto } from "@/types/auth"
+import { toast } from "sonner"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import {
+    changeMerchantPasswordThunk,
+    deactivateMerchantAccountThunk,
+    fetchMerchantProfileThunk,
+    fetchMerchantSessionsThunk,
+    revokeMerchantSessionThunk,
+    setAccountFields,
+    setEmailFields,
+    setPasswordFields,
+    updateMerchantEmailThunk,
+    updateMerchantProfileThunk,
+} from "@/store/merchantSettingsSlice"
 import APIKeysSection from "@/components/APIKeysSection"
 import {
     AlertDialog,
@@ -24,34 +35,35 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
+/** Primary actions — Plata brand brown (matches compliance / dashboard CTAs). */
+const PLATA_PRIMARY_BTN =
+    "bg-[#9A813F] text-white hover:bg-[#8A7335] focus-visible:ring-2 focus-visible:ring-[#9A813F]/40 rounded-md px-6"
+
 export default function SettingsPage() {
+    const dispatch = useAppDispatch()
     const [activeTab, setActiveTab] = useState("account-settings")
     const [deactivateOpen, setDeactivateOpen] = useState(false)
     const router = useRouter()
 
-    const [profileLoading, setProfileLoading] = useState(false)
-    const [profile, setProfile] = useState<AuthUser | null>(null)
-
-    const [fullName, setFullName] = useState("")
-    const [currentEmail, setCurrentEmail] = useState("")
-    const [phone, setPhone] = useState("")
-    const [country, setCountry] = useState("")
-
-    const [newEmail, setNewEmail] = useState("")
-    const [confirmEmail, setConfirmEmail] = useState("")
-    const [emailCurrentPassword, setEmailCurrentPassword] = useState("")
-
-    const [passwordCurrent, setPasswordCurrent] = useState("")
-    const [passwordNew, setPasswordNew] = useState("")
-    const [passwordConfirm, setPasswordConfirm] = useState("")
-    const [passwordUpdating, setPasswordUpdating] = useState(false)
-
-    const [profileUpdating, setProfileUpdating] = useState(false)
-    const [emailUpdating, setEmailUpdating] = useState(false)
-    const [deactivateLoading, setDeactivateLoading] = useState(false)
-
-    const [sessionsLoading, setSessionsLoading] = useState(false)
-    const [sessions, setSessions] = useState<SessionDto[]>([])
+    const {
+        fullName,
+        currentEmail,
+        phone,
+        country,
+        newEmail,
+        confirmEmail,
+        emailCurrentPassword,
+        passwordCurrent,
+        passwordNew,
+        passwordConfirm,
+        sessions,
+        profileLoading,
+        profileSaving,
+        emailSaving,
+        passwordSaving,
+        sessionsLoading,
+        deactivating,
+    } = useAppSelector((s) => s.merchantSettings)
 
     const { countries } = useCountries()
     const resolvedCountryCode = useMemo(() => {
@@ -82,195 +94,125 @@ export default function SettingsPage() {
     ]
 
     useEffect(() => {
-        const loadProfile = async () => {
-            try {
-                setProfileLoading(true)
-                const res = await fetchWithAuth(BACKEND.user.profile, { method: "GET" })
-                const json = await res.json().catch(() => ({}))
-                if (!res.ok) return
-
-                const dataAny = (json?.data ?? json) as any
-                const firstName = dataAny?.first_name ?? dataAny?.firstName ?? dataAny?.first
-                const lastName = dataAny?.last_name ?? dataAny?.lastName ?? dataAny?.last
-                const emailValue = dataAny?.email ?? dataAny?.user?.email ?? dataAny?.data?.email ?? ""
-                const phoneValue = dataAny?.phone ?? dataAny?.phone_number ?? dataAny?.phoneNumber ?? ""
-                const countryValue = dataAny?.country ?? dataAny?.country_code ?? dataAny?.countryCode ?? ""
-
-                setProfile(dataAny as AuthUser)
-
-                setFullName(
-                    [firstName, lastName].filter((v) => typeof v === "string" && v.trim().length > 0).join(" "),
-                )
-                setCurrentEmail(emailValue)
-                // Input field expects local part (no "+" prefix)
-                setPhone((phoneValue ?? "").replace(/^\+\d+/, ""))
-                setCountry((countryValue ?? "").toLowerCase())
-            } finally {
-                setProfileLoading(false)
-            }
-        }
-
-        void loadProfile()
-    }, [])
+        void dispatch(fetchMerchantProfileThunk())
+            .unwrap()
+            .catch((e) => toast.error(String(e)))
+    }, [dispatch])
 
     useEffect(() => {
         if (activeTab !== "login-security") return
-
-        const loadSessions = async () => {
-            try {
-                setSessionsLoading(true)
-                const res = await fetchWithAuth(BACKEND.sessions.list, { method: "GET" })
-                const json = await res.json().catch(() => ({}))
-                if (!res.ok) return
-
-                const list =
-                    (Array.isArray(json?.data?.sessions) ? (json.data.sessions as SessionDto[]) : undefined) ??
-                    (Array.isArray(json?.data?.data?.sessions) ? (json.data.data.sessions as SessionDto[]) : undefined) ??
-                    (Array.isArray(json?.data) ? (json.data as SessionDto[]) : undefined) ??
-                    (Array.isArray(json?.sessions) ? (json.sessions as SessionDto[]) : undefined) ??
-                    []
-                setSessions(Array.isArray(list) ? list : [])
-            } finally {
-                setSessionsLoading(false)
-            }
-        }
-
-        void loadSessions()
-    }, [activeTab])
+        void dispatch(fetchMerchantSessionsThunk())
+            .unwrap()
+            .catch(() => {
+                /* optional: toast */
+            })
+    }, [activeTab, dispatch])
 
     const handleUpdateProfile = async () => {
+        const name = fullName.trim().replace(/\s+/g, " ")
+        const [firstName, ...rest] = name.split(" ")
+        const lastName = rest.join(" ")
+        const body = {
+            first_name: firstName || "",
+            last_name: lastName || "",
+            phone: normalizedDialCode ? `${normalizedDialCode}${phone}` : phone,
+            country: resolvedCountryCode,
+        }
         try {
-            setProfileUpdating(true)
-            const name = fullName.trim().replace(/\s+/g, " ")
-            const [firstName, ...rest] = name.split(" ")
-            const lastName = rest.join(" ")
-
-            const body = {
-                first_name: firstName || "",
-                last_name: lastName || "",
-                phone: normalizedDialCode ? `${normalizedDialCode}${phone}` : phone,
-                country: resolvedCountryCode,
-            }
-
-            const res = await fetchWithAuth(BACKEND.user.updateProfile, {
-                method: "PUT",
-                body: JSON.stringify(body),
-            })
-            if (!res.ok) return
-
-            await (async () => {
-                const res2 = await fetchWithAuth(BACKEND.user.profile, { method: "GET" })
-                const json2 = await res2.json().catch(() => ({}))
-                const data2Any = (json2?.data ?? json2) as any
-                const first2 = data2Any?.first_name ?? data2Any?.firstName ?? data2Any?.first
-                const last2 = data2Any?.last_name ?? data2Any?.lastName ?? data2Any?.last
-                const email2 = data2Any?.email ?? data2Any?.user?.email ?? data2Any?.data?.email ?? currentEmail
-                const phone2 = data2Any?.phone ?? data2Any?.phone_number ?? data2Any?.phoneNumber ?? ""
-                const country2 = data2Any?.country ?? data2Any?.country_code ?? data2Any?.countryCode ?? ""
-
-                setProfile(data2Any as AuthUser)
-                setFullName([first2, last2].filter(Boolean).join(" "))
-                setCurrentEmail(email2)
-                setPhone((phone2 ?? "").replace(/^\+\d+/, ""))
-                setCountry((country2 ?? "").toLowerCase())
-            })()
-        } finally {
-            setProfileUpdating(false)
+            await dispatch(updateMerchantProfileThunk(body)).unwrap()
+            toast.success("Profile updated")
+        } catch (e) {
+            toast.error(String(e))
         }
     }
 
     const handleUpdateEmail = async () => {
-        if (!newEmail || !confirmEmail) return
-        if (newEmail !== confirmEmail) return
-
+        if (!newEmail || !confirmEmail) {
+            toast.error("Enter and confirm your new email")
+            return
+        }
+        if (newEmail !== confirmEmail) {
+            toast.error("New email and confirmation do not match")
+            return
+        }
         try {
-            setEmailUpdating(true)
-            const body = {
-                newEmail,
-                confirmEmail,
-                currentPassword: emailCurrentPassword,
-            }
-            const res = await fetchWithAuth(BACKEND.user.updateEmail, {
-                method: "PUT",
-                body: JSON.stringify(body),
-            })
-            if (!res.ok) return
-
-            setNewEmail("")
-            setConfirmEmail("")
-            setEmailCurrentPassword("")
-            await handleUpdateProfile()
-        } finally {
-            setEmailUpdating(false)
+            await dispatch(
+                updateMerchantEmailThunk({
+                    newEmail,
+                    confirmEmail,
+                    currentPassword: emailCurrentPassword,
+                }),
+            ).unwrap()
+            toast.success("Email update submitted")
+        } catch (e) {
+            toast.error(String(e))
         }
     }
 
     const handleChangePassword = async () => {
-        if (!passwordCurrent || !passwordNew || !passwordConfirm) return
-        if (passwordNew !== passwordConfirm) return
-
+        if (!passwordCurrent || !passwordNew || !passwordConfirm) {
+            toast.error("Fill in all password fields")
+            return
+        }
+        if (passwordNew !== passwordConfirm) {
+            toast.error("New password and confirmation do not match")
+            return
+        }
         try {
-            setPasswordUpdating(true)
-            const res = await fetchWithAuth(BACKEND.password.change, {
-                method: "PUT",
-                body: JSON.stringify({ currentPassword: passwordCurrent, newPassword: passwordNew }),
-            })
-            if (!res.ok) return
-
-            setPasswordCurrent("")
-            setPasswordNew("")
-            setPasswordConfirm("")
-        } finally {
-            setPasswordUpdating(false)
+            await dispatch(
+                changeMerchantPasswordThunk({ currentPassword: passwordCurrent, newPassword: passwordNew }),
+            ).unwrap()
+            toast.success("Password updated")
+        } catch (e) {
+            toast.error(String(e))
         }
     }
 
     const handleRevokeSession = async (sessionId: string) => {
         try {
-            const res = await fetchWithAuth(BACKEND.sessions.revoke(sessionId), { method: "DELETE" })
-            if (!res.ok) return
-            setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+            await dispatch(revokeMerchantSessionThunk(sessionId)).unwrap()
         } catch {
-            // ignore
+            /* ignore */
         }
     }
 
     const handleDeactivate = async () => {
         try {
-            setDeactivateLoading(true)
-            const res = await fetchWithAuth(BACKEND.user.deactivate, { method: "POST", body: JSON.stringify({}) })
-            if (!res.ok) return
-
+            await dispatch(deactivateMerchantAccountThunk()).unwrap()
+            toast.success("Account deactivated")
             setDeactivateOpen(false)
             router.push("/signin")
-        } finally {
-            setDeactivateLoading(false)
+        } catch (e) {
+            toast.error(String(e))
         }
     }
 
     return (
-        <div className="p-8 bg-white min-h-full">
-            <div className="flex flex-col space-y-8">
+        <div className="px-8 pb-4 bg-white min-h-full w-full max-w-full">
+            <div className="flex flex-col space-y-4 w-full">
+             
+
                 {/* Header with Tabs */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-200 pb-0">
-                    <div className="flex-1">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-200 pb-0 w-full">
+                    <div className="flex-1 w-full min-w-0">
                         <Tabs
                             tabs={tabs}
                             activeTab={activeTab}
                             onTabChange={setActiveTab}
                             containerClassName="border-b-0"
+                            activeTabClassName="border-[#9A813F] text-[#9A813F]"
                         />
                     </div>
                 </div>
 
                 {/* Tab Content */}
                 {activeTab === "account-settings" && (
-                    <div className="space-y-6 max-w-5xl">
+                    <div className="space-y-6 w-full max-w-full">
                           <div>
                                 <h3 className="text-lg font-semibold text-gray-900">Update Account</h3>
                                 <p className="text-sm text-gray-500">Update your account information.</p>
                             </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 w-full">
                             <div className="space-y-2">
                                 <Label htmlFor="fullName" className="text-gray-600 font-normal">
                                     Full name
@@ -279,7 +221,7 @@ export default function SettingsPage() {
                                     id="fullName"
                                     placeholder="Please enter your full name"
                                     value={fullName}
-                                    onChange={(e) => setFullName(e.target.value)}
+                                    onChange={(e) => dispatch(setAccountFields({ fullName: e.target.value }))}
                                     className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12"
                                 />
                             </div>
@@ -304,7 +246,7 @@ export default function SettingsPage() {
                                 <div className="grid grid-cols-1 gap-3">
                                     <CountrySelect
                                         value={resolvedCountryCode}
-                                        onValueChange={(value) => setCountry(value)}
+                                        onValueChange={(value) => dispatch(setAccountFields({ country: value }))}
                                         placeholder="Select Country"
                                         triggerClassName="w-full !h-12 bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400"
                                     />
@@ -315,16 +257,16 @@ export default function SettingsPage() {
                                 <Label htmlFor="phone" className="text-gray-600 font-normal">
                                     Phone number
                                 </Label>
-                                <div className="flex">
-                                    <div className="flex items-center justify-center bg-[#F0F2F5] px-3 rounded-l-md border-r border-gray-300 text-gray-500 h-12 min-w-[56px] w-[56px]">
+                                <div className="flex w-full min-w-0">
+                                    <div className="flex items-center justify-center bg-[#F0F2F5] px-3 rounded-l-md border-r border-gray-300 text-gray-500 h-12 min-w-[56px] w-[56px] shrink-0">
                                         {normalizedDialCode || "+"}
                                     </div>
                                     <Input
                                         id="phone"
                                         placeholder="Please enter your phone number"
                                         value={phone}
-                                        onChange={(e) => setPhone(e.target.value)}
-                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 rounded-l-none"
+                                        onChange={(e) => dispatch(setAccountFields({ phone: e.target.value }))}
+                                        className="flex-1 min-w-0 bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 rounded-l-none"
                                     />
                                 </div>
                             </div>
@@ -332,117 +274,115 @@ export default function SettingsPage() {
 
                         <div className="mt-6">
                             <Button
-                                className="bg-[#9A813F] text-white hover:bg-[#8A7335] rounded-md px-6"
+                                className={PLATA_PRIMARY_BTN}
                                 onClick={() => void handleUpdateProfile()}
-                                disabled={profileUpdating}
+                                disabled={profileSaving}
                             >
-                                {profileUpdating ? "Updating..." : "Update Profile"}
+                                {profileSaving ? "Updating..." : "Update Profile"}
                             </Button>
                         </div>
 
-                        <div className=" rounded-lg py-6 space-y-4">
+                        <div className="rounded-lg py-6 space-y-4 w-full">
                             <div>
                                 <h3 className="text-lg font-semibold text-gray-900">Update Email</h3>
                                 <p className="text-sm text-gray-500">Confirm your password and provide the new email.</p>
                             </div>
 
-                            <div className="flex lg:flex-row flex-col gap-x-8 w-full">
-                            <div className="space-y-2 w-full">
-                                <Label htmlFor="newEmail" className="text-gray-600 font-normal">
-                                    New email
-                                </Label>
-                                <Input
-                                    id="newEmail"
-                                    type="email"
-                                    placeholder="Please enter your new email"
-                                    value={newEmail}
-                                    onChange={(e) => setNewEmail(e.target.value)}
-                                    className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12"
-                                />
-                            </div>
-                            <div className="space-y-2 w-full">
-                                <Label htmlFor="confirmEmail" className="text-gray-600 font-normal">
-                                    Confirm new email
-                                </Label>
-                                <Input
-                                    id="confirmEmail"
-                                    type="email"
-                                    placeholder="Please confirm your new email"
-                                    value={confirmEmail}
-                                    onChange={(e) => setConfirmEmail(e.target.value)}
-                                    className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12"
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 w-full">
+                                <div className="space-y-2 w-full min-w-0">
+                                    <Label htmlFor="newEmail" className="text-gray-600 font-normal">
+                                        New email
+                                    </Label>
+                                    <Input
+                                        id="newEmail"
+                                        type="email"
+                                        placeholder="Please enter your new email"
+                                        value={newEmail}
+                                        onChange={(e) => dispatch(setEmailFields({ newEmail: e.target.value }))}
+                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full"
+                                    />
+                                </div>
+                                <div className="space-y-2 w-full min-w-0">
+                                    <Label htmlFor="confirmEmail" className="text-gray-600 font-normal">
+                                        Confirm new email
+                                    </Label>
+                                    <Input
+                                        id="confirmEmail"
+                                        type="email"
+                                        placeholder="Please confirm your new email"
+                                        value={confirmEmail}
+                                        onChange={(e) => dispatch(setEmailFields({ confirmEmail: e.target.value }))}
+                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full"
+                                    />
+                                </div>
+
+                                <div className="space-y-2 w-full min-w-0 md:col-span-2 xl:col-span-1">
+                                    <Label htmlFor="emailCurrentPassword" className="text-gray-600 font-normal">
+                                        Current password
+                                    </Label>
+                                    <Input
+                                        id="emailCurrentPassword"
+                                        type="password"
+                                        placeholder="Enter your current password"
+                                        value={emailCurrentPassword}
+                                        onChange={(e) => dispatch(setEmailFields({ emailCurrentPassword: e.target.value }))}
+                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full"
+                                    />
+                                </div>
                             </div>
 
-                            <div className="space-y-2 w-full">
-                                <Label htmlFor="emailCurrentPassword" className="text-gray-600 font-normal">
-                                    Current password
-                                </Label>
-                                <Input
-                                    id="emailCurrentPassword"
-                                    type="password"
-                                    placeholder="Enter your current password"
-                                    value={emailCurrentPassword}
-                                    onChange={(e) => setEmailCurrentPassword(e.target.value)}
-                                    className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12"
-                                />
-                            </div>
-
-                            </div>
-
-                            
                             <Button
-                                className="bg-[#9A813F] text-white hover:bg-[#8A7335] rounded-md px-6"
+                                className={PLATA_PRIMARY_BTN}
                                 onClick={() => void handleUpdateEmail()}
-                                disabled={emailUpdating || profileUpdating}
+                                disabled={emailSaving || profileSaving}
                             >
-                                {emailUpdating ? "Updating..." : "Update Email"}
+                                {emailSaving ? "Updating..." : "Update Email"}
                             </Button>
                         </div>
                     </div>
                 )}
 
                 {activeTab === "login-security" && (
-                    <div className="space-y-10 max-w-5xl">
+                    <div className="space-y-10 w-full max-w-full">
                         {/* Change Password Section */}
                         <section>
                             <div className="mb-6">
                                 <h2 className="text-lg font-semibold text-gray-900">Change Password</h2>
                                 <p className="text-sm text-gray-500">Update your password to keep your account secure</p>
                             </div>
-                            <div className="space-y-6">
+                            <div className="space-y-6 w-full max-w-full">
                                 <Input
                                     placeholder="Enter Current Password"
                                     type="password"
                                     value={passwordCurrent}
-                                    onChange={(e) => setPasswordCurrent(e.target.value)}
-                                    className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12"
+                                    onChange={(e) => dispatch(setPasswordFields({ passwordCurrent: e.target.value }))}
+                                    className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full max-w-full"
                                 />
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
                                     <Input
                                         placeholder="Enter New Password"
                                         type="password"
                                         value={passwordNew}
-                                        onChange={(e) => setPasswordNew(e.target.value)}
-                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12"
+                                        onChange={(e) => dispatch(setPasswordFields({ passwordNew: e.target.value }))}
+                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full min-w-0"
                                     />
                                     <Input
                                         placeholder="Confirm New Password"
                                         type="password"
                                         value={passwordConfirm}
-                                        onChange={(e) => setPasswordConfirm(e.target.value)}
-                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12"
+                                        onChange={(e) => dispatch(setPasswordFields({ passwordConfirm: e.target.value }))}
+                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full min-w-0"
                                     />
                                 </div>
                             </div>
                             
                             <div className="mt-6">
                                 <Button
-                                    className="bg-[#9A813F] text-white hover:bg-[#8A7335] rounded-md px-6"
+                                    className={PLATA_PRIMARY_BTN}
                                     onClick={() => void handleChangePassword()}
-                                    disabled={passwordUpdating}
+                                    disabled={passwordSaving}
                                 >
-                                    {passwordUpdating ? "Updating..." : "Update Password"}
+                                    {passwordSaving ? "Updating..." : "Update Password"}
                                 </Button>
                             </div>
                         </section>
@@ -453,7 +393,7 @@ export default function SettingsPage() {
                                 <h2 className="text-lg font-semibold text-gray-900">Active Sessions</h2>
                                 <p className="text-sm text-gray-500">Manage your active login sessions across devices.</p>
                             </div>
-                            <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4">
+                            <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4 w-full">
                                 {sessionsLoading ? (
                                     <p className="text-sm text-gray-500">Loading sessions...</p>
                                 ) : sessions.length === 0 ? (
@@ -485,56 +425,65 @@ export default function SettingsPage() {
                         </section>
 
                         {/* API Keys — integration keys (per-app keys live under each app's Settings) */}
-                        <APIKeysSection />
+                        <APIKeysSection className="w-full" />
                     </div>
                 )}
 
                 {activeTab === "contact-support" && (
-                    <div className="max-w-5xl">
+                    <div className="w-full max-w-full">
                         <div className="mb-6">
                             <h2 className="text-lg font-semibold text-gray-900">Frequently Asked Questions</h2>
                             <p className="text-sm text-gray-500">Find answers to common questions about PLATA</p>
                         </div>
-                        <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4">
-                            <button className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm hover:bg-gray-50 transition-colors group">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-8 h-8 rounded-full bg-black flex items-center justify-center">
+                        <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4 w-full">
+                            <button
+                                type="button"
+                                className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm border border-transparent hover:border-[#9A813F]/35 hover:bg-[#FFF9EB]/80 transition-colors group"
+                            >
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className="w-8 h-8 shrink-0 rounded-full bg-[#9A813F] flex items-center justify-center">
                                         <CircleHelp className="w-5 h-5 text-white" />
                                     </div>
-                                    <span className="font-medium text-gray-900">Customer Support</span>
+                                    <span className="font-medium text-gray-900 truncate">Customer Support</span>
                                 </div>
-                                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
+                                <ChevronRight className="w-5 h-5 shrink-0 text-[#9A813F]/70 group-hover:text-[#9A813F]" />
                             </button>
 
-                            <button className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm hover:bg-gray-50 transition-colors group">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center">
-                                        <CircleHelp className="w-5 h-5 text-gray-900" />
+                            <button
+                                type="button"
+                                className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm border border-transparent hover:border-[#9A813F]/35 hover:bg-[#FFF9EB]/80 transition-colors group"
+                            >
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className="w-8 h-8 shrink-0 rounded-full bg-[#9A813F] flex items-center justify-center">
+                                        <CircleHelp className="w-5 h-5 text-white" />
                                     </div>
-                                    <span className="font-medium text-gray-900">Website</span>
+                                    <span className="font-medium text-gray-900 truncate">Website</span>
                                 </div>
-                                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
+                                <ChevronRight className="w-5 h-5 shrink-0 text-[#9A813F]/70 group-hover:text-[#9A813F]" />
                             </button>
 
-                            <button className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm hover:bg-gray-50 transition-colors group">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-8 h-8 rounded-full border border-gray-200 flex items-center justify-center">
-                                        <Flag className="w-5 h-5 text-gray-900" />
+                            <button
+                                type="button"
+                                className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm border border-transparent hover:border-[#9A813F]/35 hover:bg-[#FFF9EB]/80 transition-colors group"
+                            >
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className="w-8 h-8 shrink-0 rounded-full bg-[#9A813F] flex items-center justify-center">
+                                        <Flag className="w-5 h-5 text-white" />
                                     </div>
-                                    <span className="font-medium text-gray-900">WhatsApp</span>
+                                    <span className="font-medium text-gray-900 truncate">WhatsApp</span>
                                 </div>
-                                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-gray-600" />
+                                <ChevronRight className="w-5 h-5 shrink-0 text-[#9A813F]/70 group-hover:text-[#9A813F]" />
                             </button>
                         </div>
                     </div>
                 )}
 
                 {activeTab === "account-control" && (
-                    <div className="max-w-5xl">
+                    <div className="w-full max-w-full">
                         <div className="mb-6">
                             <h2 className="text-lg font-semibold text-gray-900">Deactivate Account</h2>
                         </div>
-                        <div className="bg-[#F0F2F5] rounded-lg p-8">
+                        <div className="bg-[#F0F2F5] rounded-lg p-8 w-full">
                             <p className="text-gray-600 mb-6">
                                 Temporarily deactivate your account. Your data will be preserved and you can reactivate anytime by logging back in. Your subscription will be paused during deactivation.
                             </p>
@@ -576,9 +525,9 @@ export default function SettingsPage() {
                         <AlertDialogAction
                             className="bg-[#FF4D4F] hover:bg-[#FF7875] text-white px-6"
                                     onClick={() => void handleDeactivate()}
-                                    disabled={deactivateLoading}
+                                    disabled={deactivating}
                         >
-                                    {deactivateLoading ? "Deactivating..." : "Yes"}
+                                    {deactivating ? "Deactivating..." : "Yes"}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

@@ -1,18 +1,14 @@
 /**
- * Admin Service
- * Wraps Spring's account-ms and wallet-ms admin endpoints.
- *
- * Admin calls use `NEXT_PUBLIC_API_URL` (e.g. https://account-ms-plata.fly.dev) unless overridden below.
+ * Admin Service — admin endpoints on the Plata account API (`NEXT_PUBLIC_API_URL`).
  */
 
-const ADMIN_ACCOUNT_BASE =
-    process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
-const ADMIN_WALLET_BASE =
-    process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
-const ADMIN_PRODUCT_BASE =
-    process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
-
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 import { getAccessToken } from '@/lib/cookieAuth';
+
+const PLATA_BASE = getPlataApiBaseUrl();
+const ADMIN_ACCOUNT_BASE = PLATA_BASE;
+const ADMIN_WALLET_BASE = PLATA_BASE;
+const ADMIN_PRODUCT_BASE = PLATA_BASE;
 
 const getHeaders = () => {
     const token = typeof window !== 'undefined' ? getAccessToken() : null;

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BACKEND } from '@/lib/endpoints';
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const dynamic = 'force-dynamic';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev')
+const BASE_URL = (getPlataApiBaseUrl())
   .replace(/\/+$/, '')
   .replace(/\/(api\/v1?)?\/?$/, '');
 

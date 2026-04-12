@@ -9,7 +9,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
-import { resolveMerchantPostLoginRoute } from "@/lib/merchantPostLoginRoute"
+import { resolveDashboardPostLoginRoute } from "@/lib/postLoginRoute"
 
 export function SpringSigninForm() {
     const [showPassword, setShowPassword] = useState(false)
@@ -40,7 +40,7 @@ export function SpringSigninForm() {
         try {
             await signin(formData.email, formData.password)
             toast.success("Welcome back! 👋")
-            const nextRoute = await resolveMerchantPostLoginRoute()
+            const nextRoute = await resolveDashboardPostLoginRoute()
 
             setTimeout(() => {
                 router.push(nextRoute)

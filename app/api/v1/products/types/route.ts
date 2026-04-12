@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const dynamic = 'force-dynamic';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev').replace(/\/+$/, '');
+const BASE_URL = (getPlataApiBaseUrl()).replace(/\/+$/, '');
 
 /**
  * GET /api/v1/products/types

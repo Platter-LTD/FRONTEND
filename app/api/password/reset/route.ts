@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { BACKEND } from '@/lib/endpoints';
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const dynamic = 'force-dynamic';
 
-const AUTH_MS_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
+const AUTH_MS_URL = getPlataApiBaseUrl();
 
 // POST /api/v1/password/reset — Public. Resets password using a valid reset token (from email link or OTP flow).
 export async function POST(request: NextRequest) {

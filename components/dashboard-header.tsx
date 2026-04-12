@@ -4,7 +4,6 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { HiMiniUser } from "react-icons/hi2"
-import { FaBell } from "react-icons/fa"
 import { ChevronLeft, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -24,15 +23,14 @@ const routeTitles: Record<string, { title: string; subtitle: string }> = {
 }
 
 import { productApi } from "@/lib/services/product-api"
+import { DashboardNotificationsPopover } from "@/components/dashboard-notifications-popover"
 import { useAuth } from "@/hooks/useAuth"
 import { getAccessToken } from "@/lib/cookieAuth"
-import { useAppSelector } from "@/store/hooks"
 
 export const DashboardHeader: React.FC = () => {
   const pathname = usePathname()
   const router = useRouter()
   const { user } = useAuth()
-  const reduxApps = useAppSelector((s) => s.merchantApps.apps)
   const [dynamicApps, setDynamicApps] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
   const [currentProduct, setCurrentProduct] = useState<any>(null)
@@ -126,8 +124,8 @@ export const DashboardHeader: React.FC = () => {
     if (!app?.id) return "No app selected"
     const raw = app.name
     if (raw && String(raw).toLowerCase() !== "anonymous") return String(raw)
-    const fromRedux = reduxApps.find((a) => a.id === app.id)
-    if (fromRedux?.name && fromRedux.name.toLowerCase() !== "anonymous") return fromRedux.name
+    const fromList = dynamicApps.find((a) => a.id === app.id)
+    if (fromList?.name && fromList.name.toLowerCase() !== "anonymous") return fromList.name
     if (app.alias) return String(app.alias)
     return app.id
   }
@@ -200,13 +198,7 @@ export const DashboardHeader: React.FC = () => {
         <div className="flex items-center gap-6">
           <div className="h-6 w-px bg-gray-200" />
 
-          {/* Notification */}
-          <div className="relative">
-            <FaBell className="h-6 w-6 text-gray-600" />
-            <span className="absolute -top-1 -right-1 bg-[#8B7355] text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-medium">
-              4
-            </span>
-          </div>
+          <DashboardNotificationsPopover />
 
           {/* Avatar */}
           <div className="w-9 h-9 rounded-full bg-[#F0ECE2] flex items-center justify-center">

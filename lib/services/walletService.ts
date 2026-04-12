@@ -3,6 +3,7 @@
 
 import { fetchWithAuth, type FetchWithAuthOptions } from '@/lib/fetchWithAuth';
 import { getWalletMsRoleHeaders } from '@/lib/walletMsRoleHeaders';
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 
 export function walletMessageFromBody(data: unknown): string {
   if (!data || typeof data !== 'object') return '';
@@ -50,10 +51,7 @@ async function walletFetch(input: string | URL, init: FetchWithAuthOptions = {})
 }
 
 /** Upstream base for server-side calls only. Browser uses same-origin `/api/wallets/*` proxy (CORS + IPv4). */
-const WALLET_API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(
-  /\/+$/,
-  '',
-);
+const WALLET_API_BASE = getPlataApiBaseUrl();
 
 function walletV1WalletsBase(): string {
   if (typeof window !== 'undefined') {

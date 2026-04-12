@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { merchantRoleHeadersFromAuthorization } from "@/lib/server/merchantRoleHeaders"
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const dynamic = "force-dynamic"
 
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev").replace(/\/+$/, "")
+const BASE_URL = (getPlataApiBaseUrl()).replace(/\/+$/, "")
 
 export async function PATCH(
   request: NextRequest,

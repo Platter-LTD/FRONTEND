@@ -4,7 +4,8 @@ import axios from 'axios';
 import https from 'https';
 import dns from 'dns';
 
-const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+const AUTH_SERVICE_URL = getPlataApiBaseUrl();
 
 const agent = new https.Agent({
   keepAlive: true,

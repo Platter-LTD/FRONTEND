@@ -9,7 +9,10 @@
  * @created 2026-01-26
  */
 
-const ACCOUNT_API_BASE = process.env.NEXT_PUBLIC_ACCOUNT_SERVICE_URL || 'https://account-ms.fly.dev';
+const ACCOUNT_API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(
+  /\/+$/,
+  '',
+);
 
 interface TestResult {
   name: string;

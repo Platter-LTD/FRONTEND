@@ -4,10 +4,11 @@ import https from "https"
 import dns from "dns"
 import { merchantRoleHeadersFromAuthorization } from "@/lib/server/merchantRoleHeaders"
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const PRODUCT_SERVICE_URL = (process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev").replace(/\/$/, "")
+const PRODUCT_SERVICE_URL = (getPlataApiBaseUrl()).replace(/\/$/, "")
 
 const agent = new https.Agent({
   keepAlive: true,

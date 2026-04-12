@@ -15,10 +15,10 @@
 
 import { productApi } from './product-api';
 import { getAccessToken } from '@/lib/cookieAuth';
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 
-// Use the same base URL as the auth/account service
-const PRODUCT_SERVICE_URL =
-  (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(/\/$/, '');
+// Use the same base URL as the auth/account service (`NEXT_PUBLIC_API_URL`)
+const PRODUCT_SERVICE_URL = getPlataApiBaseUrl();
 
 // ============================================================================
 // Types & Interfaces

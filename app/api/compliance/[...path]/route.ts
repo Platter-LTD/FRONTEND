@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import https from 'node:https';
+import axios, { type AxiosRequestConfig, type Method } from 'axios';
+import { getPlataApiBaseUrl } from '@/lib/plataApiBaseUrl';
 
 export const dynamic = 'force-dynamic';
 
+/** Prefer IPv4 — avoids Node `fetch` ETIMEDOUT / AggregateError to Fly.io (same as auth proxy). */
+const httpsAgent = new https.Agent({
+  family: 4,
+  keepAlive: true,
+});
+
 function getComplianceOrigin(): string {
-  const raw =
-    process.env.NEXT_PUBLIC_API_URL ||
-    'https://account-ms-plata.fly.dev';
-  const url = raw.replace(/\/+$/, '').trim();
+  const url = getPlataApiBaseUrl().replace(/\/+$/, '').trim();
   try {
     const withProtocol = url.startsWith('http') ? url : `https://${url}`;
-    const u = new URL(withProtocol);
-    return u.origin;
+    return new URL(withProtocol).origin;
   } catch {
     const withoutPath = url.replace(/\/(api(\/v1)?)?\/?.*$/i, '').replace(/\/+$/, '');
     return withoutPath || url;
@@ -53,10 +58,10 @@ export class Compliance {
     if (authHeader) headers['Authorization'] = authHeader;
 
     try {
-      const init: RequestInit = { method, headers };
+      let forwardBody: string | Buffer | undefined;
+
       if (method !== 'GET' && method !== 'HEAD') {
         if (isMultipart) {
-          // Forward raw body and Content-Type (with boundary) so the backend receives the file as-is.
           if (contentType) headers['Content-Type'] = contentType;
           console.log('[Compliance] reading multipart body...');
           const rawBody = await request.arrayBuffer();
@@ -68,12 +73,12 @@ export class Compliance {
               { status: 400 }
             );
           }
-          init.body = rawBody;
+          forwardBody = Buffer.from(rawBody);
         } else {
           try {
             const body = await request.text();
             if (body) {
-              init.body = body;
+              forwardBody = body;
               if (pathKey === 'business/submit') {
                 try {
                   const parsed = JSON.parse(body) as { businessDocuments?: Array<{ type?: string }> };
@@ -107,26 +112,35 @@ export class Compliance {
         }
       }
 
-      // Use a longer timeout for uploads (large body); compliance-ms can be slow or cold-start
       const timeoutMs = isMultipart ? 120_000 : 30_000;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-      init.signal = controller.signal;
+
+      const axiosConfig: AxiosRequestConfig = {
+        method: method as Method,
+        url,
+        headers,
+        httpsAgent,
+        timeout: timeoutMs,
+        validateStatus: () => true,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      };
+      if (forwardBody !== undefined) {
+        axiosConfig.data = forwardBody;
+      }
 
       console.log('[Compliance] calling compliance service:', url, '(timeout', timeoutMs / 1000, 's)');
-      let res: Response;
-      try {
-        res = await fetch(url, init);
-      } finally {
-        clearTimeout(timeoutId);
-      }
-      console.log('[Compliance] response:', res.status, res.statusText, 'ok:', res.ok);
+      const res = await axios(axiosConfig);
+      console.log('[Compliance] response:', res.status, res.statusText, 'ok:', res.status >= 200 && res.status < 300);
 
-      const data = await res.json().catch(() => ({ success: false, error: 'Invalid JSON from compliance service' }));
-      if (pathKey === 'business/submit' && !res.ok) {
+      const data =
+        res.data !== undefined && res.data !== null && typeof res.data === 'object'
+          ? res.data
+          : { success: false, error: 'Invalid or empty JSON from compliance service' };
+      const upstreamError = res.status < 200 || res.status >= 300;
+      if (pathKey === 'business/submit' && upstreamError) {
         console.log('[Compliance] business/submit error response:', data);
       }
-      if (pathKey === 'business/beneficial-owners' && !res.ok) {
+      if (pathKey === 'business/beneficial-owners' && upstreamError) {
         console.log('[Compliance] business/beneficial-owners error response:', JSON.stringify(data));
       }
       return NextResponse.json(data, { status: res.status });
@@ -134,15 +148,33 @@ export class Compliance {
       const msg = err instanceof Error ? err.message : 'Compliance request failed';
       const errCause = err instanceof Error && (err as Error & { cause?: unknown }).cause;
       const errName = err instanceof Error ? err.name : undefined;
+      const axiosCode = axios.isAxiosError(err) ? err.code : undefined;
       console.error('[Compliance] proxy FAILED:', {
         path: pathKey,
         url,
         message: msg,
         name: errName,
+        axiosCode,
         cause: errCause,
         causeString: errCause != null ? String(errCause) : undefined,
         fullError: err,
       });
+      const timedOut =
+        axiosCode === 'ETIMEDOUT' ||
+        axiosCode === 'ECONNABORTED' ||
+        (errCause != null &&
+          typeof errCause === 'object' &&
+          'code' in errCause &&
+          (errCause as { code?: string }).code === 'ETIMEDOUT');
+      if (timedOut) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Compliance service timed out. Check your network or try again in a moment.',
+          },
+          { status: 504 },
+        );
+      }
       return NextResponse.json({ success: false, error: msg }, { status: 500 });
     }
   }

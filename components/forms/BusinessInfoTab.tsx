@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import FileUpload from '../FileUpload';
+import { CurrencyVolumeField } from './CurrencyVolumeField';
 import { toast } from 'react-toastify';
 import { WEBSITE_URL_PREFIX } from '@/lib/websiteUrl';
 import { CountrySelect } from '@/components/ui/country-select';
@@ -30,7 +31,7 @@ const FloatingSelect: React.FC<FloatingSelectProps> = ({
   onChange,
   options = [],
   optionPairs,
-  accentColor = '#2563EB',
+  accentColor = '#9A813F',
   onSelected,
 }) => {
   const labelClassBase = 'absolute left-4 transition-all pointer-events-none';
@@ -50,7 +51,7 @@ const FloatingSelect: React.FC<FloatingSelectProps> = ({
           onChange(e.target.value);
           if (onSelected && e.target.value) onSelected();
         }}
-        className="w-full rounded-lg border border-gray-300 bg-white px-4 pt-9 pb-2.5 text-gray-900 appearance-none focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+        className="w-full rounded-lg border border-gray-300 bg-white px-4 pt-9 pb-2.5 text-gray-900 appearance-none focus:outline-none focus:ring-1 focus:ring-[#9A813F]"
         style={{ outlineColor: accentColor }}
       >
         <option value="" disabled>
@@ -95,7 +96,7 @@ const SimpleInput: React.FC<SimpleInputProps> = ({
   type = 'text',
   value,
   onChange,
-  accentColor = '#2563EB',
+  accentColor = '#9A813F',
 }) => {
   return (
     <input
@@ -153,9 +154,9 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
 
   return (
     <div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="flex lg:flex-row flex-col justify-between gap-6">
         {/* Business Survey */}
-        <div className="bg-[#EDEDF2] rounded-xl p-6 border border-gray-200 h-[562px] w-[600px]">
+        <div className="bg-[#EDEDF2] rounded-xl p-6 border border-gray-200 w-full">
           <h2 className="text-lg font-semibold text-gray-900">Business Survey</h2>
           <p className="text-sm text-gray-500 mt-1 mb-6">
             Fill in the required information below to create your business account.
@@ -168,6 +169,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
               optionPairs={businessTypeOptions}
               value={formData.businessType}
               onChange={(val) => handleInputChange('businessType', val)}
+              accentColor="#9A813F"
             />
 
             <div className="space-y-1.5">
@@ -198,11 +200,11 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
                   handleInputChange('businessModel', val);
                   setIsBusinessModelVisible(true);
                 }}
+                accentColor="#9A813F"
               />
             </div>
 
-            <SimpleInput
-              placeholder="Monthly processed volume"
+            <CurrencyVolumeField
               value={formData.monthlyVolume}
               onChange={(val) => handleInputChange('monthlyVolume', val)}
             />
@@ -210,7 +212,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
         </div>
 
         {/* About the Business */}
-        <div className="bg-[#EDEDF2] rounded-xl p-6 border border-gray-200 w-[700px]">
+        <div className="bg-[#EDEDF2] rounded-xl p-6 border border-gray-200 w-full">
           <h2 className="text-lg font-semibold text-gray-900">About the Business</h2>
           <p className="text-sm text-gray-500 mt-1 mb-6">
             Fill in the required information below to create your business account.
@@ -223,6 +225,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
               optionPairs={industryTypeOptions}
               value={formData.industry}
               onChange={(val) => handleInputChange('industry', val)}
+              accentColor="#9A813F"
             />
 
             <div className="space-y-1.5">
@@ -259,9 +262,11 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
 
             <FileUpload
               label="Upload Company Logo"
-              description="PDF format • Max. 5MB"
+              description="PNG or JPG • Max. 5MB"
+              accept="image/png,image/jpeg,image/jpg,.png,.jpg,.jpeg"
+              maxSizeBytes={5 * 1024 * 1024}
               onFileSelect={() => {}}
-              buttonColor="#2563EB"
+              buttonColor="#9A813F"
             />
           </div>
         </div>
@@ -272,7 +277,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
         <button
           type="button"
           className="px-4 py-2 rounded-md text-sm font-medium shadow-sm cursor-pointer disabled:opacity-60"
-          style={{ backgroundColor: "#2563EB", color: "#fff" }}
+          style={{ backgroundColor: "#9A813F", color: "#fff" }}
           onClick={() => {
             toast.success('✅ Business info saved successfully');
             // Navigate to next tab

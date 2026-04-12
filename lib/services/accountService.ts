@@ -1,36 +1,9 @@
-/**
- * Account Service
- * 
- * Complete API wrapper for the Account Management Microservice (account-ms).
- * This service handles:
- * - Account management (create, read, update, delete)
- * - Loan applications
- * - Mortgage applications
- * - Savings accounts
- * - Commodity purchases
- * - Application processing (admin approve/reject)
- * - Pricing calculations
- * - Billing checks
- * 
- * Backend: account-ms (https://account-ms.fly.dev)
- * 
- * @created 2026-01-26
- */
-
-// =============================================================================
-// Account Service URL Configuration
-//
-// Spring App (/dashboard/merchant/) → uses NEXT_PUBLIC_SPRING_ACCOUNT_SERVICE_URL
-// Plata PLATA (/dashboard/create-app/) → uses NEXT_PUBLIC_PLATA_ACCOUNT_SERVICE_URL
-//
-// accountService (default export) → Spring's account-ms (https://account-ms.fly.dev)
-// PLATA_ACCOUNT_API_BASE          → Plata's account-ms  (https://account-ms.fly.dev)
-// =============================================================================
-
-const ACCOUNT_API_BASE = process.env.NEXT_PUBLIC_SPRING_ACCOUNT_SERVICE_URL || 'https://account-ms.fly.dev';
-export const PLATA_ACCOUNT_API_BASE = process.env.NEXT_PUBLIC_PLATA_ACCOUNT_SERVICE_URL || 'https://account-ms.fly.dev';
-
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 import { getAccessToken } from '@/lib/cookieAuth';
+
+/** Plata account / product API origin — `NEXT_PUBLIC_API_URL` from `.env`. */
+const ACCOUNT_API_BASE = getPlataApiBaseUrl();
+export const PLATA_ACCOUNT_API_BASE = getPlataApiBaseUrl();
 
 // ============================================================================
 // Helper Functions

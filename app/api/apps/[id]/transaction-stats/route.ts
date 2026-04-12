@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const dynamic = 'force-dynamic';
 
-const AUTH_SERVICE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev';
+const AUTH_SERVICE_URL = getPlataApiBaseUrl();
 const APPS_BASE_URL = AUTH_SERVICE_URL.replace(/\/$/, '');
 
 // GET - Get transaction statistics

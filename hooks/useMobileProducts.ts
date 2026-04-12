@@ -41,8 +41,6 @@ interface UseMobileProductsReturn {
   getProductsByType: (type: string) => MobileProduct[];
 }
 
-const PRODUCT_MS_URL = process.env.NEXT_PUBLIC_PRODUCT_MS_URL || 'https://product-ms.fly.dev';
-
 export function useMobileProducts(options: UseMobileProductsOptions = {}): UseMobileProductsReturn {
   const { type, springAppId, autoFetch = true } = options;
 

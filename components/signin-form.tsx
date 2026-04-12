@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
 import { ComplianceService, COMPLIANCE_COMPLETE_KEY } from "@/lib/services/complianceService"
-import { resolveMerchantPostLoginRoute } from "@/lib/merchantPostLoginRoute"
+import { resolveDashboardPostLoginRoute } from "@/lib/postLoginRoute"
 import { isKycStatusApproved } from "@/lib/kycApproval"
 
 export function SigninForm() {
@@ -45,7 +45,7 @@ export function SigninForm() {
       // Fall back to local storage if status API is unavailable.
     }
 
-    return resolveMerchantPostLoginRoute()
+    return resolveDashboardPostLoginRoute()
   }
 
   const handleSubmit = async (e: React.FormEvent) => {

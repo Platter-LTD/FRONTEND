@@ -27,6 +27,20 @@ interface AppSidebarProps {
   appId: string
 }
 
+/** Pick at most one active sub-link: longest href prefix wins (fixes /products vs /products/overview). */
+function getActiveSubHref(pathname: string, subItems: { label: string; href: string }[]): string | null {
+  const sorted = [...subItems].sort((a, b) => b.href.length - a.href.length)
+  for (const s of sorted) {
+    if (pathname === s.href || pathname.startsWith(`${s.href}/`)) return s.href
+  }
+  return null
+}
+
+const ACTIVE_ROW = "bg-[#FFF9EB] text-[#9A813F] font-medium shadow-sm ring-1 ring-[#9A813F]/10"
+const INACTIVE_ROW = "text-slate-700 hover:bg-[#FFF9EB]/60"
+const INACTIVE_SUB = "text-slate-600 hover:bg-[#FFF9EB]/50 hover:text-[#9A813F]"
+const ACTIVE_SUB = "bg-[#FFF9EB]/80 text-[#9A813F] font-medium ring-1 ring-[#9A813F]/10"
+
 const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
   const pathname = usePathname()
   const router = useRouter()
@@ -106,8 +120,11 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
       <nav className="flex-1 px-4">
         <ul className="space-y-4">
           {navItems.map((item, index) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
             const hasSubItems = item.subItems && item.subItems.length > 0
+            const activeSubHref = hasSubItems && item.subItems ? getActiveSubHref(pathname, item.subItems) : null
+            const isActive = hasSubItems
+              ? activeSubHref !== null || pathname === item.href || pathname.startsWith(`${item.href}/`)
+              : pathname === item.href || pathname.startsWith(`${item.href}/`)
             const isOpen =
               item.label === "Wallets"
                 ? isWalletsOpen
@@ -130,30 +147,30 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
                 {hasSubItems ? (
                   <div>
                     <button
+                      type="button"
                       onClick={() => setIsOpen(!isOpen)}
-                      className={`flex items-center justify-between w-full px-3 py-2 rounded-md transition-colors ${
-                        isActive ? "bg-[#FDF8EB] text-[#9A813F] font-medium" : "text-gray-700 hover:bg-[#FFF3D380]"
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 transition-colors [&_svg]:shrink-0 ${
+                        isActive ? `${ACTIVE_ROW} [&_svg]:text-[#9A813F]` : `${INACTIVE_ROW} [&_svg]:text-slate-600`
                       }`}
                     >
-                      <div className="flex items-center space-x-3">
-                        {item.icon}
-                        <span className="text-sm">{item.label}</span>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="flex shrink-0 items-center [&_svg]:block">{item.icon}</span>
+                        <span className="truncate text-sm">{item.label}</span>
                       </div>
-                      {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      <span className={`shrink-0 ${isActive ? "text-[#9A813F]" : "text-slate-500"}`}>
+                        {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </span>
                     </button>
-                    {/* Sub-items */}
                     {isOpen && (
-                      <ul className="mt-2 ml-9 space-y-2">
+                      <ul className="ml-9 mt-2 space-y-1 border-l border-[#E8DFD0] pl-3">
                         {item.subItems?.map((subItem, subIndex) => {
-                          const isSubActive = pathname === subItem.href || pathname.startsWith(`${subItem.href}/`)
+                          const isSubActive = activeSubHref === subItem.href
                           return (
                             <li key={subIndex}>
                               <Link
                                 href={subItem.href}
-                                className={`block px-3 py-1.5 rounded-md text-sm transition-colors ${
-                                  isSubActive
-                                    ? "text-[#9A813F] font-medium"
-                                    : "text-gray-600 hover:text-[#9A813F] hover:bg-[#FFF3D380]"
+                                className={`block rounded-md px-3 py-2 text-sm transition-colors ${
+                                  isSubActive ? ACTIVE_SUB : INACTIVE_SUB
                                 }`}
                               >
                                 {subItem.label}
@@ -167,12 +184,12 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
                 ) : (
                   <Link
                     href={item.href}
-                    className={`flex items-center space-x-3 px-3 py-2 rounded-md transition-colors ${
-                      isActive ? "bg-[#FDF8EB] text-[#9A813F] font-medium" : "text-gray-700 hover:bg-[#FFF3D380]"
+                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                      isActive ? `${ACTIVE_ROW} [&_svg]:text-[#9A813F]` : `${INACTIVE_ROW} [&_svg]:text-slate-600`
                     }`}
                   >
-                    {item.icon}
-                    <span className="text-sm">{item.label}</span>
+                    <span className="flex shrink-0 [&_svg]:block">{item.icon}</span>
+                    <span>{item.label}</span>
                   </Link>
                 )}
               </li>
@@ -190,10 +207,10 @@ const AppSidebar: React.FC<AppSidebarProps> = ({ className = "", appId }) => {
           <li>
             <Link
               href={`/dashboard/create-app/all-apps/${appId}/settings`}
-              className={`flex items-center space-x-3 px-3 py-2 rounded-md text-sm transition-colors ${
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
                 pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/settings`)
-                  ? "bg-[#FDF8EB] text-[#9A813F] font-medium"
-                  : "text-gray-700 hover:bg-[#FFF3D380]"
+                  ? `${ACTIVE_ROW} [&_svg]:text-[#9A813F]`
+                  : `${INACTIVE_ROW} [&_svg]:text-slate-600`
               }`}
             >
               <RiSettings3Fill size={20} />

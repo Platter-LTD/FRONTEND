@@ -8,7 +8,7 @@ export default function DashboardPage() {
   const router = useRouter()
 
   useEffect(() => {
-    router.replace("/dashboard/merchant")
+    router.replace("/dashboard/create-app/all-apps")
   }, [router])
 
   return <DashboardRedirectSkeleton />

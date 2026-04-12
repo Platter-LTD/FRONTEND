@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export async function GET(request: NextRequest) {
     try {
         const authHeader = request.headers.get('authorization');
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        const PRODUCT_BUILDER_URL = process.env.NEXT_PUBLIC_API_URL || 'https://account-ms.fly.dev';
+        const PRODUCT_BUILDER_URL = getPlataApiBaseUrl();
 
         const response = await fetch(`${PRODUCT_BUILDER_URL}/api/products/all`, {
             method: 'GET',

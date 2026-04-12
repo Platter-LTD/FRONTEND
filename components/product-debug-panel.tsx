@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -8,277 +8,314 @@ import { Loader2, AlertCircle, CheckCircle, XCircle, RefreshCw } from "lucide-re
 import { productApi } from "@/lib/services/product-api"
 
 interface DebugInfo {
-    currentAppId?: string
-    productsForCurrentApp: number
-    totalProducts: number
-    allAppIds: string[]
-    sampleProducts: any[]
-    apiStatus: 'checking' | 'success' | 'error'
-    apiError?: string
-    timestamp: string
+  currentAppId?: string
+  /** Products returned from GET /api/v1/products (full catalog). */
+  catalogCount: number
+  /** Products returned from GET /api/v1/products/app/:appId when appId is set. */
+  appScopedCount: number
+  allAppIds: string[]
+  sampleProducts: Array<{
+    id?: string
+    name?: string
+    type?: string
+    appId?: string
+    isActive?: boolean
+    status?: string
+  }>
+  apiStatus: "checking" | "success" | "partial" | "error"
+  catalogError?: string
+  appError?: string
+  timestamp: string
 }
 
 interface ProductDebugPanelProps {
-    appId?: string
-    location: 'platter' | 'spring'
+  appId?: string
+  location: "platter" | "spring"
+}
+
+/** Normalize various backend / proxy response shapes to a product array. */
+function extractProductsArray(payload: unknown): any[] {
+  if (payload == null) return []
+  if (Array.isArray(payload)) return payload
+  if (typeof payload !== "object") return []
+  const p = payload as Record<string, unknown>
+  if (Array.isArray(p.data)) return p.data as any[]
+  const inner = p.data
+  if (inner && typeof inner === "object") {
+    const d = inner as Record<string, unknown>
+    if (Array.isArray(d.products)) return d.products as any[]
+    if (Array.isArray(d.items)) return d.items as any[]
+    if (Array.isArray(d.records)) return d.records as any[]
+  }
+  if (Array.isArray(p.products)) return p.products as any[]
+  return []
+}
+
+function pickAppId(p: any): string | undefined {
+  if (!p || typeof p !== "object") return undefined
+  const v = p.appId ?? p.app_id ?? p.applicationId ?? p.application_id
+  return typeof v === "string" && v.trim() ? v.trim() : undefined
 }
 
 export function ProductDebugPanel({ appId, location }: ProductDebugPanelProps) {
-    const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null)
-    const [loading, setLoading] = useState(false)
-    const [expanded, setExpanded] = useState(false)
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
-    const fetchDebugInfo = async () => {
-        setLoading(true)
-        try {
-            // Fetch all products
-            const allProductsResponse = await productApi.getAllProducts()
+  const fetchDebugInfo = useCallback(async () => {
+    setLoading(true)
+    const timestamp = new Date().toISOString()
 
-            const allProducts = allProductsResponse.success ? allProductsResponse.data : []
-            const productsForApp = appId
-                ? allProducts.filter((p: any) => p.appId === appId)
-                : []
+    let catalog: any[] = []
+    let catalogError: string | undefined
+    let appScoped: any[] = []
+    let appError: string | undefined
 
-            // Get unique appIds
-            const uniqueAppIds = [...new Set(allProducts.map((p: any) => p.appId))]
-
-            // Get sample products (first 5)
-            const sampleProducts = allProducts.slice(0, 5).map((p: any) => ({
-                id: p.id,
-                name: p.name,
-                type: p.type,
-                appId: p.appId,
-                isActive: p.isActive,
-                status: p.status
-            }))
-
-            setDebugInfo({
-                currentAppId: appId,
-                productsForCurrentApp: productsForApp.length,
-                totalProducts: allProducts.length,
-                allAppIds: uniqueAppIds,
-                sampleProducts,
-                apiStatus: 'success',
-                timestamp: new Date().toISOString()
-            })
-        } catch (error: any) {
-            setDebugInfo({
-                currentAppId: appId,
-                productsForCurrentApp: 0,
-                totalProducts: 0,
-                allAppIds: [],
-                sampleProducts: [],
-                apiStatus: 'error',
-                apiError: error.message || 'Failed to fetch debug info',
-                timestamp: new Date().toISOString()
-            })
-        } finally {
-            setLoading(false)
-        }
-    }
-
-    useEffect(() => {
-        if (expanded) {
-            fetchDebugInfo()
-        }
-    }, [expanded, appId])
-
-    if (!expanded) {
-        return (
-            <div className="fixed bottom-4 right-4 z-50">
-                <Button
-                    onClick={() => setExpanded(true)}
-                    variant="outline"
-                    className="bg-yellow-50 border-yellow-300 text-yellow-800 hover:bg-yellow-100"
-                >
-                    <AlertCircle className="w-4 h-4 mr-2" />
-                    Debug Products
-                </Button>
-            </div>
-        )
-    }
-
-    return (
-        <div className="fixed bottom-4 right-4 z-50 w-[500px]">
-            <Card className="shadow-lg border-2 border-yellow-300">
-                <CardHeader className="bg-yellow-50">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <CardTitle className="text-lg flex items-center gap-2">
-                                <AlertCircle className="w-5 h-5 text-yellow-600" />
-                                Product Debug Panel
-                            </CardTitle>
-                            <CardDescription>
-                                Location: <Badge variant="outline">{location === 'platter' ? 'PLATA' : 'Spring App'}</Badge>
-                            </CardDescription>
-                        </div>
-                        <div className="flex gap-2">
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={fetchDebugInfo}
-                                disabled={loading}
-                            >
-                                {loading ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                    <RefreshCw className="w-4 h-4" />
-                                )}
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => setExpanded(false)}
-                            >
-                                ✕
-                            </Button>
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent className="pt-4 max-h-[600px] overflow-y-auto">
-                    {loading && !debugInfo ? (
-                        <div className="flex items-center justify-center py-8">
-                            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-                        </div>
-                    ) : debugInfo ? (
-                        <div className="space-y-4">
-                            {/* API Status */}
-                            <div className="flex items-center gap-2">
-                                {debugInfo.apiStatus === 'success' ? (
-                                    <CheckCircle className="w-5 h-5 text-green-500" />
-                                ) : (
-                                    <XCircle className="w-5 h-5 text-red-500" />
-                                )}
-                                <span className="font-medium">
-                                    API Status: {debugInfo.apiStatus === 'success' ? 'Connected' : 'Error'}
-                                </span>
-                            </div>
-
-                            {debugInfo.apiError && (
-                                <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-800">
-                                    <strong>Error:</strong> {debugInfo.apiError}
-                                </div>
-                            )}
-
-                            {/* Current AppId */}
-                            <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                                <div className="text-sm font-medium text-blue-900 mb-1">Current AppId</div>
-                                <div className="font-mono text-xs text-blue-700 break-all">
-                                    {debugInfo.currentAppId || 'Not set'}
-                                </div>
-                            </div>
-
-                            {/* Product Counts */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="bg-gray-50 border border-gray-200 rounded p-3">
-                                    <div className="text-xs text-gray-600 mb-1">Products for This App</div>
-                                    <div className="text-2xl font-bold text-gray-900">
-                                        {debugInfo.productsForCurrentApp}
-                                    </div>
-                                </div>
-                                <div className="bg-gray-50 border border-gray-200 rounded p-3">
-                                    <div className="text-xs text-gray-600 mb-1">Total Products</div>
-                                    <div className="text-2xl font-bold text-gray-900">
-                                        {debugInfo.totalProducts}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* All AppIds */}
-                            <div>
-                                <div className="text-sm font-medium text-gray-900 mb-2">
-                                    All AppIds in System ({debugInfo.allAppIds.length})
-                                </div>
-                                <div className="bg-gray-50 border border-gray-200 rounded p-3 max-h-32 overflow-y-auto">
-                                    {debugInfo.allAppIds.length > 0 ? (
-                                        <div className="space-y-1">
-                                            {debugInfo.allAppIds.map((id, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    className={`font-mono text-xs p-1 rounded ${id === debugInfo.currentAppId
-                                                            ? 'bg-green-100 text-green-800 font-bold'
-                                                            : 'text-gray-600'
-                                                        }`}
-                                                >
-                                                    {id === debugInfo.currentAppId && '→ '}
-                                                    {id}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-gray-500 italic">No products found</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Sample Products */}
-                            <div>
-                                <div className="text-sm font-medium text-gray-900 mb-2">
-                                    Sample Products (First 5)
-                                </div>
-                                <div className="bg-gray-50 border border-gray-200 rounded p-3 max-h-48 overflow-y-auto">
-                                    {debugInfo.sampleProducts.length > 0 ? (
-                                        <div className="space-y-2">
-                                            {debugInfo.sampleProducts.map((product, idx) => (
-                                                <div
-                                                    key={idx}
-                                                    className={`text-xs p-2 rounded border ${product.appId === debugInfo.currentAppId
-                                                            ? 'bg-green-50 border-green-200'
-                                                            : 'bg-white border-gray-200'
-                                                        }`}
-                                                >
-                                                    <div className="font-medium text-gray-900">{product.name}</div>
-                                                    <div className="text-gray-600 mt-1">
-                                                        Type: {product.type} | Status: {product.status}
-                                                    </div>
-                                                    <div className="font-mono text-gray-500 mt-1 break-all">
-                                                        AppId: {product.appId}
-                                                    </div>
-                                                    <div className="flex gap-2 mt-1">
-                                                        <Badge variant={product.isActive ? 'default' : 'secondary'} className="text-xs">
-                                                            {product.isActive ? 'Active' : 'Inactive'}
-                                                        </Badge>
-                                                        <Badge variant="outline" className="text-xs">
-                                                            {product.status}
-                                                        </Badge>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-gray-500 italic">No products found</div>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Timestamp */}
-                            <div className="text-xs text-gray-500 text-center pt-2 border-t">
-                                Last updated: {new Date(debugInfo.timestamp).toLocaleTimeString()}
-                            </div>
-
-                            {/* Diagnostic Tips */}
-                            {debugInfo.productsForCurrentApp === 0 && debugInfo.totalProducts > 0 && (
-                                <div className="bg-yellow-50 border border-yellow-200 rounded p-3 text-sm">
-                                    <strong className="text-yellow-900">⚠️ AppId Mismatch Detected!</strong>
-                                    <p className="text-yellow-800 mt-1">
-                                        There are {debugInfo.totalProducts} products in the system, but none match the current appId.
-                                        Check if the appId is correct.
-                                    </p>
-                                </div>
-                            )}
-
-                            {debugInfo.totalProducts === 0 && (
-                                <div className="bg-orange-50 border border-orange-200 rounded p-3 text-sm">
-                                    <strong className="text-orange-900">⚠️ No Products Found!</strong>
-                                    <p className="text-orange-800 mt-1">
-                                        No products exist in the system. Create products in the PLATA.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    ) : null}
-                </CardContent>
-            </Card>
-        </div>
+    const catalogPromise = productApi.getAllProducts().then(
+      (res) => {
+        catalog = extractProductsArray(res)
+      },
+      (err: unknown) => {
+        catalogError = err instanceof Error ? err.message : String(err)
+      },
     )
+
+    const appPromise =
+      appId != null && appId !== ""
+        ? productApi.getProductsByAppId(appId).then(
+            (res) => {
+              appScoped = extractProductsArray(res)
+            },
+            (err: unknown) => {
+              appError = err instanceof Error ? err.message : String(err)
+            },
+          )
+        : Promise.resolve()
+
+    await Promise.all([catalogPromise, appPromise])
+
+    const primaryList = catalog.length > 0 ? catalog : appScoped
+    const uniqueAppIds = [...new Set(primaryList.map(pickAppId).filter(Boolean))] as string[]
+
+    const sampleProducts = primaryList.slice(0, 5).map((p: any) => ({
+      id: p.id ?? p._id,
+      name: p.name,
+      type: p.type,
+      appId: pickAppId(p),
+      isActive: p.isActive ?? p.active,
+      status: p.status,
+    }))
+
+    const catalogOk = !catalogError
+    const appOk = !appError
+    let apiStatus: DebugInfo["apiStatus"] = "success"
+    if (!appId) {
+      apiStatus = catalogOk ? "success" : "error"
+    } else if (catalogOk && appOk) {
+      apiStatus = "success"
+    } else if (!catalogOk && !appOk) {
+      apiStatus = "error"
+    } else {
+      apiStatus = "partial"
+    }
+
+    setDebugInfo({
+      currentAppId: appId,
+      catalogCount: catalog.length,
+      appScopedCount: appScoped.length,
+      allAppIds: uniqueAppIds,
+      sampleProducts,
+      apiStatus,
+      catalogError,
+      appError,
+      timestamp,
+    })
+    setLoading(false)
+  }, [appId])
+
+  useEffect(() => {
+    if (expanded) {
+      void fetchDebugInfo()
+    }
+  }, [expanded, fetchDebugInfo])
+
+  if (!expanded) {
+    return (
+      <div className="fixed bottom-4 right-4 z-50">
+        <Button
+          onClick={() => setExpanded(true)}
+          variant="outline"
+          className="border-yellow-300 bg-yellow-50 text-yellow-800 hover:bg-yellow-100"
+        >
+          <AlertCircle className="mr-2 h-4 w-4" />
+          Debug Products
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50 w-[min(100vw-2rem,520px)]">
+      <Card className="border-2 border-yellow-300 shadow-lg">
+        <CardHeader className="bg-yellow-50">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <AlertCircle className="h-5 w-5 shrink-0 text-yellow-600" />
+                Product Debug Panel
+              </CardTitle>
+              <CardDescription className="mt-1">
+                Location: <Badge variant="outline">{location === "platter" ? "PLATA" : "Spring App"}</Badge>
+              </CardDescription>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button size="sm" variant="ghost" onClick={() => void fetchDebugInfo()} disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setExpanded(false)}>
+                ✕
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="max-h-[600px] overflow-y-auto pt-4">
+          {loading && !debugInfo ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : debugInfo ? (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                {debugInfo.apiStatus === "success" ? (
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                ) : debugInfo.apiStatus === "partial" ? (
+                  <AlertCircle className="h-5 w-5 text-amber-500" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-red-500" />
+                )}
+                <span className="font-medium">
+                  API Status:{" "}
+                  {debugInfo.apiStatus === "success"
+                    ? "OK"
+                    : debugInfo.apiStatus === "partial"
+                      ? "Partial"
+                      : "Error"}
+                </span>
+              </div>
+
+              {(debugInfo.catalogError || debugInfo.appError) && (
+                <div className="space-y-2 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                  {debugInfo.catalogError ? (
+                    <p>
+                      <strong>Catalog (GET /api/v1/products):</strong> {debugInfo.catalogError}
+                    </p>
+                  ) : null}
+                  {appId && debugInfo.appError ? (
+                    <p>
+                      <strong>App-scoped (GET /api/v1/products/app/…):</strong> {debugInfo.appError}
+                    </p>
+                  ) : null}
+                </div>
+              )}
+
+              <div className="rounded border border-blue-200 bg-blue-50 p-3">
+                <div className="mb-1 text-sm font-medium text-blue-900">Current AppId</div>
+                <div className="break-all font-mono text-xs text-blue-700">{debugInfo.currentAppId || "Not set"}</div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="mb-1 text-xs text-gray-600">Full catalog</div>
+                  <div className="text-xs text-gray-500">GET /api/v1/products</div>
+                  <div className="text-2xl font-bold text-gray-900">{debugInfo.catalogCount}</div>
+                </div>
+                <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                  <div className="mb-1 text-xs text-gray-600">Active for this app</div>
+                  <div className="text-xs text-gray-500">GET /api/v1/products/app/:appId</div>
+                  <div className="text-2xl font-bold text-gray-900">{appId ? debugInfo.appScopedCount : "—"}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-sm font-medium text-gray-900">
+                  Distinct AppIds in merged sample ({debugInfo.allAppIds.length})
+                </div>
+                <div className="max-h-32 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-3">
+                  {debugInfo.allAppIds.length > 0 ? (
+                    <div className="space-y-1">
+                      {debugInfo.allAppIds.map((id) => (
+                        <div
+                          key={id}
+                          className={`rounded p-1 font-mono text-xs ${
+                            id === debugInfo.currentAppId ? "bg-green-100 font-bold text-green-800" : "text-gray-600"
+                          }`}
+                        >
+                          {id === debugInfo.currentAppId ? "→ " : ""}
+                          {id}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs italic text-gray-500">No appIds found in product payloads.</div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 text-sm font-medium text-gray-900">Sample products (first 5)</div>
+                <div className="max-h-48 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-3">
+                  {debugInfo.sampleProducts.length > 0 ? (
+                    <div className="space-y-2">
+                      {debugInfo.sampleProducts.map((product, idx) => (
+                        <div
+                          key={`${product.id ?? idx}`}
+                          className={`rounded border p-2 text-xs ${
+                            product.appId === debugInfo.currentAppId ? "border-green-200 bg-green-50" : "border-gray-200 bg-white"
+                          }`}
+                        >
+                          <div className="font-medium text-gray-900">{product.name ?? "(unnamed)"}</div>
+                          <div className="mt-1 text-gray-600">
+                            Type: {product.type ?? "—"} | Status: {product.status ?? "—"}
+                          </div>
+                          <div className="mt-1 break-all font-mono text-gray-500">AppId: {product.appId ?? "—"}</div>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            <Badge variant={product.isActive ? "default" : "secondary"} className="text-xs">
+                              {product.isActive ? "Active" : "Inactive / unknown"}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs italic text-gray-500">No product rows returned from either endpoint.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t pt-2 text-center text-xs text-gray-500">
+                Last updated: {new Date(debugInfo.timestamp).toLocaleTimeString()}
+              </div>
+
+              {appId && debugInfo.appScopedCount === 0 && debugInfo.catalogCount > 0 && !debugInfo.appError && (
+                <div className="rounded border border-yellow-200 bg-yellow-50 p-3 text-sm">
+                  <strong className="text-yellow-900">No activations for this app</strong>
+                  <p className="mt-1 text-yellow-800">
+                    The catalog lists products, but none are returned for this appId from the app-scoped endpoint.
+                    Enable products for this app or confirm the appId.
+                  </p>
+                </div>
+              )}
+
+              {debugInfo.catalogCount === 0 && debugInfo.appScopedCount === 0 && !debugInfo.catalogError && !debugInfo.appError && (
+                <div className="rounded border border-orange-200 bg-orange-50 p-3 text-sm">
+                  <strong className="text-orange-900">No products in responses</strong>
+                  <p className="mt-1 text-orange-800">Both endpoints returned empty lists (or unparsed bodies).</p>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
+  )
 }

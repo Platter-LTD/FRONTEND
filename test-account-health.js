@@ -8,9 +8,13 @@ const https = require('https');
 
 console.log('Testing Account-MS connectivity...\n');
 
+const raw = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').trim().replace(/\/+$/, '');
+const withProtocol = raw.startsWith('http') ? raw : `https://${raw}`;
+const baseUrl = new URL(withProtocol);
+
 const options = {
-  hostname: 'account-ms.fly.dev',
-  port: 443,
+  hostname: baseUrl.hostname,
+  port: baseUrl.port ? Number(baseUrl.port) : 443,
   path: '/health',
   method: 'GET',
   timeout: 30000,

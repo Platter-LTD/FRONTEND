@@ -10,12 +10,13 @@ import { TbCodeCircle2Filled } from "react-icons/tb"
 import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { SearchIcon } from "lucide-react"
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
 import { useAuth } from "@/hooks/useAuth"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { fetchKycStatusThunk } from "@/store/complianceSlice"
+import { fetchMerchantProfileThunk } from "@/store/merchantSettingsSlice"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
 
@@ -28,6 +29,9 @@ interface NavItem {
 
 const COMPLIANCE_MESSAGE = "Complete Compliance before you can access this section."
 
+const ACTIVE_ROW = "bg-[#FFF9EB] text-[#9A813F] font-medium shadow-sm ring-1 ring-[#9A813F]/10 [&_svg]:text-[#9A813F]"
+const INACTIVE_ROW = "text-slate-700 hover:bg-[#FFF9EB]/60 [&_svg]:text-slate-600"
+
 interface SidebarProps {
   className?: string
 }
@@ -37,29 +41,55 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
   const router = useRouter()
   const dispatch = useAppDispatch()
   const complianceComplete = useAppSelector((s) => s.compliance.isApproved)
+  const merchantFullName = useAppSelector((s) => s.merchantSettings.fullName?.trim() ?? "")
   const { user, logout } = useAuth()
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
 
-  const rawDisplayName = effectiveUser
-    ? [effectiveUser.firstName, effectiveUser.lastName].filter(Boolean).join(" ").trim()
-    : ""
   const displayEmail = effectiveUser?.email ?? ""
-  const displayName = rawDisplayName || (displayEmail ? displayEmail.split("@")[0] : "User")
+
+  /** Token / API may use camelCase or snake_case; never use the email local-part as the display name. */
+  const nameFromUser = useMemo(() => {
+    if (!effectiveUser) return ""
+    const r = effectiveUser as unknown as Record<string, string | undefined>
+    const first = (r.firstName ?? r.first_name ?? "").trim()
+    const last = (r.lastName ?? r.last_name ?? "").trim()
+    return [first, last].filter(Boolean).join(" ").trim()
+  }, [effectiveUser])
+
+  const displayName = nameFromUser || merchantFullName || "User"
+
+  const initials = useMemo(() => {
+    const parts = displayName.split(/\s+/).filter((p) => p.length > 0)
+    if (parts.length >= 2) {
+      return `${parts[0].charAt(0)}${parts[parts.length - 1].charAt(0)}`.toUpperCase()
+    }
+    if (parts.length === 1 && parts[0].length >= 2) {
+      return parts[0].slice(0, 2).toUpperCase()
+    }
+    if (parts.length === 1) {
+      return parts[0].charAt(0).toUpperCase()
+    }
+    return (displayEmail.charAt(0) || "U").toUpperCase()
+  }, [displayName, displayEmail])
+
   const handleLogout = async () => {
     await logout()
     router.replace("/signin")
   }
 
-  const initialsFromName = effectiveUser
-    ? `${(effectiveUser.firstName ?? "").trim().charAt(0)}${(effectiveUser.lastName ?? "").trim().charAt(0)}`.toUpperCase()
-    : ""
-  const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
-
   useEffect(() => {
     void dispatch(fetchKycStatusThunk())
   }, [pathname, dispatch])
+
+  /** When JWT has no name claims, load profile once so Redux has `fullName` for the sidebar. */
+  useEffect(() => {
+    if (nameFromUser) return
+    if (!effectiveUser?.email) return
+    if (!pathname?.startsWith("/dashboard")) return
+    void dispatch(fetchMerchantProfileThunk()).catch(() => {})
+  }, [nameFromUser, effectiveUser?.email, pathname, dispatch])
 
   const navItems: NavItem[] = [
     {
@@ -95,9 +125,12 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
       <nav className="flex-1 px-4">
         <ul className="space-y-4">
           {navItems.map((item, index) => {
-            const isActive = pathname.startsWith(item.href)
+            const isActive =
+              pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))
             const disabled = !!(item.requiresCompliance && !complianceComplete)
-            const linkClass = `flex items-center space-x-3 px-3 py-2 rounded-md transition-colors ${isActive ? "bg-[#FFF9EA] text-[#9A813F] font-medium" : "text-gray-700 hover:bg-gray-100"} ${disabled ? "pointer-events-none opacity-60 cursor-not-allowed" : ""}`
+            const linkClass = `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+              isActive ? ACTIVE_ROW : INACTIVE_ROW
+            } ${disabled ? "pointer-events-none cursor-not-allowed opacity-60" : ""}`
 
             return (
               <li key={index}>
@@ -139,10 +172,9 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
             ) : (
               <Link
                 href="/dashboard/settings"
-                className={`flex items-center space-x-3 px-3 py-2 rounded-md transition-colors ${pathname.startsWith("/dashboard/settings")
-                  ? "bg-[#FFF9EA] text-[#9A813F] font-medium"
-                  : "text-gray-700 hover:bg-gray-100"
-                  }`}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                  pathname.startsWith("/dashboard/settings") ? ACTIVE_ROW : INACTIVE_ROW
+                }`}
               >
                 <RiSettings3Fill size={20} />
                 <span className="text-sm">Settings</span>

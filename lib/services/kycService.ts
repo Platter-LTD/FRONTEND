@@ -1,10 +1,11 @@
 import axiosDefault from "axios"
 import type { IndividualKycRequest, BusinessKycRequest } from "@/app/types/kyc"
 import { getAccessToken } from "@/lib/cookieAuth"
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 
 // dedicated client for compliance service
 const kycApi = axiosDefault.create({
-  baseURL: (process.env.NEXT_PUBLIC_API_URL || "https://account-ms-plata.fly.dev") + "/api/v1",
+  baseURL: `${getPlataApiBaseUrl()}/api/v1`,
   withCredentials: false,
 })
 

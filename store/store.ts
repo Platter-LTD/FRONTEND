@@ -1,15 +1,15 @@
 import { configureStore } from "@reduxjs/toolkit"
 import { authReducer } from "@/store/authSlice"
 import { complianceReducer } from "@/store/complianceSlice"
-import { merchantAppsReducer } from "@/store/merchantAppsSlice"
 import { walletReducer } from "@/store/walletSlice"
+import { merchantSettingsReducer } from "@/store/merchantSettingsSlice"
 
 export const store = configureStore({
   reducer: {
     auth: authReducer,
     compliance: complianceReducer,
-    merchantApps: merchantAppsReducer,
     wallet: walletReducer,
+    merchantSettings: merchantSettingsReducer,
   },
 })
 
