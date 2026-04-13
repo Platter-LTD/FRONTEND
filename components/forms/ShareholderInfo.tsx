@@ -13,6 +13,7 @@ import { useComplianceForm } from "@/providers/ComplianceFormProvider"
 import type { ShareholderRow } from "@/providers/ComplianceFormProvider"
 import { Skeleton } from "@/components/ui/skeleton"
 import { pickShareholderPhone } from "@/lib/pickShareholderPhone"
+import { pickShareholderKycUrl } from "@/lib/pickShareholderKycUrl"
 
 export function ShareholderInfo() {
   const { user, loading: authLoading } = useAuth()
@@ -33,7 +34,7 @@ export function ShareholderInfo() {
           email: s.email || "",
           phone: pickShareholderPhone(s),
           date: (s.submittedAt || new Date().toISOString()).slice(0, 16).replace("T", " "),
-          kyc: "Copy Kyc",
+          kycUrl: pickShareholderKycUrl(s) || undefined,
           status:
             s.status === "APPROVED" || s.status === "Successful"
               ? "Successful"
@@ -72,6 +73,32 @@ export function ShareholderInfo() {
   }
 
   const colCount = 8
+
+  const copyKycUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success("KYC link copied to clipboard")
+    } catch {
+      toast.error("Could not copy — select the link manually")
+    }
+  }
+
+  const emailKycLink = (row: ShareholderRow) => {
+    const url = row.kycUrl?.trim()
+    if (!url) {
+      toast.error("No KYC link for this shareholder")
+      return
+    }
+    if (!row.email?.trim()) {
+      toast.error("No email on file — copy the link instead")
+      return
+    }
+    const subject = encodeURIComponent("Complete your shareholder KYC")
+    const body = encodeURIComponent(
+      `Hello,\n\nPlease complete your shareholder verification using this link:\n\n${url}\n\nThank you.`,
+    )
+    window.location.href = `mailto:${encodeURIComponent(row.email.trim())}?subject=${subject}&body=${body}`
+  }
 
   return (
     <div className="space-y-6">
@@ -141,10 +168,32 @@ export function ShareholderInfo() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.email}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.phone}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.date}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <Button variant="ghost" size="sm" className="text-[#9A813F] hover:text-[#7A6449]">
-                      {row.kyc}
-                    </Button>
+                  <td className="px-6 py-4 text-sm">
+                    {row.kycUrl ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#9A813F] hover:text-[#7A6449] h-8 px-2"
+                          onClick={() => void copyKycUrl(row.kycUrl!)}
+                        >
+                          Copy link
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-[#9A813F] hover:text-[#7A6449] h-8 px-2"
+                          onClick={() => emailKycLink(row)}
+                          disabled={!row.email?.trim()}
+                        >
+                          Email link
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 text-xs">No link</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <Button variant="ghost" size="sm" className="text-[#9A813F] hover:text-[#7A6449]">

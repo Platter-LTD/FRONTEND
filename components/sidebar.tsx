@@ -4,12 +4,9 @@ import type React from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { MdAddBox } from "react-icons/md"
-import { FaUsers } from "react-icons/fa"
 import { IoMdCube } from "react-icons/io"
-import { TbCodeCircle2Filled } from "react-icons/tb"
 import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
-import { SearchIcon } from "lucide-react"
 import { useEffect, useMemo } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
@@ -19,6 +16,7 @@ import { fetchKycStatusThunk } from "@/store/complianceSlice"
 import { fetchMerchantProfileThunk } from "@/store/merchantSettingsSlice"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
+import { displayNameFromEmail, looksLikeEmailLocalOnly } from "@/lib/userNameFromClaims"
 
 interface NavItem {
   icon: React.ReactNode
@@ -58,7 +56,13 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
     return [first, last].filter(Boolean).join(" ").trim()
   }, [effectiveUser])
 
-  const displayName = nameFromUser || merchantFullName || "User"
+  const displayName = useMemo(() => {
+    if (nameFromUser) return nameFromUser
+    const m = merchantFullName.trim()
+    if (m && displayEmail && !looksLikeEmailLocalOnly(m, displayEmail)) return m
+    const inferred = displayNameFromEmail(displayEmail)
+    return inferred || "User"
+  }, [nameFromUser, merchantFullName, displayEmail])
 
   const initials = useMemo(() => {
     const parts = displayName.split(/\s+/).filter((p) => p.length > 0)
@@ -107,18 +111,6 @@ const Sidebar: React.FC<SidebarProps> = ({ className = "" }) => {
       {/* Logo */}
       <div className="p-6">
         <span className="text-2xl font-bold text-[#9A813F]">PLATA</span>
-      </div>
-
-      {/* Search */}
-      <div className="px-6 mb-6">
-        <div className="relative">
-          <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-          <input
-            type="text"
-            placeholder="Search"
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-[#9A813F] focus:border-transparent text-sm"
-          />
-        </div>
       </div>
 
       {/* Navigation */}

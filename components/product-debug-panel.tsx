@@ -57,6 +57,19 @@ function pickAppId(p: any): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined
 }
 
+/** Upstream often forbids GET /api/v1/products for merchant JWTs while app-scoped routes still work. */
+function isExpectedCatalogRestriction(message: string | undefined): boolean {
+  if (!message) return false
+  const m = message.toLowerCase()
+  return (
+    m.includes("merchant api") ||
+    m.includes("authentication required") ||
+    m.includes("forbidden") ||
+    m.includes("not authorized") ||
+    m.includes("403")
+  )
+}
+
 export function ProductDebugPanel({ appId, location }: ProductDebugPanelProps) {
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null)
   const [loading, setLoading] = useState(false)
@@ -108,13 +121,19 @@ export function ProductDebugPanel({ appId, location }: ProductDebugPanelProps) {
 
     const catalogOk = !catalogError
     const appOk = !appError
+    const catalogRestricted = Boolean(
+      catalogError && appOk && appId && isExpectedCatalogRestriction(catalogError),
+    )
+
     let apiStatus: DebugInfo["apiStatus"] = "success"
     if (!appId) {
       apiStatus = catalogOk ? "success" : "error"
-    } else if (catalogOk && appOk) {
-      apiStatus = "success"
-    } else if (!catalogOk && !appOk) {
+    } else if (!appOk) {
       apiStatus = "error"
+    } else if (catalogOk) {
+      apiStatus = "success"
+    } else if (catalogRestricted) {
+      apiStatus = "success"
     } else {
       apiStatus = "partial"
     }
@@ -126,7 +145,7 @@ export function ProductDebugPanel({ appId, location }: ProductDebugPanelProps) {
       allAppIds: uniqueAppIds,
       sampleProducts,
       apiStatus,
-      catalogError,
+      catalogError: catalogRestricted ? undefined : catalogError,
       appError,
       timestamp,
     })
@@ -207,12 +226,12 @@ export function ProductDebugPanel({ appId, location }: ProductDebugPanelProps) {
                 <div className="space-y-2 rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">
                   {debugInfo.catalogError ? (
                     <p>
-                      <strong>Catalog (GET /api/v1/products):</strong> {debugInfo.catalogError}
+                      <strong>Catalog:</strong> {debugInfo.catalogError}
                     </p>
                   ) : null}
                   {appId && debugInfo.appError ? (
                     <p>
-                      <strong>App-scoped (GET /api/v1/products/app/…):</strong> {debugInfo.appError}
+                      <strong>App-scoped:</strong> {debugInfo.appError}
                     </p>
                   ) : null}
                 </div>
@@ -226,12 +245,10 @@ export function ProductDebugPanel({ appId, location }: ProductDebugPanelProps) {
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div className="rounded border border-gray-200 bg-gray-50 p-3">
                   <div className="mb-1 text-xs text-gray-600">Full catalog</div>
-                  <div className="text-xs text-gray-500">GET /api/v1/products</div>
                   <div className="text-2xl font-bold text-gray-900">{debugInfo.catalogCount}</div>
                 </div>
                 <div className="rounded border border-gray-200 bg-gray-50 p-3">
                   <div className="mb-1 text-xs text-gray-600">Active for this app</div>
-                  <div className="text-xs text-gray-500">GET /api/v1/products/app/:appId</div>
                   <div className="text-2xl font-bold text-gray-900">{appId ? debugInfo.appScopedCount : "—"}</div>
                 </div>
               </div>

@@ -5,6 +5,7 @@ import { format } from "date-fns"
 import { Package, MoreVertical } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { productApi } from "@/lib/services/product-api"
+import { countMergedForAppType } from "@/lib/mergeAppCatalogProducts"
 import { ProductDebugPanel } from "@/components/product-debug-panel"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -373,6 +374,8 @@ export default function ProductsPage() {
   const appId = params.id as string
   const [headline, setHeadline] = useState<OverviewHeadline | null>(null)
   const [categories, setCategories] = useState<OverviewCategory[]>([])
+  const [appProductRows, setAppProductRows] = useState<unknown[]>([])
+  const [catalogProductRows, setCatalogProductRows] = useState<unknown[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -381,14 +384,55 @@ export default function ProductsPage() {
       try {
         setLoading(true)
         setError(null)
-        const data = await productApi.getProductOverview(appId)
-        const payload = (data as { data?: { headline?: OverviewHeadline; byCategory?: OverviewCategory[] } }).data
-        setHeadline(payload?.headline || {})
-        setCategories(Array.isArray(payload?.byCategory) ? payload.byCategory : [])
+
+        const [ovSettled, appSettled, catSettled] = await Promise.allSettled([
+          productApi.getProductOverview(appId),
+          productApi.getProductsByAppId(appId),
+          productApi.getAllProducts(),
+        ])
+
+        if (appSettled.status === "fulfilled") {
+          const appJson = appSettled.value as { data?: unknown }
+          setAppProductRows(Array.isArray(appJson?.data) ? appJson.data : [])
+        } else {
+          setAppProductRows([])
+        }
+
+        if (catSettled.status === "fulfilled") {
+          const c = catSettled.value as { success?: boolean; data?: unknown } | unknown[]
+          const body = c as { success?: boolean; data?: unknown }
+          if (body && typeof body === "object" && !Array.isArray(body) && body.success === false) {
+            setCatalogProductRows(null)
+          } else {
+            const rows = Array.isArray((c as { data?: unknown }).data)
+              ? (c as { data: unknown[] }).data
+              : Array.isArray(c)
+                ? (c as unknown[])
+                : []
+            setCatalogProductRows(rows.length ? rows : null)
+          }
+        } else {
+          setCatalogProductRows(null)
+        }
+
+        if (ovSettled.status === "fulfilled") {
+          const data = ovSettled.value as { data?: { headline?: OverviewHeadline; byCategory?: OverviewCategory[] } }
+          const payload = data?.data
+          setHeadline(payload?.headline || {})
+          setCategories(Array.isArray(payload?.byCategory) ? payload.byCategory : [])
+          setError(null)
+        } else {
+          setHeadline(null)
+          setCategories([])
+          const reason = ovSettled.status === "rejected" ? ovSettled.reason : "Unknown error"
+          setError(reason instanceof Error ? reason.message : "Failed to load product overview")
+        }
       } catch (error) {
         console.error("Error fetching product overview:", error)
         setHeadline(null)
         setCategories([])
+        setAppProductRows([])
+        setCatalogProductRows(null)
         setError(error instanceof Error ? error.message : "Failed to load product overview")
       } finally {
         setLoading(false)
@@ -402,10 +446,11 @@ export default function ProductsPage() {
     router.push(`/dashboard/create-app/all-apps/${appId}/products/${type}`)
   }
 
-  const productCards = [
+  const productCards = useMemo(
+    () => [
     {
       title: "Mortgage Products",
-      count: findCategory(categories, "MORTGAGE")?.configuredProductCount || 0,
+      count: countMergedForAppType(appProductRows, catalogProductRows, appId, "MORTGAGE"),
       customers: findCategory(categories, "MORTGAGE")?.customerCount || 0,
       capital: formatMoney(findCategory(categories, "MORTGAGE")?.capitalAmount),
       issued: formatMoney(findCategory(categories, "MORTGAGE")?.issuedAmount),
@@ -414,7 +459,7 @@ export default function ProductsPage() {
     },
     {
       title: "Loan Products",
-      count: findCategory(categories, "LOAN")?.configuredProductCount || 0,
+      count: countMergedForAppType(appProductRows, catalogProductRows, appId, "LOAN"),
       customers: findCategory(categories, "LOAN")?.customerCount || 0,
       capital: formatMoney(findCategory(categories, "LOAN")?.capitalAmount),
       issued: formatMoney(findCategory(categories, "LOAN")?.issuedAmount),
@@ -423,7 +468,7 @@ export default function ProductsPage() {
     },
     {
       title: "Saving Products",
-      count: findCategory(categories, "SAVINGS")?.configuredProductCount || 0,
+      count: countMergedForAppType(appProductRows, catalogProductRows, appId, "SAVINGS"),
       customers: findCategory(categories, "SAVINGS")?.customerCount || 0,
       capital: formatMoney(findCategory(categories, "SAVINGS")?.capitalAmount),
       issued: formatMoney(findCategory(categories, "SAVINGS")?.issuedAmount),
@@ -432,7 +477,7 @@ export default function ProductsPage() {
     },
     {
       title: "Investment Products",
-      count: findCategory(categories, "INVESTMENT")?.configuredProductCount || 0,
+      count: countMergedForAppType(appProductRows, catalogProductRows, appId, "INVESTMENT"),
       customers: findCategory(categories, "INVESTMENT")?.customerCount || 0,
       capital: formatMoney(findCategory(categories, "INVESTMENT")?.capitalAmount),
       issued: formatMoney(findCategory(categories, "INVESTMENT")?.issuedAmount),
@@ -441,14 +486,16 @@ export default function ProductsPage() {
     },
     {
       title: "Commodity Products",
-      count: findCategory(categories, "COMMODITY")?.configuredProductCount || 0,
+      count: countMergedForAppType(appProductRows, catalogProductRows, appId, "COMMODITY"),
       customers: findCategory(categories, "COMMODITY")?.customerCount || 0,
       inventory: formatMoney(findCategory(categories, "COMMODITY")?.inventoryAmount),
       sales: formatMoney(findCategory(categories, "COMMODITY")?.salesAmount),
       repayment: formatMoney(findCategory(categories, "COMMODITY")?.repaymentAmount),
       type: "commodity",
     },
-  ]
+  ],
+    [appId, appProductRows, catalogProductRows, categories],
+  )
 
   const tabBtn = (id: string, label: string) => (
     <button
@@ -468,50 +515,60 @@ export default function ProductsPage() {
       <h1 className="mb-6 text-2xl font-semibold text-gray-900">Product Overview</h1>
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
 
-      {/* Summary bar — primary three metrics match overview mocks; extra KPIs below */}
-      <div className="mb-8 rounded-lg bg-[#2C2C3E] p-8">
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
-          <div>
-            {loading ? (
-              <Skeleton className="mb-2 h-8 w-36 bg-gray-600/70" />
-            ) : (
-              <p className="text-2xl font-semibold text-white">{formatMoney(headline?.requestedAmount)}</p>
-            )}
-            <p className="mt-1 text-sm text-gray-400">Requested</p>
-          </div>
-          <div>
-            {loading ? (
-              <Skeleton className="mb-2 h-8 w-36 bg-gray-600/70" />
-            ) : (
-              <p className="text-2xl font-semibold text-white">{formatMoney(headline?.approvedAmount)}</p>
-            )}
-            <p className="mt-1 text-sm text-gray-400">Approved</p>
-          </div>
-          <div>
-            {loading ? (
-              <Skeleton className="mb-2 h-8 w-36 bg-gray-600/70" />
-            ) : (
-              <p className="text-2xl font-semibold text-white">{formatMoney(headline?.totalInterest)}</p>
-            )}
-            <p className="mt-1 text-sm text-gray-400">Total interest</p>
-          </div>
-        </div>
-        <div className="mt-8 grid grid-cols-1 gap-6 border-t border-white/10 pt-8 sm:grid-cols-2">
-          <div>
-            {loading ? (
-              <Skeleton className="mb-2 h-7 w-32 bg-gray-600/70" />
-            ) : (
-              <p className="text-xl font-semibold text-white">{formatMoney(headline?.totalTransactions)}</p>
-            )}
-            <p className="mt-1 text-sm text-gray-400">Total transactions</p>
-          </div>
-          <div>
-            {loading ? (
-              <Skeleton className="mb-2 h-7 w-32 bg-gray-600/70" />
-            ) : (
-              <p className="text-xl font-semibold text-white">{formatMoney(headline?.totalSavings)}</p>
-            )}
-            <p className="mt-1 text-sm text-gray-400">Total savings</p>
+      {/* Summary bar — five KPIs in one row (scroll horizontally on narrow viewports) */}
+      <div className="mb-8 rounded-lg bg-[#2C2C3E] p-6 sm:p-8">
+        <div className="overflow-x-auto [-webkit-overflow-scrolling:touch]">
+          <div className="flex min-w-[52rem] flex-nowrap items-start justify-between gap-4 sm:min-w-0 sm:gap-6 lg:gap-8">
+            <div className="min-w-0 flex-1">
+              {loading ? (
+                <Skeleton className="mb-2 h-8 w-full max-w-[9rem] bg-gray-600/70" />
+              ) : (
+                <p className="truncate text-lg font-semibold text-white tabular-nums sm:text-xl lg:text-2xl">
+                  {formatMoney(headline?.requestedAmount)}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-400 sm:text-sm">Requested</p>
+            </div>
+            <div className="min-w-0 flex-1">
+              {loading ? (
+                <Skeleton className="mb-2 h-8 w-full max-w-[9rem] bg-gray-600/70" />
+              ) : (
+                <p className="truncate text-lg font-semibold text-white tabular-nums sm:text-xl lg:text-2xl">
+                  {formatMoney(headline?.approvedAmount)}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-400 sm:text-sm">Approved</p>
+            </div>
+            <div className="min-w-0 flex-1">
+              {loading ? (
+                <Skeleton className="mb-2 h-8 w-full max-w-[9rem] bg-gray-600/70" />
+              ) : (
+                <p className="truncate text-lg font-semibold text-white tabular-nums sm:text-xl lg:text-2xl">
+                  {formatMoney(headline?.totalInterest)}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-400 sm:text-sm">Total interest</p>
+            </div>
+            <div className="min-w-0 flex-1">
+              {loading ? (
+                <Skeleton className="mb-2 h-8 w-full max-w-[9rem] bg-gray-600/70" />
+              ) : (
+                <p className="truncate text-lg font-semibold text-white tabular-nums sm:text-xl lg:text-2xl">
+                  {formatMoney(headline?.totalTransactions)}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-400 sm:text-sm">Total transactions</p>
+            </div>
+            <div className="min-w-0 flex-1">
+              {loading ? (
+                <Skeleton className="mb-2 h-8 w-full max-w-[9rem] bg-gray-600/70" />
+              ) : (
+                <p className="truncate text-lg font-semibold text-white tabular-nums sm:text-xl lg:text-2xl">
+                  {formatMoney(headline?.totalSavings)}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-400 sm:text-sm">Total savings</p>
+            </div>
           </div>
         </div>
       </div>

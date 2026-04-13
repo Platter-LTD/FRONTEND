@@ -23,6 +23,7 @@ const routeTitles: Record<string, { title: string; subtitle: string }> = {
 }
 
 import { productApi } from "@/lib/services/product-api"
+import { resolveProductIdFromAppProducts } from "@/lib/productDetailView"
 import { DashboardNotificationsPopover } from "@/components/dashboard-notifications-popover"
 import { useAuth } from "@/hooks/useAuth"
 import { getAccessToken } from "@/lib/cookieAuth"
@@ -74,16 +75,20 @@ export const DashboardHeader: React.FC = () => {
           const data = await productApi.getProductsByAppId(currentAppId)
 
           if (data.success && data.data) {
-            // Filter products by type
-            const normalizedType = productTypeFromDetails
-              ? productTypeFromDetails.charAt(0).toUpperCase() + productTypeFromDetails.slice(1).toLowerCase()
-              : ""
-            const filteredProducts = data.data.filter((p: any) => p.type === normalizedType)
+            const rows = Array.isArray(data.data) ? data.data : []
+            const pathType = (productTypeFromDetails || "").toUpperCase()
+            const filteredProducts = rows.filter((p: any) => String(p?.type ?? "").toUpperCase() === pathType)
             setProducts(filteredProducts)
 
-            // Find current product
-            const current = data.data.find((p: any) => p.id === productIdFromDetails)
-            setCurrentProduct(current)
+            const resolvedId = resolveProductIdFromAppProducts(rows, String(productIdFromDetails || ""))
+            const current = rows.find((p: any) => {
+              const id = p?.id ?? p?._id
+              if (resolvedId && id != null && String(id) === resolvedId) return true
+              const slug = String(productIdFromDetails || "")
+              if (!slug) return false
+              return [p?.id, p?._id, p?.referenceNumber].some((x) => x != null && String(x) === slug)
+            })
+            setCurrentProduct(current ?? null)
           }
         } catch (error) {
           console.error('Error fetching products:', error)

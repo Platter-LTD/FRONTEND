@@ -1,6 +1,11 @@
 // Product API helper functions with authentication
 
 import { getAccessToken } from '@/lib/cookieAuth';
+import {
+  extractProductFromResponse,
+  mapProductToConfigurationView,
+  resolveProductIdFromAppProducts,
+} from '@/lib/productDetailView';
 
 const decodeTokenMerchantId = (token: string | null): string | null => {
   if (!token) return null;
@@ -160,6 +165,7 @@ export const productApi = {
   async getProductOverview(appId: string) {
     const response = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}/product-overview`, {
       headers: getAuthHeaders(),
+      credentials: 'include',
     });
 
     const data = await response.json().catch(() => ({}));
@@ -238,6 +244,7 @@ export const productApi = {
   async getProductsByAppId(appId: string) {
     const response = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}`, {
       headers: getAuthHeaders(),
+      credentials: 'include',
     });
 
     const data = await response.json().catch(() => ({}));
@@ -249,19 +256,79 @@ export const productApi = {
     return data;
   },
 
-  // Get product by ID
+  // Get product by ID — Product MS GET /api/v1/products/:id (proxied)
   async getProductById(productId: string) {
-    const response = await fetch(`/api/product/${productId}`, {
+    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
       headers: getAuthHeaders(),
     });
 
-    const data = await response.json();
+    const raw = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch product');
+      throw new Error((raw as { error?: string }).error || (raw as { message?: string }).message || 'Failed to fetch product');
     }
 
-    return data;
+    const product = extractProductFromResponse(raw);
+    if (!product) {
+      throw new Error('Invalid product response');
+    }
+
+    return { success: true as const, data: product };
+  },
+
+  /**
+   * Resolves URL slug (Mongo id, referenceNumber, or name) against app products, then loads
+   * GET /api/v1/products/:id. Use on product detail pages.
+   */
+  async getProductDetailForApp(appId: string, slugOrId: string) {
+    const headers = getAuthHeaders();
+
+    const fetchProduct = async (id: string) => {
+      const res = await fetch(`/api/v1/products/${encodeURIComponent(id)}`, { headers });
+      const json = await res.json().catch(() => ({}));
+      return { res, json };
+    };
+
+    let { res, json } = await fetchProduct(slugOrId);
+    let product = extractProductFromResponse(json);
+
+    if (!res.ok || !product) {
+      const appRes = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}`, { headers });
+      const appJson = await appRes.json().catch(() => ({}));
+      const rows = Array.isArray(appJson?.data) ? appJson.data : [];
+      const resolved = resolveProductIdFromAppProducts(rows, slugOrId);
+      if (resolved) {
+        const second = await fetchProduct(resolved);
+        res = second.res;
+        json = second.json;
+        product = extractProductFromResponse(json);
+      }
+    }
+
+    if (!res.ok) {
+      return {
+        success: false as const,
+        data: null,
+        configuration: null,
+        error: (json as { error?: string }).error || (json as { message?: string }).message || 'Failed to fetch product',
+      };
+    }
+
+    if (!product) {
+      return {
+        success: false as const,
+        data: null,
+        configuration: null,
+        error: 'Product not found',
+      };
+    }
+
+    return {
+      success: true as const,
+      data: product,
+      configuration: mapProductToConfigurationView(product),
+      error: undefined as string | undefined,
+    };
   },
 
   // Update product
@@ -297,25 +364,21 @@ export const productApi = {
     return data;
   },
 
-  // Get product configuration
+  // Tab-shaped view derived from Product MS document (about / structure / feesAndCharges)
   async getProductConfiguration(productId: string) {
-    const response = await fetch(`/api/product/${productId}`, {
-      headers: getAuthHeaders(),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok && response.status !== 404) {
-      throw new Error(data.error || 'Failed to fetch configuration');
+    try {
+      const { data } = await this.getProductById(productId);
+      const mapped = mapProductToConfigurationView(data as Record<string, unknown>);
+      return { success: true as const, data: mapped };
+    } catch {
+      return { success: false as const, data: null };
     }
-
-    return data;
   },
 
   // Create or update product configuration
   async saveProductConfiguration(productId: string, productType: string, configuration: any) {
     const payload = buildConfigurationPayload(productType, configuration);
-    const response = await fetch(`/api/product/${productId}`, {
+    const response = await fetch(`/api/product/${encodeURIComponent(productId)}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(payload),
@@ -354,6 +417,7 @@ export const productApi = {
   async getAllProducts() {
     const response = await fetch('/api/v1/products', {
       headers: getAuthHeaders(),
+      credentials: 'include',
     });
 
     const data = await response.json().catch(() => ({}));

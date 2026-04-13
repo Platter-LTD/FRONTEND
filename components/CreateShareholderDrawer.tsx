@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth"
 import { toast } from "react-toastify"
 import { useComplianceForm } from "@/providers/ComplianceFormProvider"
 import { pickShareholderPhone } from "@/lib/pickShareholderPhone"
+import { pickShareholderKycUrl } from "@/lib/pickShareholderKycUrl"
 import { isPdfFile } from "@/lib/isPdfFile"
 
 const formatFileSize = (bytes: number) =>
@@ -166,19 +167,49 @@ export const CreateShareholderDrawer: React.FC = () => {
       const payload = [...existing, newShareholder]
 
       const res = await ComplianceService.upsertShareholdersForCurrentMerchant(payload)
-      const shareholder = (res as any)?.data?.shareholder ?? (res as any)?.shareholder ?? newShareholder
+      const resAny = res as Record<string, unknown> & { data?: Record<string, unknown> }
+      const shareholder =
+        (resAny?.data?.shareholder as Record<string, unknown> | undefined) ??
+        (resAny?.shareholder as Record<string, unknown> | undefined) ??
+        (newShareholder as unknown as Record<string, unknown>)
+
+      const kycUrl =
+        pickShareholderKycUrl(shareholder) ||
+        pickShareholderKycUrl(resAny?.data) ||
+        (Array.isArray((resAny?.data as { shareholders?: unknown[] })?.shareholders)
+          ? pickShareholderKycUrl(
+              (resAny.data as { shareholders: unknown[] }).shareholders.find(
+                (x) =>
+                  typeof x === "object" &&
+                  x !== null &&
+                  String((x as { email?: string }).email ?? "").toLowerCase() === formData.email.trim().toLowerCase(),
+              ),
+            )
+          : "")
 
       addShareholder({
-        name: shareholder.fullName || formData.fullName,
-        email: shareholder.email || formData.email,
+        name: String(shareholder.fullName ?? formData.fullName),
+        email: String(shareholder.email ?? formData.email),
         phone: pickShareholderPhone(shareholder) || formData.phoneNumber.trim() || "",
         date: new Date().toISOString().slice(0, 16).replace("T", " "),
-        kyc: "Copy Kyc",
-        status: shareholder.status === "APPROVED" ? "Successful" : "Pending",
+        kycUrl: kycUrl || undefined,
+        status:
+          String(shareholder.status ?? "").toUpperCase() === "APPROVED" || shareholder.status === "Successful"
+            ? "Successful"
+            : "Pending",
       })
 
       setShareholderDrawerOpen(false)
-      toast.success("Shareholder created successfully")
+      if (kycUrl) {
+        try {
+          await navigator.clipboard.writeText(kycUrl)
+          toast.success("Shareholder created. KYC link copied — use “Email link” in the table to open a draft to their address.")
+        } catch {
+          toast.success("Shareholder created. Use “Copy link” in the table to copy the KYC URL.")
+        }
+      } else {
+        toast.success("Shareholder created successfully.")
+      }
     } catch (err: any) {
       const data = err?.response?.data
       const msg = data?.error ?? data?.message ?? err?.message ?? "Failed to create shareholder"

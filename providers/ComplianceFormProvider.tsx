@@ -1,14 +1,16 @@
 "use client"
 
-import { createContext, useContext, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
+import { createContext, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
 import { WEBSITE_URL_PREFIX } from "@/lib/websiteUrl"
+import { ComplianceService } from "@/lib/services/complianceService"
 
 export interface ShareholderRow {
   name: string
   email: string
   phone: string
   date: string
-  kyc: string
+  /** KYC / liveness URL returned by compliance API — copy & email to shareholder. */
+  kycUrl?: string
   status: "Successful" | "Failed" | "Pending"
 }
 
@@ -49,6 +51,7 @@ interface ComplianceFormContextType {
   setShareholderDrawerOpen: (open: boolean) => void
   merchantBusinessSurvey: MerchantBusinessSurveyState
   setMerchantBusinessSurvey: Dispatch<SetStateAction<MerchantBusinessSurveyState>>
+  compliancePrefill: Record<string, unknown> | null
 }
 
 const ComplianceFormContext = createContext<ComplianceFormContextType | undefined>(undefined)
@@ -60,6 +63,7 @@ export function ComplianceFormProvider({ children }: { children: ReactNode }) {
   const [merchantBusinessSurvey, setMerchantBusinessSurvey] = useState<MerchantBusinessSurveyState>(() =>
     createDefaultMerchantBusinessSurvey(),
   )
+  const [compliancePrefill, setCompliancePrefill] = useState<Record<string, unknown> | null>(null)
 
   const setBusinessFile = (key: string, file: File | null) => {
     setBusinessFiles((prev) => {
@@ -75,6 +79,52 @@ export function ComplianceFormProvider({ children }: { children: ReactNode }) {
     setShareholders((prev) => [...prev, shareholder])
   }
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const prefill = await ComplianceService.getCompliancePrefillForCurrentMerchant()
+        if (!prefill) return
+        const businessInfo = (prefill.businessInfo ?? {}) as Record<string, unknown>
+        const businessSurvey = (prefill.businessSurvey ?? {}) as Record<string, unknown>
+        const owners = Array.isArray(prefill.beneficialOwners) ? prefill.beneficialOwners : []
+
+        setCompliancePrefill(prefill as unknown as Record<string, unknown>)
+        setMerchantBusinessSurvey((prev) => ({
+          ...prev,
+          businessType: String(businessSurvey.businessType ?? prev.businessType ?? ""),
+          userBase: String(businessSurvey.country ?? prev.userBase ?? ""),
+          businessModel: String(businessSurvey.businessModel ?? prev.businessModel ?? ""),
+          monthlyVolume:
+            businessSurvey.monthlyProcessedVolume != null
+              ? String(businessSurvey.monthlyProcessedVolume)
+              : prev.monthlyVolume,
+          industry: String(businessInfo.industry ?? prev.industry ?? ""),
+          country: String(businessInfo.countryOfIncorporation ?? prev.country ?? ""),
+          businessName: String(businessInfo.companyName ?? prev.businessName ?? ""),
+          website: String(businessInfo.website ?? prev.website ?? WEBSITE_URL_PREFIX),
+          companyRegId: String(businessInfo.companyRegId ?? prev.companyRegId ?? ""),
+        }))
+
+        const mapped = owners.map((s: any) => ({
+          name: s.fullName || s.name || "Unknown",
+          email: s.email || "",
+          phone: s.phoneNumber || s.phone || "",
+          date: String(s.submittedAt || s.createdAt || new Date().toISOString()).slice(0, 16).replace("T", " "),
+          kycUrl: s?.kyc?.url || s?.kycUrl || "",
+          status:
+            s.status === "APPROVED" || s.status === "Successful"
+              ? ("Successful" as const)
+              : s.status === "REJECTED"
+                ? ("Failed" as const)
+                : ("Pending" as const),
+        }))
+        if (mapped.length > 0) setShareholders(mapped)
+      } catch {
+        // Keep blank defaults when prefill endpoints are unavailable.
+      }
+    })()
+  }, [])
+
   return (
     <ComplianceFormContext.Provider
       value={{
@@ -87,6 +137,7 @@ export function ComplianceFormProvider({ children }: { children: ReactNode }) {
         setShareholderDrawerOpen,
         merchantBusinessSurvey,
         setMerchantBusinessSurvey,
+        compliancePrefill,
       }}
     >
       {children}

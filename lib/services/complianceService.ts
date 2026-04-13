@@ -112,6 +112,16 @@ export class ComplianceService {
     return res.data;
   }
 
+  static async getBusinessInfo() {
+    const res = await apiClient.get(ENDPOINTS.compliance.business.businessInfo);
+    return res.data;
+  }
+
+  static async getBusinessSurvey() {
+    const res = await apiClient.get(ENDPOINTS.compliance.business.businessSurvey);
+    return res.data;
+  }
+
   static async getBusinessDocuments() {
     const res = await apiClient.get(ENDPOINTS.compliance.business.documents);
     return res.data;
@@ -120,6 +130,121 @@ export class ComplianceService {
   static async getBusinessDocument(documentId: string) {
     const res = await apiClient.get(ENDPOINTS.compliance.business.document(documentId));
     return res.data;
+  }
+
+  static async getBusinessRiskAssessment() {
+    const res = await apiClient.get(ENDPOINTS.compliance.business.riskAssessment);
+    return res.data;
+  }
+
+  static async getBusinessMessages() {
+    const res = await apiClient.get(ENDPOINTS.compliance.business.messages);
+    return res.data;
+  }
+
+  static async getBusinessEnhancedDueDiligence() {
+    const res = await apiClient.get(ENDPOINTS.compliance.business.enhancedDueDiligence);
+    return res.data;
+  }
+
+  static async getBusinessCorporateStructure() {
+    const res = await apiClient.get(ENDPOINTS.compliance.business.corporateStructure);
+    return res.data;
+  }
+
+  static async getBusinessNonProfitVerification() {
+    const res = await apiClient.get(ENDPOINTS.compliance.business.nonProfitVerification);
+    return res.data;
+  }
+
+  static async getBusinessGovernmentVerification() {
+    const res = await apiClient.get(ENDPOINTS.compliance.business.governmentVerification);
+    return res.data;
+  }
+
+  static async getCompliancePrefillForCurrentMerchant() {
+    const token = getAccessToken();
+    const merchantId = decodeUserIdFromToken(token);
+    const safe = async <T>(fn: () => Promise<T>): Promise<T | null> => {
+      try {
+        return await fn();
+      } catch {
+        return null;
+      }
+    };
+    const unwrapData = <T>(payload: unknown): T | null => {
+      if (payload == null) return null;
+      const p = payload as { data?: unknown };
+      if (p && typeof p === "object" && "data" in p) return (p.data as T) ?? null;
+      return payload as T;
+    };
+
+    const [
+      statusRaw,
+      businessInfoRaw,
+      businessSurveyRaw,
+      documentsRaw,
+      beneficialOwnersRaw,
+      riskAssessmentRaw,
+      messagesRaw,
+      eddRaw,
+      businessTypeOptionsRaw,
+      industryTypeOptionsRaw,
+      businessModelOptionsRaw,
+    ] = await Promise.all([
+      safe(() => this.getBusinessKycStatus()),
+      safe(() => this.getBusinessInfo()),
+      safe(() => this.getBusinessSurvey()),
+      safe(() => this.getBusinessDocuments()),
+      safe(() => this.getShareholdersForCurrentMerchant()),
+      safe(() => this.getBusinessRiskAssessment()),
+      safe(() => this.getBusinessMessages()),
+      safe(() => this.getBusinessEnhancedDueDiligence()),
+      safe(() => this.getBusinessTypeOptions()),
+      safe(() => this.getIndustryTypeOptions()),
+      safe(() => this.getBusinessModelOptions()),
+    ]);
+
+    const survey = unwrapData<Record<string, unknown>>(businessSurveyRaw) ?? {};
+    const info = unwrapData<Record<string, unknown>>(businessInfoRaw) ?? {};
+    const businessTypeRaw = String(
+      survey.businessType ?? survey.business_type ?? info.businessType ?? info.business_type ?? "",
+    )
+      .trim()
+      .toLowerCase();
+    const businessType = businessTypeRaw.replace(/[\s-]+/g, "_");
+
+    const isGovernmentEntity = businessType.includes("government");
+    const isNonProfit = businessType.includes("non_profit") || businessType.includes("nonprofit") || businessType.includes("ngo");
+    const isCorporate = businessType.includes("corporation") || businessType.includes("llc") || businessType.includes("limited");
+
+    const [corporateStructureRaw, nonProfitRaw, governmentRaw] = await Promise.all([
+      isCorporate ? safe(() => this.getBusinessCorporateStructure()) : Promise.resolve(null),
+      isNonProfit ? safe(() => this.getBusinessNonProfitVerification()) : Promise.resolve(null),
+      isGovernmentEntity ? safe(() => this.getBusinessGovernmentVerification()) : Promise.resolve(null),
+    ]);
+
+    const beneficialOwnersList = Array.isArray(beneficialOwnersRaw)
+      ? beneficialOwnersRaw
+      : (unwrapData<unknown[]>(beneficialOwnersRaw) ?? []);
+
+    return {
+      merchantId,
+      status: unwrapData<Record<string, unknown>>(statusRaw),
+      businessInfo: info,
+      businessSurvey: survey,
+      documents: unwrapData<unknown[]>(documentsRaw) ?? [],
+      beneficialOwners: Array.isArray(beneficialOwnersList) ? beneficialOwnersList : [],
+      riskAssessment: unwrapData<Record<string, unknown>>(riskAssessmentRaw),
+      messages: unwrapData<unknown[]>(messagesRaw) ?? [],
+      enhancedDueDiligence: unwrapData<Record<string, unknown>>(eddRaw),
+      corporateStructure: unwrapData<Record<string, unknown>>(corporateStructureRaw),
+      nonProfitVerification: unwrapData<Record<string, unknown>>(nonProfitRaw),
+      governmentVerification: unwrapData<Record<string, unknown>>(governmentRaw),
+      businessTypeOptions: Array.isArray(businessTypeOptionsRaw) ? businessTypeOptionsRaw : [],
+      industryTypeOptions: Array.isArray(industryTypeOptionsRaw) ? industryTypeOptionsRaw : [],
+      businessModelOptions: Array.isArray(businessModelOptionsRaw) ? businessModelOptionsRaw : [],
+    };
   }
 
   /** Upload a file for KYC (multipart/form-data, field: file). Returns { success, url?, key?, error? }. Retries on 5xx or network/timeout. */

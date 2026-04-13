@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 import { Upload, X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
@@ -45,6 +45,27 @@ const DEFAULT_REPAYMENT_FREQUENCY_OPTIONS: string[] = []
 const DEFAULT_ACCEPTABLE_NPA_OPTIONS: string[] = []
 const DEFAULT_EQUITY_REQUIREMENT_OPTIONS: string[] = []
 const TRIGGER_DURATION_OPTIONS: string[] = []
+
+/** Standard property facilities for mortgage collateral listings (edit list to match your product spec). */
+const PROPERTY_FACILITY_OPTIONS = [
+  "Swimming pool",
+  "Gym / fitness center",
+  "Dedicated parking",
+  "24-hour security",
+  "Power backup (generator / inverter)",
+  "Water treatment / borehole",
+  "Elevator",
+  "Garden / green area",
+  "Children's playground",
+  "CCTV",
+  "Fitted kitchen",
+  "Built-in wardrobes",
+  "Air conditioning (fitted)",
+  "Fiber internet ready",
+  "Serviced estate",
+  "Staff quarters",
+] as const
+
 interface MortgageTypeItem {
   name: string
   description: string
@@ -71,11 +92,23 @@ interface PropertyItem {
   type: string
   value: string
   location: string
+  description: string
+  facilities: string[]
+  videoUrl: string
   previewFiles: File[]
   previewObjectUrls: string[]
 }
 
 type DocumentRequirementUpload = { file: File; name: string }
+
+function classifyEquityRequirementMode(selected: string): "zero" | "fixed" | "percentage" | "none" {
+  const s = selected.trim().toLowerCase().replace(/\s+/g, " ")
+  if (!s) return "none"
+  if (s.includes("zero") && s.includes("down")) return "zero"
+  if (s.includes("percentage") || (s.includes("percent") && s.includes("based"))) return "percentage"
+  if (s.includes("fixed") && s.includes("amount")) return "fixed"
+  return "none"
+}
 
 export default function ConfigureMortgageDrawer({
   isOpen,
@@ -125,6 +158,10 @@ export default function ConfigureMortgageDrawer({
   const [repaymentFrequency, setRepaymentFrequency] = useState("")
   const [acceptableNpa, setAcceptableNpa] = useState("")
   const [equityRequirement, setEquityRequirement] = useState("")
+  const [equityFixedAmount, setEquityFixedAmount] = useState("")
+  const [equityPercentage, setEquityPercentage] = useState("")
+
+  const equityRequirementMode = useMemo(() => classifyEquityRequirementMode(equityRequirement), [equityRequirement])
 
   const [selectedSecurities, setSelectedSecurities] = useState<string[]>([])
   const [documentName, setDocumentName] = useState("")
@@ -184,10 +221,27 @@ export default function ConfigureMortgageDrawer({
     setInterestRate(normalizePercentInput(value))
   }
 
+  const handleEquityRequirementChange = (value: string) => {
+    setEquityRequirement(value)
+    setEquityFixedAmount("")
+    setEquityPercentage("")
+  }
+
+  const handleEquityFixedAmountChange = (value: string) => {
+    setEquityFixedAmount(cleanNumeric(value))
+  }
+
+  const handleEquityPercentageChange = (value: string) => {
+    setEquityPercentage(normalizePercentInput(value))
+  }
+
   const [propertyName, setPropertyName] = useState("")
   const [propertyType, setPropertyType] = useState("")
   const [propertyValue, setPropertyValue] = useState("")
   const [propertyLocation, setPropertyLocation] = useState("")
+  const [propertyDescription, setPropertyDescription] = useState("")
+  const [propertyFacilities, setPropertyFacilities] = useState<string[]>([])
+  const [propertyVideoUrl, setPropertyVideoUrl] = useState("")
   const [propertyPreviewFiles, setPropertyPreviewFiles] = useState<File[]>([])
   const [propertyPreviewUrls, setPropertyPreviewUrls] = useState<string[]>([])
   const [propertyFormError, setPropertyFormError] = useState("")
@@ -457,6 +511,9 @@ export default function ConfigureMortgageDrawer({
         type: propertyType,
         value: propertyValue.trim(),
         location: propertyLocation.trim(),
+        description: propertyDescription.trim(),
+        facilities: [...propertyFacilities],
+        videoUrl: propertyVideoUrl.trim(),
         previewFiles,
         previewObjectUrls,
       },
@@ -465,6 +522,9 @@ export default function ConfigureMortgageDrawer({
     setPropertyType("")
     setPropertyValue("")
     setPropertyLocation("")
+    setPropertyDescription("")
+    setPropertyFacilities([])
+    setPropertyVideoUrl("")
     setPropertyPreviewFiles([])
     setPropertyPreviewUrls([])
   }
@@ -474,6 +534,13 @@ export default function ConfigureMortgageDrawer({
       const item = prev.find((p) => p.id === id)
       item?.previewObjectUrls.forEach((url) => URL.revokeObjectURL(url))
       return prev.filter((p) => p.id !== id)
+    })
+  }
+
+  const togglePropertyFacility = (option: string, checked: boolean) => {
+    setPropertyFacilities((prev) => {
+      if (checked) return prev.includes(option) ? prev : [...prev, option]
+      return prev.filter((f) => f !== option)
     })
   }
 
@@ -512,6 +579,9 @@ export default function ConfigureMortgageDrawer({
         type: p.type,
         value: p.value,
         location: p.location,
+        description: p.description,
+        facilities: p.facilities,
+        videoUrl: p.videoUrl,
         previewImages: await Promise.all(
           p.previewFiles.map(async (file) => ({
             fileName: file.name,
@@ -544,11 +614,11 @@ export default function ConfigureMortgageDrawer({
         interestRate,
         interestMethod,
       allowMoratorium,
-      moratoriumDuration: moratoriumSelectDuration || moratoriumDurationOf,
-      moratoriumDays: moratoriumSelectDuration || moratoriumDurationOf,
-      moratoriumSelectDuration,
-      moratoriumDurationOf,
-      moratoriumType,
+      moratoriumDuration: allowMoratorium ? moratoriumSelectDuration || moratoriumDurationOf : "",
+      moratoriumDays: allowMoratorium ? moratoriumSelectDuration || moratoriumDurationOf : "",
+      moratoriumSelectDuration: allowMoratorium ? moratoriumSelectDuration : "",
+      moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
+      moratoriumType: allowMoratorium ? moratoriumType : "",
       repaymentWorkflow,
       minLoanAmount,
       maxLoanAmount,
@@ -557,6 +627,8 @@ export default function ConfigureMortgageDrawer({
       repaymentFrequency,
       acceptableNpa,
       equityRequirement,
+      equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
+      equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
       securityRequirements: selectedSecurities,
       documentRequirements: documentsPayload,
       otherRequirements: otherRequirementsPayload,
@@ -642,30 +714,32 @@ export default function ConfigureMortgageDrawer({
                 checked={allowMoratorium}
                 onChange={setAllowMoratorium}
               />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <ProductConfigSelect
-                  label="Select Duration"
-                  placeholder="Select Section"
-                  value={moratoriumSelectDuration}
-                  options={moratoriumDurationOptions}
-                  onChange={setMoratoriumSelectDuration}
-                />
-                <ProductConfigSelect
-                  label="Duration of Moratorium"
-                  placeholder="Select Section"
-                  value={moratoriumDurationOf}
-                  options={moratoriumDurationOptions}
-                  onChange={setMoratoriumDurationOf}
-                />
-                <ProductConfigSelect
-                  label="Type of Moratorium"
-                  placeholder="Select Section"
-                  value={moratoriumType}
-                  options={moratoriumTypeOptions}
-                  onChange={setMoratoriumType}
-                />
-          </div>
-          </div>
+              {allowMoratorium ? (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <ProductConfigSelect
+                    label="Select Duration"
+                    placeholder="Select Section"
+                    value={moratoriumSelectDuration}
+                    options={moratoriumDurationOptions}
+                    onChange={setMoratoriumSelectDuration}
+                  />
+                  <ProductConfigSelect
+                    label="Duration of Moratorium"
+                    placeholder="Select Section"
+                    value={moratoriumDurationOf}
+                    options={moratoriumDurationOptions}
+                    onChange={setMoratoriumDurationOf}
+                  />
+                  <ProductConfigSelect
+                    label="Type of Moratorium"
+                    placeholder="Select Section"
+                    value={moratoriumType}
+                    options={moratoriumTypeOptions}
+                    onChange={setMoratoriumType}
+                  />
+                </div>
+              ) : null}
+            </div>
 
             <ProductConfigRepaymentWorkflowPanel
               workflows={repaymentWorkflowOptions}
@@ -712,8 +786,25 @@ export default function ConfigureMortgageDrawer({
                 placeholder="Select Section"
                 value={equityRequirement}
                 options={equityRequirementOptions}
-                onChange={setEquityRequirement}
+                onChange={handleEquityRequirementChange}
               />
+              {equityRequirementMode === "fixed" ? (
+                <ProductConfigInput
+                  label="Equity amount"
+                  placeholder="e.g. 500000"
+                  value={equityFixedAmount}
+                  onChange={handleEquityFixedAmountChange}
+                  numericOnly
+                />
+              ) : null}
+              {equityRequirementMode === "percentage" ? (
+                <ProductConfigInput
+                  label="Equity (%)"
+                  placeholder="e.g. 10%"
+                  value={equityPercentage}
+                  onChange={handleEquityPercentageChange}
+                />
+              ) : null}
             </div>
           </div>
         )}
@@ -1047,6 +1138,43 @@ export default function ConfigureMortgageDrawer({
               onChange={setPropertyLocation}
             />
 
+            <div className="min-w-0 w-full space-y-2">
+              <label className="block text-sm font-medium text-gray-700" htmlFor="mortgage-property-description">
+                Property description
+              </label>
+              <textarea
+                id="mortgage-property-description"
+                value={propertyDescription}
+                onChange={(e) => setPropertyDescription(e.target.value)}
+                placeholder="Describe the property, condition, and any notable features…"
+                rows={4}
+                className="min-h-[88px] w-full rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700">Property facilities</p>
+              <p className="text-xs text-gray-500">Select all that apply for this listing.</p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {PROPERTY_FACILITY_OPTIONS.map((option, i) => (
+                  <ProductConfigToggle
+                    key={option}
+                    id={`mortgage-prop-facility-${i}`}
+                    label={option}
+                    checked={propertyFacilities.includes(option)}
+                    onChange={(checked) => togglePropertyFacility(option, checked)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <ProductConfigInput
+              label="Video URL"
+              placeholder="https://…"
+              value={propertyVideoUrl}
+              onChange={setPropertyVideoUrl}
+            />
+
             <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Upload className="shrink-0 text-gray-500" size={18} />
@@ -1104,22 +1232,56 @@ export default function ConfigureMortgageDrawer({
 
             {properties.length > 0 && (
               <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-                <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+                <div className="hidden gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,0.75fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
                   <span>Name</span>
                   <span>Type</span>
                   <span>Value</span>
-                  <span>Preview</span>
+                  <span>Location</span>
+                  <span>Details</span>
                   <span className="text-right" />
                 </div>
                 {properties.map((p) => (
                   <div
                     key={p.id}
-                    className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                    className="grid grid-cols-1 gap-2 border-b border-gray-100 py-3 text-sm last:border-0 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,0.75fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-start md:py-2"
                   >
-                    <span className="pr-2">{p.name}</span>
-                    <span>{p.type}</span>
-                    <span>{p.value}</span>
-                    <span>
+                    <div className="min-w-0 pr-2">
+                      <span className="font-medium text-gray-900 md:font-normal">{p.name}</span>
+                      {p.description ? (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-gray-500">{p.description}</p>
+                      ) : null}
+                    </div>
+                    <span className="md:block">
+                      <span className="text-xs font-semibold text-gray-500 md:hidden">Type: </span>
+                      {p.type}
+                    </span>
+                    <span className="md:block">
+                      <span className="text-xs font-semibold text-gray-500 md:hidden">Value: </span>
+                      {p.value}
+                    </span>
+                    <span className="min-w-0 md:block">
+                      <span className="text-xs font-semibold text-gray-500 md:hidden">Location: </span>
+                      <span className="break-words">{p.location}</span>
+                    </span>
+                    <div className="min-w-0 space-y-1 text-xs text-gray-600">
+                      {p.facilities.length > 0 ? (
+                        <p>
+                          <span className="font-medium text-gray-700">{p.facilities.length}</span>{" "}
+                          {p.facilities.length === 1 ? "facility" : "facilities"}
+                        </p>
+                      ) : (
+                        <p className="text-gray-400">No facilities tagged</p>
+                      )}
+                      {p.videoUrl ? (
+                        <a
+                          href={p.videoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-block max-w-full truncate text-[#9A813F] underline hover:text-[#8A7335]"
+                        >
+                          Video link
+                        </a>
+                      ) : null}
                       {p.previewObjectUrls.length > 0 ? (
                         <a
                           href={p.previewObjectUrls[0]}
@@ -1127,13 +1289,11 @@ export default function ConfigureMortgageDrawer({
                           rel="noopener noreferrer"
                           className="text-[#9A813F] underline hover:text-[#8A7335]"
                         >
-                          View Files ({p.previewObjectUrls.length})
+                          Files ({p.previewObjectUrls.length})
                         </a>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </span>
-                    <div className="flex justify-end">
+                      ) : null}
+                    </div>
+                    <div className="flex justify-end pt-1 md:pt-0">
                       <button type="button" onClick={() => removeProperty(p.id)} className="text-red-600 hover:text-red-700" aria-label="Remove">
                         <X size={18} />
                       </button>

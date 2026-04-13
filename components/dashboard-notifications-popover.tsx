@@ -1,8 +1,8 @@
 "use client"
 
 import { useCallback, useMemo, useState } from "react"
-import { formatDistanceToNow } from "date-fns"
-import { Bell, CheckCheck, CreditCard, Shield, Sparkles } from "lucide-react"
+import { format } from "date-fns"
+import { Bell, CheckCheck, CreditCard, Headphones, Shield, Sparkles, UserRound } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -13,43 +13,110 @@ export type DashboardNotificationItem = {
   description: string
   createdAt: Date
   read: boolean
-  variant?: "default" | "security" | "payment"
+  variant?: "default" | "security" | "payment" | "compliance" | "support"
 }
 
-const SEED_NOTIFICATIONS: DashboardNotificationItem[] = [
-  {
-    id: "1",
-    title: "Repayment received",
-    description: "A scheduled repayment was credited to your repayment wallet.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 12),
-    read: false,
-    variant: "payment",
-  },
-  {
-    id: "2",
-    title: "Product configuration saved",
-    description: "Your loan product settings were updated successfully.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 3),
-    read: false,
-    variant: "default",
-  },
-  {
-    id: "3",
-    title: "Security: new sign-in",
-    description: "We detected a login from a new device. If this was not you, reset your password.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 26),
-    read: true,
-    variant: "security",
-  },
-  {
-    id: "4",
-    title: "KYC status",
-    description: "Your compliance documents are under review.",
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48),
-    read: true,
-    variant: "default",
-  },
-]
+/** Demo feed aligned with agreed notification types (replace when notifications API ships). */
+function buildDemoNotifications(): DashboardNotificationItem[] {
+  const base = new Date("2026-04-12T19:16:00")
+  let mins = 0
+  const next = (offset: number) => {
+    mins += offset
+    return new Date(base.getTime() - mins * 60_000)
+  }
+
+  const rows: Omit<DashboardNotificationItem, "id" | "createdAt">[] = [
+    {
+      title: "App creation successful",
+      description: "A new application was created and is ready for setup.",
+      read: false,
+      variant: "default",
+    },
+    {
+      title: "Product creation successful",
+      description: "A product was created under your merchant workspace.",
+      read: false,
+      variant: "default",
+    },
+    {
+      title: "New merchant successful",
+      description: "A new merchant account completed onboarding.",
+      read: true,
+      variant: "default",
+    },
+    {
+      title: "Compliance incomplete",
+      description: "Merchant compliance still needs required documents or steps.",
+      read: false,
+      variant: "compliance",
+    },
+    {
+      title: "Withdrawal alert",
+      description: "A withdrawal request needs review or has completed.",
+      read: false,
+      variant: "payment",
+    },
+    {
+      title: "New support ticket",
+      description: "A merchant opened a new support conversation.",
+      read: true,
+      variant: "support",
+    },
+    {
+      title: "Merchant account deactivation or deletion",
+      description: "A merchant account was deactivated or scheduled for removal.",
+      read: true,
+      variant: "security",
+    },
+    {
+      title: "Merchant product live or deactivate",
+      description: "A product went live or was taken offline for a merchant.",
+      read: false,
+      variant: "default",
+    },
+    {
+      title: "New customer onboard",
+      description: "A new customer finished signup or initial onboarding.",
+      read: false,
+      variant: "default",
+    },
+    {
+      title: "Product creation successful",
+      description: "A customer-facing product was created successfully.",
+      read: true,
+      variant: "default",
+    },
+    {
+      title: "Customer KYC completed or incomplete",
+      description: "Customer verification status changed — check the case for details.",
+      read: false,
+      variant: "compliance",
+    },
+    {
+      title: "Withdrawal alert",
+      description: "A customer withdrawal event requires attention or confirmation.",
+      read: false,
+      variant: "payment",
+    },
+    {
+      title: "New support ticket",
+      description: "A customer submitted a new support ticket.",
+      read: true,
+      variant: "support",
+    },
+  ]
+
+  const out: DashboardNotificationItem[] = []
+  let id = 0
+  let gap = 3
+  for (const row of rows) {
+    out.push({ ...row, id: `n-${++id}`, createdAt: next(gap) })
+    gap = 5 + (id % 7)
+  }
+  return out.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+}
+
+const SEED_NOTIFICATIONS: DashboardNotificationItem[] = buildDemoNotifications()
 
 function variantIcon(variant: DashboardNotificationItem["variant"]) {
   switch (variant) {
@@ -57,6 +124,10 @@ function variantIcon(variant: DashboardNotificationItem["variant"]) {
       return <Shield className="h-4 w-4 text-amber-800" aria-hidden />
     case "payment":
       return <CreditCard className="h-4 w-4 text-[#8B7355]" aria-hidden />
+    case "compliance":
+      return <UserRound className="h-4 w-4 text-[#8B7355]" aria-hidden />
+    case "support":
+      return <Headphones className="h-4 w-4 text-[#8B7355]" aria-hidden />
     default:
       return <Sparkles className="h-4 w-4 text-[#8B7355]" aria-hidden />
   }
@@ -158,15 +229,15 @@ export function DashboardNotificationsPopover({ triggerClassName }: DashboardNot
                       {variantIcon(n.variant)}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
+                      <span className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-semibold text-gray-900">{n.title}</span>
                         {!n.read ? (
                           <span className="h-2 w-2 shrink-0 rounded-full bg-[#C5A572]" aria-label="Unread" />
                         ) : null}
                       </span>
                       <span className="mt-0.5 block text-xs leading-relaxed text-gray-600">{n.description}</span>
-                      <span className="mt-1 block text-[11px] font-medium uppercase tracking-wide text-gray-400">
-                        {formatDistanceToNow(n.createdAt, { addSuffix: true })}
+                      <span className="mt-1.5 block text-[11px] tabular-nums text-gray-500">
+                        {format(n.createdAt, "MMM d, yyyy · h:mm a")}
                       </span>
                     </span>
                   </button>
@@ -177,7 +248,7 @@ export function DashboardNotificationsPopover({ triggerClassName }: DashboardNot
         </div>
 
         <div className="border-t border-[#EFE8DC] bg-gray-50/80 px-4 py-2 text-center text-[11px] text-gray-500">
-          Demo feed — connect your notifications API to replace this list.
+        You have reached the end of your notifications
         </div>
       </PopoverContent>
     </Popover>

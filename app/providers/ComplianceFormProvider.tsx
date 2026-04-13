@@ -7,7 +7,8 @@ export interface ShareholderRow {
   email: string
   phone: string
   date: string
-  kyc: string
+  /** KYC / liveness URL returned by compliance API — copy & email to shareholder. */
+  kycUrl?: string
   status: "Successful" | "Failed" | "Pending"
 }
 

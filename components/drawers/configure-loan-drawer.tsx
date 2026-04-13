@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, type ChangeEvent, useRef } from "react"
+import { useEffect, useMemo, useState, type ChangeEvent, useRef } from "react"
 import { Upload, X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
@@ -58,6 +58,15 @@ interface PenaltyItem {
 
 type DocumentRequirementUpload = { file: File; name: string }
 
+function classifyEquityRequirementMode(selected: string): "zero" | "fixed" | "percentage" | "none" {
+  const s = selected.trim().toLowerCase().replace(/\s+/g, " ")
+  if (!s) return "none"
+  if (s.includes("zero") && s.includes("down")) return "zero"
+  if (s.includes("percentage") || (s.includes("percent") && s.includes("based"))) return "percentage"
+  if (s.includes("fixed") && s.includes("amount")) return "fixed"
+  return "none"
+}
+
 export default function ConfigureLoanDrawer({
   isOpen,
   onClose,
@@ -104,6 +113,10 @@ export default function ConfigureLoanDrawer({
   const [repaymentFrequency, setRepaymentFrequency] = useState("")
   const [acceptableNpa, setAcceptableNpa] = useState("")
   const [equityRequirement, setEquityRequirement] = useState("")
+  const [equityFixedAmount, setEquityFixedAmount] = useState("")
+  const [equityPercentage, setEquityPercentage] = useState("")
+
+  const equityRequirementMode = useMemo(() => classifyEquityRequirementMode(equityRequirement), [equityRequirement])
 
   const [selectedSecurities, setSelectedSecurities] = useState<string[]>([])
   const [documentName, setDocumentName] = useState("")
@@ -156,6 +169,20 @@ export default function ConfigureLoanDrawer({
   }
   const handleInterestRateChange = (value: string) => {
     setInterestRate(normalizePercentInput(value))
+  }
+
+  const handleEquityRequirementChange = (value: string) => {
+    setEquityRequirement(value)
+    setEquityFixedAmount("")
+    setEquityPercentage("")
+  }
+
+  const handleEquityFixedAmountChange = (value: string) => {
+    setEquityFixedAmount(cleanNumeric(value))
+  }
+
+  const handleEquityPercentageChange = (value: string) => {
+    setEquityPercentage(normalizePercentInput(value))
   }
 
   useEffect(() => {
@@ -369,9 +396,9 @@ export default function ConfigureLoanDrawer({
       interestRate,
       interestMethod,
       allowMoratorium,
-      moratoriumSelectDuration,
-      moratoriumDurationOf,
-      moratoriumType,
+      moratoriumSelectDuration: allowMoratorium ? moratoriumSelectDuration : "",
+      moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
+      moratoriumType: allowMoratorium ? moratoriumType : "",
       repaymentWorkflow,
       minLoanAmount,
       maxLoanAmount,
@@ -380,6 +407,8 @@ export default function ConfigureLoanDrawer({
       repaymentFrequency,
       acceptableNpa,
       equityRequirement,
+      equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
+      equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
       securityRequirements: selectedSecurities,
       documentRequirements: documentsPayload,
       otherRequirements,
@@ -452,29 +481,31 @@ export default function ConfigureLoanDrawer({
               checked={allowMoratorium}
               onChange={setAllowMoratorium}
             />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <ProductConfigSelect
-                label="Select Duration"
-                placeholder="Select Section"
-                value={moratoriumSelectDuration}
-                options={moratoriumDurationOptions}
-                onChange={setMoratoriumSelectDuration}
-              />
-              <ProductConfigSelect
-                label="Duration of Moratorium"
-                placeholder="Select Section"
-                value={moratoriumDurationOf}
-                options={moratoriumDurationOptions}
-                onChange={setMoratoriumDurationOf}
-              />
-              <ProductConfigSelect
-                label="Type of Moratorium"
-                placeholder="Select type"
-                value={moratoriumType}
-                options={moratoriumTypeOptions}
-                onChange={setMoratoriumType}
-              />
-            </div>
+            {allowMoratorium ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <ProductConfigSelect
+                  label="Select Duration"
+                  placeholder="Select Section"
+                  value={moratoriumSelectDuration}
+                  options={moratoriumDurationOptions}
+                  onChange={setMoratoriumSelectDuration}
+                />
+                <ProductConfigSelect
+                  label="Duration of Moratorium"
+                  placeholder="Select Section"
+                  value={moratoriumDurationOf}
+                  options={moratoriumDurationOptions}
+                  onChange={setMoratoriumDurationOf}
+                />
+                <ProductConfigSelect
+                  label="Type of Moratorium"
+                  placeholder="Select type"
+                  value={moratoriumType}
+                  options={moratoriumTypeOptions}
+                  onChange={setMoratoriumType}
+                />
+              </div>
+            ) : null}
           </div>
 
           <ProductConfigRepaymentWorkflowPanel
@@ -522,8 +553,25 @@ export default function ConfigureLoanDrawer({
               placeholder="Select Section"
               value={equityRequirement}
               options={equityRequirementOptions}
-              onChange={setEquityRequirement}
+              onChange={handleEquityRequirementChange}
             />
+            {equityRequirementMode === "fixed" ? (
+              <ProductConfigInput
+                label="Equity amount"
+                placeholder="e.g. 500000"
+                value={equityFixedAmount}
+                onChange={handleEquityFixedAmountChange}
+                numericOnly
+              />
+            ) : null}
+            {equityRequirementMode === "percentage" ? (
+              <ProductConfigInput
+                label="Equity (%)"
+                placeholder="e.g. 10%"
+                value={equityPercentage}
+                onChange={handleEquityPercentageChange}
+              />
+            ) : null}
           </div>
         </div>
       )}

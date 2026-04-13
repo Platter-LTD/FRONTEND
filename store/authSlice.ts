@@ -75,13 +75,24 @@ export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
     try {
       const res = await fetch("/api/auth/validate", { method: "GET", credentials: "include" })
       const data = await res.json()
+      if (process.env.NODE_ENV === "development") {
+        console.log("[auth] GET /api/auth/validate → status", res.status, "body", data)
+      }
       if (data?.valid && data?.user) {
+        if (process.env.NODE_ENV === "development") {
+          console.log("[auth] user applied from validate response", data.user)
+        }
         return data.user as AuthUser
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[auth] GET /api/auth/validate request failed", e)
+      }
     }
     const user = getUserFromToken()
+    if (process.env.NODE_ENV === "development") {
+      console.log("[auth] validate had no user; using getUserFromToken()", user)
+    }
     return (user as any) || null
   },
 )
