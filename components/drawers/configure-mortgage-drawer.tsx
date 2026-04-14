@@ -46,26 +46,6 @@ const DEFAULT_ACCEPTABLE_NPA_OPTIONS: string[] = []
 const DEFAULT_EQUITY_REQUIREMENT_OPTIONS: string[] = []
 const TRIGGER_DURATION_OPTIONS: string[] = []
 
-/** Standard property facilities for mortgage collateral listings (edit list to match your product spec). */
-const PROPERTY_FACILITY_OPTIONS = [
-  "Swimming pool",
-  "Gym / fitness center",
-  "Dedicated parking",
-  "24-hour security",
-  "Power backup (generator / inverter)",
-  "Water treatment / borehole",
-  "Elevator",
-  "Garden / green area",
-  "Children's playground",
-  "CCTV",
-  "Fitted kitchen",
-  "Built-in wardrobes",
-  "Air conditioning (fitted)",
-  "Fiber internet ready",
-  "Serviced estate",
-  "Staff quarters",
-] as const
-
 interface MortgageTypeItem {
   name: string
   description: string
@@ -131,6 +111,7 @@ export default function ConfigureMortgageDrawer({
   const [contentTypeOptions, setContentTypeOptions] = useState<string[]>(DEFAULT_CONTENT_TYPE_OPTIONS)
   const [securityOptions, setSecurityOptions] = useState<string[]>([])
   const [propertyTypeOptions, setPropertyTypeOptions] = useState<string[]>([])
+  const [propertyFacilityOptions, setPropertyFacilityOptions] = useState<string[]>([])
   const [feeTypeOptions, setFeeTypeOptions] = useState<string[]>(DEFAULT_FEE_TYPE_OPTIONS)
   const [penaltyTypeOptions, setPenaltyTypeOptions] = useState<string[]>(DEFAULT_PENALTY_TYPE_OPTIONS)
   const [triggerDurationOptions, setTriggerDurationOptions] = useState<string[]>(TRIGGER_DURATION_OPTIONS)
@@ -264,6 +245,7 @@ export default function ConfigureMortgageDrawer({
       setContentTypeOptions(prefetchedOptions.requirementContentType)
       setSecurityOptions(prefetchedOptions.securities)
       setPropertyTypeOptions(prefetchedOptions.propertyTypes)
+      setPropertyFacilityOptions(prefetchedOptions.mortgageFacilities)
       setFeeTypeOptions(prefetchedOptions.feeType)
       setPenaltyTypeOptions(prefetchedOptions.penaltyType)
       setTriggerDurationOptions(prefetchedOptions.triggerDuration)
@@ -285,6 +267,7 @@ export default function ConfigureMortgageDrawer({
         requirementContentType,
         securities,
         propertyTypes,
+        mortgageFacilities,
         feeType,
         penaltyType,
         triggerDuration,
@@ -303,6 +286,7 @@ export default function ConfigureMortgageDrawer({
         fetchProductOptionLabels("loan-other-requirement-content-type", DEFAULT_CONTENT_TYPE_OPTIONS),
         fetchProductOptionLabels("security-requirements", [], { productType: "MORTGAGE" }),
         fetchProductOptionLabels("property-type", []),
+        fetchProductOptionLabels("mortgage-facilities", []),
         fetchOptionLabels("fee-type", DEFAULT_FEE_TYPE_OPTIONS),
         fetchOptionLabels("penalty-type", DEFAULT_PENALTY_TYPE_OPTIONS),
         fetchProductOptionLabels("trigger-duration", TRIGGER_DURATION_OPTIONS),
@@ -322,6 +306,7 @@ export default function ConfigureMortgageDrawer({
       setContentTypeOptions(requirementContentType)
       setSecurityOptions(securities)
       setPropertyTypeOptions(propertyTypes)
+      setPropertyFacilityOptions(mortgageFacilities)
       setFeeTypeOptions(feeType)
       setPenaltyTypeOptions(penaltyType)
       setTriggerDurationOptions(triggerDuration)
@@ -657,7 +642,7 @@ export default function ConfigureMortgageDrawer({
       open={isOpen}
       onOpenChange={onClose}
       title="Configure Mortgage Product"
-      subtitle="Select the loan option you want to create with us"
+      subtitle="Select the mortgage option you want to create with us"
       className="w-full min-w-0 rounded-none sm:w-[92%] md:w-[78%] lg:w-[62%] xl:w-[52%] 2xl:w-[45%] sm:min-w-[400px] sm:rounded-bl-[40px] sm:rounded-tl-[40px]"
     >
       <div className="mx-auto w-full">
@@ -676,7 +661,7 @@ export default function ConfigureMortgageDrawer({
             onDurationChange={setTenure}
             description={description}
             onDescriptionChange={setDescription}
-            typeSectionLabel="Loan Type"
+            typeSectionLabel="Mortgage Type"
             typeNameDraft={mortgageTypeName}
             typeDescDraft={mortgageTypeDescription}
             onTypeNameDraftChange={setMortgageTypeName}
@@ -749,7 +734,7 @@ export default function ConfigureMortgageDrawer({
               maxAmount={maxLoanAmount}
               onMinAmountChange={setMinLoanAmount}
               onMaxAmountChange={setMaxLoanAmount}
-              amountLabel="Loan Amount"
+              amountLabel="Mortgage Amount"
             />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -871,7 +856,7 @@ export default function ConfigureMortgageDrawer({
 
             <div className="space-y-3">
               <p className="text-sm font-medium text-gray-700">Other Requirements</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-start">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-start">
                 <ProductConfigSelect
                   label="Select requirement type"
                   placeholder="Select requirement type"
@@ -931,14 +916,14 @@ export default function ConfigureMortgageDrawer({
                     onChange={setOtherRequirementDescription}
                   />
                 )}
-                <div className="space-y-2">
+                <div className="w-full space-y-2">
                   <span className="invisible block text-sm font-medium text-gray-700 select-none" aria-hidden>
                     Select requirement type
                   </span>
                   <Button
                     type="button"
                     onClick={addOtherRequirement}
-                    className="h-10 bg-[#9A813F] text-white hover:bg-[#8A7335]"
+                    className="h-10 w-full bg-[#9A813F] text-white hover:bg-[#8A7335]"
                   >
                     Add
                   </Button>
@@ -1031,7 +1016,7 @@ export default function ConfigureMortgageDrawer({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <ProductConfigToggle
                 id="mortgage-deduct-charges"
-                label="Deduct all Charges on the loan"
+                label="Deduct all Charges on the mortgage"
                 checked={deductChargesOnLoan}
                 onChange={setDeductChargesOnLoan}
               />
@@ -1156,7 +1141,7 @@ export default function ConfigureMortgageDrawer({
               <p className="text-sm font-medium text-gray-700">Property facilities</p>
               <p className="text-xs text-gray-500">Select all that apply for this listing.</p>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {PROPERTY_FACILITY_OPTIONS.map((option, i) => (
+                {propertyFacilityOptions.map((option, i) => (
                   <ProductConfigToggle
                     key={option}
                     id={`mortgage-prop-facility-${i}`}

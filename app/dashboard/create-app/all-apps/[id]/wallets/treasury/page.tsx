@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
-import { Button } from "@/components/ui/button"
 import { FiEyeOff, FiEye } from "react-icons/fi"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getMerchantIdFromAccessToken } from "@/lib/merchantIdFromToken"
@@ -107,9 +106,9 @@ export default function TreasuryWalletPage() {
                 {showBalance ? <FiEyeOff size={24} /> : <FiEye size={24} />}
               </button>
             )}
-            <Button className="bg-[#8B7355] hover:bg-[#7A6449] text-white" disabled={walletsLoading}>
+            {/* <Button className="bg-[#8B7355] hover:bg-[#7A6449] text-white" disabled={walletsLoading}>
               Withdraw
-            </Button>
+            </Button> */}
           </div>
         </div>
       </div>

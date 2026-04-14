@@ -471,7 +471,7 @@ Drawers are the **primary UI pattern** for forms and actions. 44 drawers coverin
 
 | Component | File | Used In |
 |-----------|------|---------|
-| Main Dashboard Sidebar | `components/sidebar.tsx` | `/dashboard/` general pages |
+| Main Dashboard Sidebar | `components/dashboard-sidebar.tsx` | `/dashboard/` (account nav + app-scoped nav under `/dashboard/create-app/all-apps/[id]/`) |
 | Merchant Sidebar | `components/merchant-sidebar.tsx` | Merchant product, customer, billing pages |
 | Merchant Apps Sidebar | `components/merchant-apps-sidebar.tsx` | Merchant main dashboard (app list) |
 | Admin Sidebar | `components/admin-sidebar.tsx` | `/admin/` pages |
@@ -547,29 +547,6 @@ Merchants can approve or reject customer applications:
 ```env
 # ── Backend Microservice URLs ─────────────────────────────────────────────────
 NEXT_PUBLIC_API_URL=https://account-ms-plata.fly.dev
-NEXT_PUBLIC_CREATE_APP_SERVICE_URL=https://create-app-ms.fly.dev
-NEXT_PUBLIC_PRODUCT_SERVICE_URL=https://product-ms.fly.dev
-
-        <div>
-NEXT_PUBLIC_COMPLIANCE_URL=https://compliance-ms.fly.dev
-NEXT_PUBLIC_WALLET_SERVICE_URL=https://wallet-ms.fly.dev
-NEXT_PUBLIC_PAYMENT_SERVICE_URL=https://payment-ms.fly.dev
-NEXT_PUBLIC_BILLING_SERVICE_URL=https://billing-ms.fly.dev
-
-# ── Special API Keys ──────────────────────────────────────────────────────────
-NEXT_PUBLIC_SPECIAL_API_KEY=your-special-api-key-here
-NEXT_PUBLIC_PUBLIC_KEY=your-public-key-here
-
-# ── JWT Configuration (server-side only) ─────────────────────────────────────
-JWT_SECRET=your-super-secure-secret-key-minimum-32-characters
-
-# ── App Configuration ─────────────────────────────────────────────────────────
-NEXT_PUBLIC_APP_NAME=PLATA Dashboard
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-
-# ── Spring App Identification ─────────────────────────────────────────────────
-# The Spring App's appId — used by the mobile app to filter products
-NEXT_PUBLIC_SPRING_APP_ID=wdpgeo0o0
 ```
 
 > `NEXT_PUBLIC_*` variables are exposed to the browser. Non-prefixed variables (`JWT_SECRET`) are server-side only.

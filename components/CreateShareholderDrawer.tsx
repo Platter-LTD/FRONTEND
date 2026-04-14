@@ -266,7 +266,7 @@ export const CreateShareholderDrawer: React.FC = () => {
                     <div className="flex items-center space-x-3 min-w-0 flex-1">
                       <Upload className="w-5 h-5 text-gray-400 shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-700">Ultimate Beneficial Owner (UBO)</p>
+                        <p className="text-sm font-medium text-gray-700">Proof of Address of UBO</p>
                         <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
                         {uboFile && (
                           <div className="mt-2 flex items-center gap-2 flex-wrap">

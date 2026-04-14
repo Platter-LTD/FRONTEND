@@ -628,7 +628,7 @@ export default function ConfigureLoanDrawer({
 
           <div className="space-y-3">
             <p className="text-sm font-medium text-gray-700">Other Requirements</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-start">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-start">
               <ProductConfigSelect
                 label="Select requirement type"
                 placeholder="Select requirement type"
@@ -688,11 +688,11 @@ export default function ConfigureLoanDrawer({
                   onChange={setOtherRequirementDescription}
                 />
               )}
-              <div className="space-y-2">
+              <div className="w-full space-y-2">
                 <span className="invisible block text-sm font-medium text-gray-700 select-none" aria-hidden>
                   Select requirement type
                 </span>
-                <Button type="button" onClick={addOtherRequirement} className="h-10 bg-[#9A813F] text-white hover:bg-[#8A7335]">
+                <Button type="button" onClick={addOtherRequirement} className="h-10 w-full bg-[#9A813F] text-white hover:bg-[#8A7335]">
                   Add
                 </Button>
               </div>

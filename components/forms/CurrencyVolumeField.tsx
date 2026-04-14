@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React from "react"
 import { useAppSelector } from "@/store/hooks"
 import { formatMonthlyVolumeDisplay } from "@/lib/countryCurrency"
 
@@ -8,6 +8,7 @@ interface CurrencyVolumeFieldProps {
   value: string
   onChange: (digitsOnly: string) => void
   accentColor?: string
+  countryCode?: string | null
 }
 
 /**
@@ -17,12 +18,13 @@ export function CurrencyVolumeField({
   value,
   onChange,
   accentColor = "#9A813F",
+  countryCode,
 }: CurrencyVolumeFieldProps) {
-  const [focused, setFocused] = useState(false)
   const signupCountry = useAppSelector((s) => s.auth.user?.country)
+  const effectiveCountry = countryCode ?? signupCountry
 
   const digits = value.replace(/\D/g, "")
-  const displayValue = focused ? digits : digits ? formatMonthlyVolumeDisplay(digits, signupCountry) : ""
+  const displayValue = digits ? formatMonthlyVolumeDisplay(digits, effectiveCountry) : ""
 
   return (
     <input
@@ -30,8 +32,6 @@ export function CurrencyVolumeField({
       inputMode="numeric"
       autoComplete="off"
       value={displayValue}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
       onChange={(e) => {
         const next = e.target.value.replace(/\D/g, "")
         onChange(next)

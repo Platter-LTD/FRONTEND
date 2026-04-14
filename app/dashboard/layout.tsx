@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import Sidebar from "@/components/sidebar"
+import DashboardSidebar from "@/components/dashboard-sidebar"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { usePathname } from "next/navigation"
 
@@ -12,15 +12,10 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname()
   const isScamAlertPage = pathname?.includes("/scam-alert")
-  const isAppDetailsPage = pathname?.match(/\/dashboard\/create-app\/all-apps\/[a-zA-Z0-9]+/)
-
-  if (isAppDetailsPage) {
-    return <>{children}</>
-  }
 
   return (
     <div className="flex h-screen bg-gray-50">
-      <Sidebar />
+      <DashboardSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         {!isScamAlertPage && <DashboardHeader />}
         <main className="flex-1 overflow-y-auto">{children}</main>

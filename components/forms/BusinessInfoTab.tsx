@@ -207,6 +207,7 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
             <CurrencyVolumeField
               value={formData.monthlyVolume}
               onChange={(val) => handleInputChange('monthlyVolume', val)}
+              countryCode={formData.country || formData.userBase}
             />
           </div>
         </div>

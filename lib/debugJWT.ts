@@ -11,7 +11,7 @@ export function debugJWT() {
     return null;
   }
 
-  const token = getAccessToken();
+  const token = getAccessToken();AA
   
   if (!token) {
     console.log('JWT Debug: No access token found (cookie or localStorage)');
