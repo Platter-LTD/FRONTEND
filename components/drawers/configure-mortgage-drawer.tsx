@@ -51,6 +51,8 @@ interface MortgageTypeItem {
   description: string
 }
 
+const MORTGAGE_TYPE_OPTIONS = ["Fixed rate", "Adjustable rate", "Interest only"] as const
+
 type OtherRequirementItem = OtherRequirementDraft
 
 interface FeeItem {
@@ -120,9 +122,7 @@ export default function ConfigureMortgageDrawer({
   const [name, setName] = useState(mortgageData?.name || "")
   const [tenure, setTenure] = useState("")
   const [description, setDescription] = useState(mortgageData?.description || "")
-  const [mortgageTypeName, setMortgageTypeName] = useState("")
-  const [mortgageTypeDescription, setMortgageTypeDescription] = useState("")
-  const [mortgageTypes, setMortgageTypes] = useState<MortgageTypeItem[]>([])
+  const [selectedMortgageType, setSelectedMortgageType] = useState("")
   const [previewImage, setPreviewImage] = useState<File | null>(null)
 
   const [interestRate, setInterestRate] = useState("")
@@ -222,6 +222,7 @@ export default function ConfigureMortgageDrawer({
   const [propertyLocation, setPropertyLocation] = useState("")
   const [propertyDescription, setPropertyDescription] = useState("")
   const [propertyFacilities, setPropertyFacilities] = useState<string[]>([])
+  const [customPropertyFacility, setCustomPropertyFacility] = useState("")
   const [propertyVideoUrl, setPropertyVideoUrl] = useState("")
   const [propertyPreviewFiles, setPropertyPreviewFiles] = useState<File[]>([])
   const [propertyPreviewUrls, setPropertyPreviewUrls] = useState<string[]>([])
@@ -355,12 +356,10 @@ export default function ConfigureMortgageDrawer({
     }
   }, [propertyPreviewUrls])
 
-  const addMortgageType = () => {
-    if (!mortgageTypeName.trim() || !mortgageTypeDescription.trim()) return
-    setMortgageTypes((prev) => [...prev, { name: mortgageTypeName.trim(), description: mortgageTypeDescription.trim() }])
-    setMortgageTypeName("")
-    setMortgageTypeDescription("")
-  }
+  const mortgageTypes = useMemo<MortgageTypeItem[]>(
+    () => (selectedMortgageType ? [{ name: selectedMortgageType, description: selectedMortgageType }] : []),
+    [selectedMortgageType],
+  )
 
   const toggleSecurity = (option: string, checked: boolean) => {
     setSelectedSecurities((prev) => {
@@ -529,6 +528,21 @@ export default function ConfigureMortgageDrawer({
     })
   }
 
+  const addCustomPropertyFacility = () => {
+    const next = customPropertyFacility.trim()
+    if (!next) return
+
+    setPropertyFacilityOptions((prev) => {
+      const exists = prev.some((item) => item.toLowerCase() === next.toLowerCase())
+      return exists ? prev : [...prev, next]
+    })
+    setPropertyFacilities((prev) => {
+      const exists = prev.some((item) => item.toLowerCase() === next.toLowerCase())
+      return exists ? prev : [...prev, next]
+    })
+    setCustomPropertyFacility("")
+  }
+
   const handleBack = () => {
     if (step > 1) setStep((prev) => prev - 1)
   }
@@ -662,12 +676,17 @@ export default function ConfigureMortgageDrawer({
             description={description}
             onDescriptionChange={setDescription}
             typeSectionLabel="Mortgage Type"
-            typeNameDraft={mortgageTypeName}
-            typeDescDraft={mortgageTypeDescription}
-            onTypeNameDraftChange={setMortgageTypeName}
-            onTypeDescDraftChange={setMortgageTypeDescription}
-            onAddType={addMortgageType}
-            typeRows={mortgageTypes}
+            typeNameDraft=""
+            typeDescDraft=""
+            onTypeNameDraftChange={() => {}}
+            onTypeDescDraftChange={() => {}}
+            onAddType={() => {}}
+            typeRows={[]}
+            typeInputMode="select"
+            typeSelectOptions={[...MORTGAGE_TYPE_OPTIONS]}
+            typeSelectPlaceholder="Select mortgage type"
+            typeSelectedValue={selectedMortgageType}
+            onTypeSelectedValueChange={setSelectedMortgageType}
             previewFile={previewImage}
             onPreviewFileChange={setPreviewImage}
           />
@@ -699,15 +718,16 @@ export default function ConfigureMortgageDrawer({
                 checked={allowMoratorium}
                 onChange={setAllowMoratorium}
               />
-              {allowMoratorium ? (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <ProductConfigSelect
-                    label="Select Duration"
-                    placeholder="Select Section"
-                    value={moratoriumSelectDuration}
-                    options={moratoriumDurationOptions}
-                    onChange={setMoratoriumSelectDuration}
-                  />
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <ProductConfigSelect
+                  label="Select Duration"
+                  placeholder="Select Section"
+                  value={moratoriumSelectDuration}
+                  options={moratoriumDurationOptions}
+                  onChange={setMoratoriumSelectDuration}
+                />
+                {allowMoratorium ? (
+                  <>
                   <ProductConfigSelect
                     label="Duration of Moratorium"
                     placeholder="Select Section"
@@ -722,8 +742,9 @@ export default function ConfigureMortgageDrawer({
                     options={moratoriumTypeOptions}
                     onChange={setMoratoriumType}
                   />
-                </div>
-              ) : null}
+                  </>
+                ) : null}
+              </div>
             </div>
 
             <ProductConfigRepaymentWorkflowPanel
@@ -858,8 +879,8 @@ export default function ConfigureMortgageDrawer({
               <p className="text-sm font-medium text-gray-700">Other Requirements</p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-start">
                 <ProductConfigSelect
-                  label="Select requirement type"
-                  placeholder="Select requirement type"
+                  label="Requirement type"
+                  placeholder="Requirement type"
                   value={otherRequirementType}
                   options={otherRequirementOptions}
                   onChange={handleOtherRequirementTypeChange}
@@ -918,7 +939,7 @@ export default function ConfigureMortgageDrawer({
                 )}
                 <div className="w-full space-y-2">
                   <span className="invisible block text-sm font-medium text-gray-700 select-none" aria-hidden>
-                    Select requirement type
+                    Requirement type
                   </span>
                   <Button
                     type="button"
@@ -1049,7 +1070,7 @@ export default function ConfigureMortgageDrawer({
                   />
                   <ProductConfigInput label="Value" placeholder="Enter Value" value={penaltyValue} onChange={handlePenaltyValueChange} numericOnly />
                   <ProductConfigSelect
-                    label="Duration Before Trigger"
+                    label="Trigger Duration"
                     placeholder="Select Section"
                     value={penaltyTriggerDuration}
                     options={triggerDurationOptions}
@@ -1140,6 +1161,18 @@ export default function ConfigureMortgageDrawer({
             <div className="space-y-2">
               <p className="text-sm font-medium text-gray-700">Property facilities</p>
               <p className="text-xs text-gray-500">Select all that apply for this listing.</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+                <input
+                  type="text"
+                  value={customPropertyFacility}
+                  onChange={(e) => setCustomPropertyFacility(e.target.value)}
+                  placeholder="Add custom facility"
+                  className="h-10 w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+                />
+                <Button type="button" onClick={addCustomPropertyFacility} className="h-10 bg-[#9A813F] text-white hover:bg-[#8A7335]">
+                  Add
+                </Button>
+              </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {propertyFacilityOptions.map((option, i) => (
                   <ProductConfigToggle
@@ -1154,7 +1187,7 @@ export default function ConfigureMortgageDrawer({
             </div>
 
             <ProductConfigInput
-              label="Video URL"
+              label="Property Video URL (Youtube Video)"
               placeholder="https://…"
               value={propertyVideoUrl}
               onChange={setPropertyVideoUrl}

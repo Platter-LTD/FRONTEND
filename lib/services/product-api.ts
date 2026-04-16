@@ -175,6 +175,42 @@ export const productApi = {
     return data;
   },
 
+  async getProductOverviewByType(appId: string, productType: string) {
+    const response = await fetch(
+      `/api/v1/products/app/${encodeURIComponent(appId)}/product-overview/by-type/${encodeURIComponent(productType)}`,
+      {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      },
+    );
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || 'Failed to fetch product overview by type');
+    }
+    return data;
+  },
+
+  async getProductApplications(params?: { appId?: string; userId?: string; limit?: number; skip?: number }) {
+    const q = new URLSearchParams();
+    if (params?.appId) q.set("appId", params.appId);
+    if (params?.userId) q.set("userId", params.userId);
+    if (typeof params?.limit === "number") q.set("limit", String(params.limit));
+    if (typeof params?.skip === "number") q.set("skip", String(params.skip));
+
+    const path = `/api/v1/products/applications${q.toString() ? `?${q.toString()}` : ""}`;
+    const response = await fetch(path, {
+      headers: getAuthHeaders(),
+      credentials: "include",
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || "Failed to fetch product applications");
+    }
+    return data;
+  },
+
   async getLoanWorkflow(params?: { loanWorkflowStatus?: string; limit?: number; skip?: number }) {
     const q = new URLSearchParams();
     if (params?.loanWorkflowStatus) q.set("loanWorkflowStatus", params.loanWorkflowStatus);

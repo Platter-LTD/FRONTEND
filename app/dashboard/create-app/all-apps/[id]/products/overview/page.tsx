@@ -53,8 +53,23 @@ type CustomerRow = {
 
 type NewSubmissionRow = {
   id: string
+  applicationId: string
   name: string
   email: string
+  phone: string
+  submittedAt: Date
+  status: "Successful" | "Failed" | "Pending"
+  sourceMerchant?: string
+  amount?: number
+  paymentMethod?: string
+  transactionId?: string
+}
+
+type MerchantRow = {
+  id: string
+  name: string
+  email: string
+  productsLabel: string
   phone: string
   submittedAt: Date
   status: "Successful" | "Failed" | "Pending"
@@ -84,6 +99,42 @@ const formatCustomerDate = (d: Date) => format(d, "MMM d, yyyy | hh:mma")
 
 const formatTxDate = (d: Date) => format(d, "MM/dd/yyyy")
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" ? (value as Record<string, unknown>) : {}
+
+const pickString = (obj: Record<string, unknown>, keys: string[], fallback = "N/A") => {
+  for (const key of keys) {
+    const value = obj[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return fallback
+}
+
+const pickNumber = (obj: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    const value = obj[key]
+    if (typeof value === "number" && Number.isFinite(value)) return value
+    if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value)
+  }
+  return 0
+}
+
+const pickDate = (obj: Record<string, unknown>, keys: string[]) => {
+  for (const key of keys) {
+    const value = obj[key]
+    const date = value ? new Date(String(value)) : null
+    if (date && !Number.isNaN(date.getTime())) return date
+  }
+  return new Date()
+}
+
+const mapStatus = (raw: string): "Successful" | "Failed" | "Pending" => {
+  const status = raw.toLowerCase()
+  if (["declined", "cancelled", "withdrawn", "failed", "rejected"].includes(status)) return "Failed"
+  if (["submitted", "signed", "approved", "success", "successful", "complete"].includes(status)) return "Successful"
+  return "Pending"
+}
+
 function StatusBadge({ status }: { status: "Successful" | "Failed" | "Pending" }) {
   const map = {
     Successful: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
@@ -108,95 +159,7 @@ function ViewUploadButton({ onClick }: { onClick?: () => void }) {
   )
 }
 
-/** Placeholder rows until overview list endpoints exist */
-const DEMO_CUSTOMERS: CustomerRow[] = [
-  {
-    id: "1",
-    name: "Grace Chidi",
-    email: "youremail@email.com",
-    sourceMerchant: "Shell Coperative",
-    phone: "+2347012345678",
-    submittedAt: new Date("2025-04-12T09:32:00"),
-    status: "Successful",
-  },
-  {
-    id: "2",
-    name: "Grace Chidi",
-    email: "youremail@email.com",
-    sourceMerchant: "Living Church",
-    phone: "+2347012345678",
-    submittedAt: new Date("2025-04-12T09:32:00"),
-    status: "Successful",
-  },
-  {
-    id: "3",
-    name: "Grace Chidi",
-    email: "youremail@email.com",
-    sourceMerchant: "Olokada Association",
-    phone: "+2347012345678",
-    submittedAt: new Date("2025-04-12T09:32:00"),
-    status: "Successful",
-  },
-  {
-    id: "4",
-    name: "Grace Chidi",
-    email: "youremail@email.com",
-    sourceMerchant: "APC Association",
-    phone: "+2347012345678",
-    submittedAt: new Date("2025-04-12T09:32:00"),
-    status: "Successful",
-  },
-]
-
-const DEMO_NEW_SUBMISSIONS: NewSubmissionRow[] = DEMO_CUSTOMERS.map((c, i) => ({
-  id: `ns-${i}`,
-  name: c.name,
-  email: c.email,
-  phone: c.phone,
-  submittedAt: c.submittedAt,
-  status: c.status,
-}))
-
-const DEMO_TRANSACTIONS: TransactionRow[] = [
-  {
-    id: "t1",
-    date: new Date("2025-09-12T12:00:00"),
-    amount: 10_000,
-    status: "Successful",
-    paymentMethod: "Visa 5134",
-    transactionId: "3456788944",
-    receiptAvailable: true,
-  },
-  {
-    id: "t2",
-    date: new Date("2025-09-12T12:00:00"),
-    amount: 10_000,
-    status: "Failed",
-    paymentMethod: "Bank transfer",
-    transactionId: "3456788944",
-    receiptAvailable: false,
-  },
-  {
-    id: "t3",
-    date: new Date("2025-09-12T12:00:00"),
-    amount: 10_000,
-    status: "Successful",
-    paymentMethod: "Bank transfer",
-    transactionId: "3456788944",
-    receiptAvailable: false,
-  },
-  {
-    id: "t4",
-    date: new Date("2025-09-12T12:00:00"),
-    amount: 10_000,
-    status: "Pending",
-    paymentMethod: "Mastercard 5031",
-    transactionId: "3456788944",
-    receiptAvailable: true,
-  },
-]
-
-function CustomersTable() {
+function CustomersTable({ rows, loading }: { rows: CustomerRow[]; loading: boolean }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
       <table className="w-full min-w-[900px] text-left text-sm">
@@ -212,28 +175,48 @@ function CustomersTable() {
           </tr>
         </thead>
         <tbody>
-          {DEMO_CUSTOMERS.map((row) => (
-            <tr key={row.id} className="border-b border-gray-100 last:border-0">
-              <td className="px-4 py-3 font-semibold text-gray-900">{row.name}</td>
-              <td className="px-4 py-3 text-gray-700">{row.email}</td>
-              <td className="px-4 py-3 text-gray-700">{row.sourceMerchant}</td>
-              <td className="px-4 py-3 text-gray-700">{row.phone}</td>
-              <td className="px-4 py-3 text-gray-600">{formatCustomerDate(row.submittedAt)}</td>
-              <td className="px-4 py-3">
-                <ViewUploadButton />
-              </td>
-              <td className="px-4 py-3">
-                <StatusBadge status={row.status} />
+          {loading ? (
+            Array.from({ length: 5 }).map((_, idx) => (
+              <tr key={`customers-skeleton-${idx}`} className="border-b border-gray-100 last:border-0">
+                <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-40" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-40" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-8 w-24" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-6 w-20 rounded-full" /></td>
+              </tr>
+            ))
+          ) : rows.length ? (
+            rows.map((row) => (
+              <tr key={row.id} className="border-b border-gray-100 last:border-0">
+                <td className="px-4 py-3 font-semibold text-gray-900">{row.name}</td>
+                <td className="px-4 py-3 text-gray-700">{row.email}</td>
+                <td className="px-4 py-3 text-gray-700">{row.sourceMerchant}</td>
+                <td className="px-4 py-3 text-gray-700">{row.phone}</td>
+                <td className="px-4 py-3 text-gray-600">{formatCustomerDate(row.submittedAt)}</td>
+                <td className="px-4 py-3">
+                  <ViewUploadButton />
+                </td>
+                <td className="px-4 py-3">
+                  <StatusBadge status={row.status} />
+                </td>
+              </tr>
+            ))
+          ) : (
+            <tr>
+              <td className="px-4 py-6 text-center text-sm text-gray-500" colSpan={7}>
+                No customer records found.
               </td>
             </tr>
-          ))}
+          )}
         </tbody>
       </table>
     </div>
   )
 }
 
-function NewSubmissionsTable() {
+function NewSubmissionsTable({ rows, loading }: { rows: NewSubmissionRow[]; loading: boolean }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
       <table className="w-full min-w-[860px] text-left text-sm">
@@ -249,7 +232,19 @@ function NewSubmissionsTable() {
           </tr>
         </thead>
         <tbody>
-          {DEMO_NEW_SUBMISSIONS.map((row) => (
+          {loading ? (
+            Array.from({ length: 5 }).map((_, idx) => (
+              <tr key={`submissions-skeleton-${idx}`} className="border-b border-gray-100 last:border-0">
+                <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-40" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-40" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-8 w-24" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-6 w-20 rounded-full" /></td>
+                <td className="px-2 py-3 text-right"><Skeleton className="ml-auto h-8 w-8 rounded-md" /></td>
+              </tr>
+            ))
+          ) : rows.length ? rows.map((row) => (
             <tr key={row.id} className="border-b border-gray-100 last:border-0">
               <td className="px-4 py-3 font-semibold text-gray-900">{row.name}</td>
               <td className="px-4 py-3 text-gray-700">{row.email}</td>
@@ -273,13 +268,81 @@ function NewSubmissionsTable() {
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>View details</DropdownMenuItem>
-                    <DropdownMenuItem>Download documents</DropdownMenuItem>
+                    <DropdownMenuItem>Edit</DropdownMenuItem>
+                    <DropdownMenuItem>Delete</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </td>
             </tr>
-          ))}
+          )) : (
+            <tr>
+              <td className="px-4 py-6 text-center text-sm text-gray-500" colSpan={7}>
+                No submissions found.
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function MerchantsTable({ rows, loading }: { rows: MerchantRow[]; loading: boolean }) {
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <table className="w-full min-w-[980px] text-left text-sm">
+        <thead>
+          <tr className="border-b border-gray-200 bg-gray-50">
+            <th className="px-4 py-3 font-semibold text-gray-700">Name</th>
+            <th className="px-4 py-3 font-semibold text-gray-700">Email</th>
+            <th className="px-4 py-3 font-semibold text-gray-700">Products</th>
+            <th className="px-4 py-3 font-semibold text-gray-700">Phone</th>
+            <th className="px-4 py-3 font-semibold text-gray-700">Date/time</th>
+            <th className="px-4 py-3 font-semibold text-gray-700">Uploads</th>
+            <th className="px-4 py-3 font-semibold text-gray-700">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading ? (
+            Array.from({ length: 5 }).map((_, idx) => (
+              <tr key={`merchants-skeleton-${idx}`} className="border-b border-gray-100 last:border-0">
+                <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-40" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-8 w-24" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-4 w-40" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-8 w-24" /></td>
+                <td className="px-4 py-3"><Skeleton className="h-6 w-20 rounded-full" /></td>
+              </tr>
+            ))
+          ) : rows.length ? rows.map((row) => (
+            <tr key={row.id} className="border-b border-gray-100 last:border-0">
+              <td className="px-4 py-3 font-semibold text-gray-900">{row.name}</td>
+              <td className="px-4 py-3 text-gray-700">{row.email}</td>
+              <td className="px-4 py-3">
+                <button
+                  type="button"
+                  className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  {row.productsLabel}
+                </button>
+              </td>
+              <td className="px-4 py-3 text-gray-700">{row.phone}</td>
+              <td className="px-4 py-3 text-gray-600">{formatCustomerDate(row.submittedAt)}</td>
+              <td className="px-4 py-3">
+                <ViewUploadButton />
+              </td>
+              <td className="px-4 py-3">
+                <StatusBadge status={row.status} />
+              </td>
+            </tr>
+          )) : (
+            <tr>
+              <td className="px-4 py-6 text-center text-sm text-gray-500" colSpan={7}>
+                No merchant records found.
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
@@ -288,18 +351,18 @@ function NewSubmissionsTable() {
 
 type TxSortKey = "date" | "amount" | "status"
 
-function TransactionsTable() {
+function TransactionsTable({ rows, loading }: { rows: TransactionRow[]; loading: boolean }) {
   const [sortBy, setSortBy] = useState<TxSortKey>("date")
 
   const sorted = useMemo(() => {
-    const rows = [...DEMO_TRANSACTIONS]
-    rows.sort((a, b) => {
+    const next = [...rows]
+    next.sort((a, b) => {
       if (sortBy === "date") return b.date.getTime() - a.date.getTime()
       if (sortBy === "amount") return b.amount - a.amount
       return a.status.localeCompare(b.status)
     })
-    return rows
-  }, [sortBy])
+    return next
+  }, [rows, sortBy])
 
   return (
     <div className="space-y-4">
@@ -331,7 +394,18 @@ function TransactionsTable() {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((row) => (
+            {loading ? (
+              Array.from({ length: 5 }).map((_, idx) => (
+                <tr key={`transactions-skeleton-${idx}`} className="border-b border-gray-100 last:border-0">
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-6 w-20 rounded-full" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-28" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                  <td className="px-4 py-3"><Skeleton className="h-8 w-24" /></td>
+                </tr>
+              ))
+            ) : sorted.length ? sorted.map((row) => (
               <tr key={row.id} className="border-b border-gray-100 last:border-0">
                 <td className="px-4 py-3 text-gray-700">{formatTxDate(row.date)}</td>
                 <td className="px-4 py-3 font-medium text-gray-900">{formatMoney(row.amount)}</td>
@@ -359,7 +433,13 @@ function TransactionsTable() {
                   )}
                 </td>
               </tr>
-            ))}
+            )) : (
+              <tr>
+                <td className="px-4 py-6 text-center text-sm text-gray-500" colSpan={6}>
+                  No transaction records found.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -378,6 +458,7 @@ export default function ProductsPage() {
   const [catalogProductRows, setCatalogProductRows] = useState<unknown[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [applicationRows, setApplicationRows] = useState<NewSubmissionRow[]>([])
 
   useEffect(() => {
     const fetchOverview = async () => {
@@ -385,10 +466,11 @@ export default function ProductsPage() {
         setLoading(true)
         setError(null)
 
-        const [ovSettled, appSettled, catSettled] = await Promise.allSettled([
+        const [ovSettled, appSettled, catSettled, applicationsSettled] = await Promise.allSettled([
           productApi.getProductOverview(appId),
           productApi.getProductsByAppId(appId),
           productApi.getAllProducts(),
+          productApi.getProductApplications({ appId }),
         ])
 
         if (appSettled.status === "fulfilled") {
@@ -427,12 +509,63 @@ export default function ProductsPage() {
           const reason = ovSettled.status === "rejected" ? ovSettled.reason : "Unknown error"
           setError(reason instanceof Error ? reason.message : "Failed to load product overview")
         }
+
+        if (applicationsSettled.status === "fulfilled") {
+          const raw = applicationsSettled.value as { data?: unknown }
+          const list = Array.isArray(raw?.data) ? raw.data : []
+          const mapped = list.map((entry, index) => {
+            const row = asRecord(entry)
+            const user = asRecord(row.user)
+            const extUser = asRecord(row.externalUser)
+            const merchant = asRecord(row.offeringMerchant)
+
+            const name = pickString(row, ["userName", "applicantName", "name"], "")
+              || pickString(user, ["name", "fullName"], "")
+              || pickString(extUser, ["name", "fullName"], "")
+              || "N/A"
+
+            const email = pickString(row, ["userEmail", "email"], "")
+              || pickString(user, ["email"], "")
+              || pickString(extUser, ["email"], "")
+              || "N/A"
+
+            const phone = pickString(row, ["userPhone", "phone"], "")
+              || pickString(user, ["phone"], "")
+              || pickString(extUser, ["phone"], "")
+              || "N/A"
+
+            const mergedStatus = mapStatus(
+              pickString(row, ["status", "loanWorkflowStatus"], "pending"),
+            )
+
+            const merchantName = pickString(row, ["offeringMerchantName", "merchantName"], "")
+              || pickString(merchant, ["name"], "N/A")
+
+            return {
+              id: pickString(row, ["_id", "id", "applicationId"], `application-${index}`),
+              applicationId: pickString(row, ["_id", "id", "applicationId"], `application-${index}`),
+              name,
+              email,
+              phone,
+              submittedAt: pickDate(row, ["createdAt", "submittedAt", "startedAt"]),
+              status: mergedStatus,
+              sourceMerchant: merchantName,
+              amount: pickNumber(row, ["amount", "principalAmount", "requestedAmount"]),
+              paymentMethod: pickString(row, ["paymentMethod"], "N/A"),
+              transactionId: pickString(row, ["transactionId", "referenceNumber"], "N/A"),
+            }
+          })
+          setApplicationRows(mapped)
+        } else {
+          setApplicationRows([])
+        }
       } catch (error) {
         console.error("Error fetching product overview:", error)
         setHeadline(null)
         setCategories([])
         setAppProductRows([])
         setCatalogProductRows(null)
+        setApplicationRows([])
         setError(error instanceof Error ? error.message : "Failed to load product overview")
       } finally {
         setLoading(false)
@@ -441,6 +574,53 @@ export default function ProductsPage() {
 
     if (appId) void fetchOverview()
   }, [appId])
+
+  const customerRows = useMemo<CustomerRow[]>(
+    () =>
+      applicationRows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        sourceMerchant: row.sourceMerchant || "N/A",
+        phone: row.phone,
+        submittedAt: row.submittedAt,
+        status: row.status,
+      })),
+    [applicationRows],
+  )
+
+  const transactionRows = useMemo<TransactionRow[]>(
+    () =>
+      applicationRows.map((row) => ({
+        id: row.id,
+        date: row.submittedAt,
+        amount: row.amount || 0,
+        status: row.status,
+        paymentMethod: row.paymentMethod || "N/A",
+        transactionId: row.transactionId || row.applicationId,
+        receiptAvailable: false,
+      })),
+    [applicationRows],
+  )
+
+  const merchantRows = useMemo<MerchantRow[]>(() => {
+    const map = new Map<string, MerchantRow>()
+    applicationRows.forEach((row, idx) => {
+      const sourceMerchant = row.sourceMerchant || "N/A"
+      const key = `${sourceMerchant}-${row.email}`
+      if (map.has(key)) return
+      map.set(key, {
+        id: `merchant-${idx}`,
+        name: sourceMerchant,
+        email: row.email,
+        productsLabel: "View products",
+        phone: row.phone,
+        submittedAt: row.submittedAt,
+        status: row.status,
+      })
+    })
+    return Array.from(map.values())
+  }, [applicationRows])
 
   const handleProductClick = (type: string) => {
     router.push(`/dashboard/create-app/all-apps/${appId}/products/${type}`)
@@ -577,6 +757,7 @@ export default function ProductsPage() {
         <div className="flex flex-wrap gap-8">
           {tabBtn("general", "General Info")}
           {tabBtn("customers", "Customers")}
+          {tabBtn("merchant", "Merchant")}
           {tabBtn("new-submissions", "New Submission")}
           {tabBtn("transactions", "Transactions")}
         </div>
@@ -639,9 +820,10 @@ export default function ProductsPage() {
         </div>
       ) : null}
 
-      {activeTab === "customers" ? <CustomersTable /> : null}
-      {activeTab === "new-submissions" ? <NewSubmissionsTable /> : null}
-      {activeTab === "transactions" ? <TransactionsTable /> : null}
+      {activeTab === "customers" ? <CustomersTable rows={customerRows} loading={loading} /> : null}
+      {activeTab === "merchant" ? <MerchantsTable rows={merchantRows} loading={loading} /> : null}
+      {activeTab === "new-submissions" ? <NewSubmissionsTable rows={applicationRows} loading={loading} /> : null}
+      {activeTab === "transactions" ? <TransactionsTable rows={transactionRows} loading={loading} /> : null}
 
       <ProductDebugPanel appId={appId} location="platter" />
     </div>

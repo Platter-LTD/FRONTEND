@@ -16,6 +16,14 @@ function matchesDocumentUploadLabel(raw: string): boolean {
   return false
 }
 
+function matchesDocumentTemplateLabel(raw: string): boolean {
+  const t = raw.trim().toLowerCase().replace(/[_-]+/g, " ")
+  if (!t) return false
+  if (t.includes("document") && t.includes("template")) return true
+  if (t.replace(/\s+/g, "") === "documenttemplate") return true
+  return false
+}
+
 /** Requirement type dropdown: e.g. "Document upload". */
 export function isDocumentUploadRequirementType(type: string): boolean {
   return matchesDocumentUploadLabel(type)
@@ -26,9 +34,20 @@ export function isDocumentUploadContentType(contentType: string): boolean {
   return matchesDocumentUploadLabel(contentType)
 }
 
-/** Show file upload instead of description when either column selects document upload. */
+/** Content type dropdown: e.g. "Document template". */
+export function isDocumentTemplateContentType(contentType: string): boolean {
+  return matchesDocumentTemplateLabel(contentType)
+}
+
+/**
+ * Other requirements behavior (by selected Content Type):
+ * - "Document template" => show file upload field
+ * - "Document upload"   => show description text field
+ * - anything else       => show description text field
+ */
 export function shouldUseOtherRequirementFileUpload(type: string, contentType: string): boolean {
-  return isDocumentUploadRequirementType(type) || isDocumentUploadContentType(contentType)
+  void type
+  return isDocumentTemplateContentType(contentType)
 }
 
 /** Shape sent to product configuration / backend. */

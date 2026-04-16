@@ -40,6 +40,11 @@ export interface ProductConfigAboutStepProps {
   onTypeDescDraftChange: (value: string) => void
   onAddType: () => void
   typeRows: ProductAboutTypeRow[]
+  typeInputMode?: "add-list" | "select"
+  typeSelectOptions?: string[]
+  typeSelectPlaceholder?: string
+  typeSelectedValue?: string
+  onTypeSelectedValueChange?: (value: string) => void
 
   /**
    * How added rows render:
@@ -89,6 +94,11 @@ export function ProductConfigAboutStep({
   onTypeDescDraftChange,
   onAddType,
   typeRows,
+  typeInputMode = "add-list",
+  typeSelectOptions = [],
+  typeSelectPlaceholder = "Select type",
+  typeSelectedValue = "",
+  onTypeSelectedValueChange,
   typeListVariant = "split",
   addMoreLabel = "Add More",
   previewFile,
@@ -148,20 +158,30 @@ export function ProductConfigAboutStep({
 
       <div className="space-y-3">
         <label className="block text-sm font-medium text-gray-700">{typeSectionLabel}</label>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
-          <ProductConfigInput label="" placeholder="Enter Name" value={typeNameDraft} onChange={onTypeNameDraftChange} />
-          <ProductConfigInput label="" placeholder="Enter Description" value={typeDescDraft} onChange={onTypeDescDraftChange} />
-          <Button
-            type="button"
-            onClick={onAddType}
-            className="h-10 text-white hover:opacity-95"
-            style={{ backgroundColor: accentColor }}
-          >
-            Add
-          </Button>
-        </div>
+        {typeInputMode === "select" ? (
+          <ProductConfigSelect
+            label=""
+            placeholder={typeSelectPlaceholder}
+            value={typeSelectedValue}
+            options={typeSelectOptions}
+            onChange={(value) => onTypeSelectedValueChange?.(value)}
+          />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <ProductConfigInput label="" placeholder="Enter Name" value={typeNameDraft} onChange={onTypeNameDraftChange} />
+            <ProductConfigInput label="" placeholder="Enter Description" value={typeDescDraft} onChange={onTypeDescDraftChange} />
+            <Button
+              type="button"
+              onClick={onAddType}
+              className="h-10 text-white hover:opacity-95"
+              style={{ backgroundColor: accentColor }}
+            >
+              Add
+            </Button>
+          </div>
+        )}
 
-        {typeRows.length > 0 && (
+        {typeInputMode !== "select" && typeRows.length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-600">{addMoreLabel}</p>
             <div className="space-y-2">

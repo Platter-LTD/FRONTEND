@@ -1,11 +1,15 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { Bell, CheckCheck, CreditCard, Headphones, Shield, Sparkles, UserRound } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/hooks/useAuth"
+import { useAppDispatch, useAppSelector } from "@/store/hooks"
+import { fetchInAppNotificationsThunk, markAllNotificationsRead, markNotificationRead } from "@/store/notificationSlice"
 
 export type DashboardNotificationItem = {
   id: string
@@ -15,108 +19,6 @@ export type DashboardNotificationItem = {
   read: boolean
   variant?: "default" | "security" | "payment" | "compliance" | "support"
 }
-
-/** Demo feed aligned with agreed notification types (replace when notifications API ships). */
-function buildDemoNotifications(): DashboardNotificationItem[] {
-  const base = new Date("2026-04-12T19:16:00")
-  let mins = 0
-  const next = (offset: number) => {
-    mins += offset
-    return new Date(base.getTime() - mins * 60_000)
-  }
-
-  const rows: Omit<DashboardNotificationItem, "id" | "createdAt">[] = [
-    {
-      title: "App creation successful",
-      description: "A new application was created and is ready for setup.",
-      read: false,
-      variant: "default",
-    },
-    {
-      title: "Product creation successful",
-      description: "A product was created under your merchant workspace.",
-      read: false,
-      variant: "default",
-    },
-    {
-      title: "New merchant successful",
-      description: "A new merchant account completed onboarding.",
-      read: true,
-      variant: "default",
-    },
-    {
-      title: "Compliance incomplete",
-      description: "Merchant compliance still needs required documents or steps.",
-      read: false,
-      variant: "compliance",
-    },
-    {
-      title: "Withdrawal alert",
-      description: "A withdrawal request needs review or has completed.",
-      read: false,
-      variant: "payment",
-    },
-    {
-      title: "New support ticket",
-      description: "A merchant opened a new support conversation.",
-      read: true,
-      variant: "support",
-    },
-    {
-      title: "Merchant account deactivation or deletion",
-      description: "A merchant account was deactivated or scheduled for removal.",
-      read: true,
-      variant: "security",
-    },
-    {
-      title: "Merchant product live or deactivate",
-      description: "A product went live or was taken offline for a merchant.",
-      read: false,
-      variant: "default",
-    },
-    {
-      title: "New customer onboard",
-      description: "A new customer finished signup or initial onboarding.",
-      read: false,
-      variant: "default",
-    },
-    {
-      title: "Product creation successful",
-      description: "A customer-facing product was created successfully.",
-      read: true,
-      variant: "default",
-    },
-    {
-      title: "Customer KYC completed or incomplete",
-      description: "Customer verification status changed — check the case for details.",
-      read: false,
-      variant: "compliance",
-    },
-    {
-      title: "Withdrawal alert",
-      description: "A customer withdrawal event requires attention or confirmation.",
-      read: false,
-      variant: "payment",
-    },
-    {
-      title: "New support ticket",
-      description: "A customer submitted a new support ticket.",
-      read: true,
-      variant: "support",
-    },
-  ]
-
-  const out: DashboardNotificationItem[] = []
-  let id = 0
-  let gap = 3
-  for (const row of rows) {
-    out.push({ ...row, id: `n-${++id}`, createdAt: next(gap) })
-    gap = 5 + (id % 7)
-  }
-  return out.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-}
-
-const SEED_NOTIFICATIONS: DashboardNotificationItem[] = buildDemoNotifications()
 
 function variantIcon(variant: DashboardNotificationItem["variant"]) {
   switch (variant) {
@@ -137,23 +39,53 @@ interface DashboardNotificationsPopoverProps {
   triggerClassName?: string
 }
 
+function NotificationsSkeletonList() {
+  return (
+    <ul className="divide-y divide-[#F0EBE3]">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <li key={`notifications-skeleton-${index}`} className="flex gap-3 px-4 py-3">
+          <Skeleton className="mt-0.5 h-9 w-9 shrink-0 rounded-lg bg-[#F3EBDE]" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-2/3 bg-[#F3EBDE]" />
+            <Skeleton className="h-3 w-full bg-[#F3EBDE]" />
+            <Skeleton className="h-3 w-5/6 bg-[#F3EBDE]" />
+            <Skeleton className="h-3 w-1/3 bg-[#F3EBDE]" />
+          </div>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /**
  * Notification drawer opened from the dashboard header bell.
  * Uses local demo items until a notifications API is wired.
  */
 export function DashboardNotificationsPopover({ triggerClassName }: DashboardNotificationsPopoverProps) {
+  const { user } = useAuth()
+  const dispatch = useAppDispatch()
+  const { items, loading, error } = useAppSelector((state) => state.notifications)
   const [open, setOpen] = useState(false)
-  const [items, setItems] = useState<DashboardNotificationItem[]>(SEED_NOTIFICATIONS)
+  const parsedItems = useMemo<DashboardNotificationItem[]>(
+    () =>
+      items.map((item) => {
+        const dt = new Date(item.createdAt)
+        return {
+          ...item,
+          createdAt: Number.isNaN(dt.getTime()) ? new Date() : dt,
+        }
+      }),
+    [items],
+  )
 
-  const unreadCount = useMemo(() => items.filter((n) => !n.read).length, [items])
+  const unreadCount = useMemo(() => parsedItems.filter((n) => !n.read).length, [parsedItems])
 
-  const markAllRead = useCallback(() => {
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })))
-  }, [])
+  useEffect(() => {
+    const recipient = user?.id
+    if (!open || !recipient) return
 
-  const markOneRead = useCallback((id: string) => {
-    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
-  }, [])
+    void dispatch(fetchInAppNotificationsThunk({ recipient, limit: 50, offset: 0 }))
+  }, [dispatch, open, user?.id])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -195,7 +127,7 @@ export function DashboardNotificationsPopover({ triggerClassName }: DashboardNot
                 className="h-8 shrink-0 gap-1 text-xs text-[#8B7355] hover:bg-[#F5EDE0] hover:text-[#6B5A45]"
                 onClick={(e) => {
                   e.preventDefault()
-                  markAllRead()
+                  dispatch(markAllNotificationsRead())
                 }}
               >
                 <CheckCheck className="h-3.5 w-3.5" />
@@ -206,15 +138,19 @@ export function DashboardNotificationsPopover({ triggerClassName }: DashboardNot
         </div>
 
         <div className="max-h-[min(70vh,420px)] overflow-y-auto">
-          {items.length === 0 ? (
+          {loading ? (
+            <NotificationsSkeletonList />
+          ) : error ? (
+            <div className="px-4 py-10 text-center text-sm text-red-600">{error}</div>
+          ) : parsedItems.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-gray-500">No notifications yet.</div>
           ) : (
             <ul className="divide-y divide-[#F0EBE3]">
-              {items.map((n) => (
+              {parsedItems.map((n) => (
                 <li key={n.id}>
                   <button
                     type="button"
-                    onClick={() => markOneRead(n.id)}
+                    onClick={() => dispatch(markNotificationRead(n.id))}
                     className={cn(
                       "flex w-full gap-3 px-4 py-3 text-left transition hover:bg-[#FFFAF3]",
                       !n.read && "bg-[#FFFCF6]/90",

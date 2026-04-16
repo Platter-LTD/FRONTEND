@@ -597,7 +597,7 @@ export default function ConfigureCommodityDrawer({
                   />
                   <ProductConfigInput label="Value" placeholder="Enter Value" value={penaltyValue} onChange={handlePenaltyValueChange} numericOnly />
                   <ProductConfigSelect
-                    label="Duration Before Trigger"
+                    label="Trigger Duration"
                     placeholder="Select Section"
                     value={penaltyTriggerDuration}
                     options={triggerDurationOptions}

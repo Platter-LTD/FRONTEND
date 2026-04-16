@@ -481,15 +481,16 @@ export default function ConfigureLoanDrawer({
               checked={allowMoratorium}
               onChange={setAllowMoratorium}
             />
-            {allowMoratorium ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <ProductConfigSelect
-                  label="Select Duration"
-                  placeholder="Select Section"
-                  value={moratoriumSelectDuration}
-                  options={moratoriumDurationOptions}
-                  onChange={setMoratoriumSelectDuration}
-                />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <ProductConfigSelect
+                label="Select Duration"
+                placeholder="Select Section"
+                value={moratoriumSelectDuration}
+                options={moratoriumDurationOptions}
+                onChange={setMoratoriumSelectDuration}
+              />
+              {allowMoratorium ? (
+                <>
                 <ProductConfigSelect
                   label="Duration of Moratorium"
                   placeholder="Select Section"
@@ -504,8 +505,9 @@ export default function ConfigureLoanDrawer({
                   options={moratoriumTypeOptions}
                   onChange={setMoratoriumType}
                 />
-              </div>
-            ) : null}
+                </>
+              ) : null}
+            </div>
           </div>
 
           <ProductConfigRepaymentWorkflowPanel
@@ -630,8 +632,8 @@ export default function ConfigureLoanDrawer({
             <p className="text-sm font-medium text-gray-700">Other Requirements</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-start">
               <ProductConfigSelect
-                label="Select requirement type"
-                placeholder="Select requirement type"
+                label="Requirement type"
+                placeholder="Requirement type"
                 value={otherRequirementType}
                 options={otherRequirementOptions}
                 onChange={handleOtherRequirementTypeChange}
@@ -690,8 +692,8 @@ export default function ConfigureLoanDrawer({
               )}
               <div className="w-full space-y-2">
                 <span className="invisible block text-sm font-medium text-gray-700 select-none" aria-hidden>
-                  Select requirement type
-                </span>
+                  Requirement type
+                </span> 
                 <Button type="button" onClick={addOtherRequirement} className="h-10 w-full bg-[#9A813F] text-white hover:bg-[#8A7335]">
                   Add
                 </Button>
@@ -780,7 +782,7 @@ export default function ConfigureLoanDrawer({
             />
             <ProductConfigInput label="Value" placeholder="Enter Value" value={penaltyValue} onChange={handlePenaltyValueChange} numericOnly />
             <ProductConfigInput
-              label="Duration Before Trigger"
+              label="Trigger Duration"
               placeholder="Select Section"
               value={penaltyTriggerDuration}
               onChange={setPenaltyTriggerDuration}

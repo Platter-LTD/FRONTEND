@@ -3,6 +3,7 @@ import { authReducer } from "@/store/authSlice"
 import { complianceReducer } from "@/store/complianceSlice"
 import { walletReducer } from "@/store/walletSlice"
 import { merchantSettingsReducer } from "@/store/merchantSettingsSlice"
+import { notificationsReducer } from "@/store/notificationSlice"
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     compliance: complianceReducer,
     wallet: walletReducer,
     merchantSettings: merchantSettingsReducer,
+    notifications: notificationsReducer,
   },
 })
 
