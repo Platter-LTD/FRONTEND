@@ -21,6 +21,7 @@ import {
   ProductConfigTabs,
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
+import { validateAllLoanSteps, validateLoanStep } from "@/lib/productConfigureStepValidation"
 
 interface ConfigureLoanDrawerProps {
   isOpen: boolean
@@ -140,6 +141,7 @@ export default function ConfigureLoanDrawer({
   const [penaltyValue, setPenaltyValue] = useState("")
   const [penaltyTriggerDuration, setPenaltyTriggerDuration] = useState("")
   const [penalties, setPenalties] = useState<PenaltyItem[]>([])
+  const [stepErrors, setStepErrors] = useState<string[]>([])
 
   const isPercentType = (value: string) => value.toLowerCase().includes("percent")
   const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
@@ -184,6 +186,10 @@ export default function ConfigureLoanDrawer({
   const handleEquityPercentageChange = (value: string) => {
     setEquityPercentage(normalizePercentInput(value))
   }
+
+  useEffect(() => {
+    setStepErrors([])
+  }, [step])
 
   useEffect(() => {
     if (!isOpen) return
@@ -357,11 +363,52 @@ export default function ConfigureLoanDrawer({
     if (step > 1) setStep((prev) => prev - 1)
   }
 
+  const loanValidationBase = () => ({
+    name,
+    tenure,
+    description,
+    loanTypes,
+    previewImage,
+    structure: {
+      interestRate,
+      interestMethod,
+      repaymentWorkflow,
+      minAmount: minLoanAmount,
+      maxAmount: maxLoanAmount,
+      repaymentSchedule,
+      amortizationSchedule,
+      repaymentFrequency,
+      acceptableNpa,
+      equityRequirement,
+      equityRequirementMode,
+      equityFixedAmount,
+      equityPercentage,
+    },
+    selectedSecurities,
+    documents,
+    charges,
+    enableLateRepaymentCharges,
+    penalties,
+  })
+
   const handleNext = async () => {
     if (step < STEPS.length) {
+      const { ok, errors } = validateLoanStep({ step, ...loanValidationBase() })
+      if (!ok) {
+        setStepErrors(errors)
+        return
+      }
+      setStepErrors([])
       setStep((prev) => prev + 1)
       return
     }
+
+    const finalCheck = validateAllLoanSteps(loanValidationBase())
+    if (!finalCheck.ok) {
+      setStepErrors(finalCheck.errors)
+      return
+    }
+    setStepErrors([])
 
     const documentsPayload = await Promise.all(
       documents.map(async (doc) => ({
@@ -430,6 +477,20 @@ export default function ConfigureLoanDrawer({
       <div className="mx-auto w-full">
         <ProductConfigTabs steps={STEPS} activeStep={step} onStepChange={setStep} />
 
+      {stepErrors.length > 0 ? (
+        <div
+          className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          role="alert"
+        >
+          <p className="mb-2 font-medium">Please fix the following before continuing:</p>
+          <ul className="list-inside list-disc space-y-1">
+            {stepErrors.map((msg) => (
+              <li key={msg}>{msg}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {step === 1 && (
         <ProductConfigAboutStep
           idPrefix="loan"
@@ -464,6 +525,7 @@ export default function ConfigureLoanDrawer({
               value={interestRate}
               onChange={handleInterestRateChange}
               numericOnly
+              requirement="required"
             />
             <ProductConfigSelect
               label="Interest Method"
@@ -471,6 +533,7 @@ export default function ConfigureLoanDrawer({
               value={interestMethod}
               options={interestMethodOptions}
               onChange={setInterestMethod}
+              requirement="required"
             />
           </div>
 
@@ -480,6 +543,7 @@ export default function ConfigureLoanDrawer({
               label="Allow Moratorium for this instrument"
               checked={allowMoratorium}
               onChange={setAllowMoratorium}
+              requirement="optional"
             />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <ProductConfigSelect
@@ -488,6 +552,7 @@ export default function ConfigureLoanDrawer({
                 value={moratoriumSelectDuration}
                 options={moratoriumDurationOptions}
                 onChange={setMoratoriumSelectDuration}
+                requirement="optional"
               />
               {allowMoratorium ? (
                 <>
@@ -497,6 +562,7 @@ export default function ConfigureLoanDrawer({
                   value={moratoriumDurationOf}
                   options={moratoriumDurationOptions}
                   onChange={setMoratoriumDurationOf}
+                  requirement="optional"
                 />
                 <ProductConfigSelect
                   label="Type of Moratorium"
@@ -504,6 +570,7 @@ export default function ConfigureLoanDrawer({
                   value={moratoriumType}
                   options={moratoriumTypeOptions}
                   onChange={setMoratoriumType}
+                  requirement="optional"
                 />
                 </>
               ) : null}
@@ -528,6 +595,7 @@ export default function ConfigureLoanDrawer({
               value={repaymentSchedule}
               options={repaymentScheduleOptions}
               onChange={setRepaymentSchedule}
+              requirement="required"
             />
             <ProductConfigSelect
               label="Amortization Schedule"
@@ -535,6 +603,7 @@ export default function ConfigureLoanDrawer({
               value={amortizationSchedule}
               options={amortizationScheduleOptions}
               onChange={setAmortizationSchedule}
+              requirement="required"
             />
             <ProductConfigSelect
               label="Repayment Frequency"
@@ -542,6 +611,7 @@ export default function ConfigureLoanDrawer({
               value={repaymentFrequency}
               options={repaymentFrequencyOptions}
               onChange={setRepaymentFrequency}
+              requirement="required"
             />
             <ProductConfigSelect
               label="Acceptable NPA"
@@ -549,6 +619,7 @@ export default function ConfigureLoanDrawer({
               value={acceptableNpa}
               options={acceptableNpaOptions}
               onChange={setAcceptableNpa}
+              requirement="required"
             />
             <ProductConfigSelect
               label="Equity Requirement"
@@ -556,6 +627,7 @@ export default function ConfigureLoanDrawer({
               value={equityRequirement}
               options={equityRequirementOptions}
               onChange={handleEquityRequirementChange}
+              requirement="required"
             />
             {equityRequirementMode === "fixed" ? (
               <ProductConfigInput
@@ -564,6 +636,7 @@ export default function ConfigureLoanDrawer({
                 value={equityFixedAmount}
                 onChange={handleEquityFixedAmountChange}
                 numericOnly
+                requirement="required"
               />
             ) : null}
             {equityRequirementMode === "percentage" ? (
@@ -572,6 +645,7 @@ export default function ConfigureLoanDrawer({
                 placeholder="e.g. 10%"
                 value={equityPercentage}
                 onChange={handleEquityPercentageChange}
+                requirement="required"
               />
             ) : null}
           </div>
@@ -581,7 +655,9 @@ export default function ConfigureLoanDrawer({
       {step === 3 && (
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">Security Requirements</label>
+            <label className="block text-sm font-medium text-gray-700">
+              Security Requirements <span className="font-normal text-gray-500">(Required)</span>
+            </label>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {securityOptions.map((option) => (
                 <ProductConfigToggle
@@ -597,10 +673,17 @@ export default function ConfigureLoanDrawer({
 
           <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
             <p className="text-sm font-medium text-gray-700">
-              Document Requirements <span className="font-normal text-gray-500"> Requires customer to fill the form</span>
+              Document Requirements{" "}
+              <span className="font-normal text-gray-500">(Required) Requires customer to fill the form</span>
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] items-end">
-              <ProductConfigInput label="Name Document" placeholder="Name document" value={documentName} onChange={setDocumentName} />
+              <ProductConfigInput
+                label="Name Document"
+                placeholder="Name document"
+                value={documentName}
+                onChange={setDocumentName}
+                requirement="required"
+              />
               <Button
                 type="button"
                 onClick={() => documentsInputRef.current?.click()}
@@ -629,7 +712,9 @@ export default function ConfigureLoanDrawer({
           </div>
 
           <div className="space-y-3">
-            <p className="text-sm font-medium text-gray-700">Other Requirements</p>
+            <p className="text-sm font-medium text-gray-700">
+              Other Requirements <span className="font-normal text-gray-500">(Optional)</span>
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-start">
               <ProductConfigSelect
                 label="Requirement type"
@@ -637,6 +722,7 @@ export default function ConfigureLoanDrawer({
                 value={otherRequirementType}
                 options={otherRequirementOptions}
                 onChange={handleOtherRequirementTypeChange}
+                requirement="optional"
               />
               <ProductConfigSelect
                 label="Content Type"
@@ -644,6 +730,7 @@ export default function ConfigureLoanDrawer({
                 value={otherRequirementContentType}
                 options={contentTypeOptions}
                 onChange={handleOtherRequirementContentTypeChange}
+                requirement="optional"
               />
               {shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType) ? (
                 <div className="min-w-0 w-full">
@@ -718,13 +805,20 @@ export default function ConfigureLoanDrawer({
       {step === 4 && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <ProductConfigInput label="Name of Charges or Fee" placeholder="e.g Processing Fee" value={chargeName} onChange={setChargeName} />
+            <ProductConfigInput
+              label="Name of Charges or Fee"
+              placeholder="e.g Processing Fee"
+              value={chargeName}
+              onChange={setChargeName}
+              requirement="required"
+            />
             <ProductConfigSelect
               label="Fee Type"
               placeholder="Select Section"
               value={chargeFeeType}
               options={feeTypeOptions}
               onChange={handleChargeFeeTypeChange}
+              requirement="required"
             />
             <ProductConfigInput label="Value" placeholder="Enter Value" value={chargeValue} onChange={handleChargeValueChange} numericOnly />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
@@ -769,24 +863,40 @@ export default function ConfigureLoanDrawer({
             label="Charges for Late Repayment"
             checked={enableLateRepaymentCharges}
             onChange={setEnableLateRepaymentCharges}
+            requirement="required"
           />
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]">
-            <ProductConfigInput label="Name of Penalty" placeholder="e.g Processing Fee" value={penaltyName} onChange={setPenaltyName} />
+            <ProductConfigInput
+              label="Name of Penalty"
+              placeholder="e.g Processing Fee"
+              value={penaltyName}
+              onChange={setPenaltyName}
+              requirement="required"
+            />
             <ProductConfigSelect
               label="Type"
               placeholder="Select Section"
               value={penaltyType}
               options={penaltyTypeOptions}
               onChange={handlePenaltyTypeChange}
+              requirement="required"
             />
-            <ProductConfigInput label="Value" placeholder="Enter Value" value={penaltyValue} onChange={handlePenaltyValueChange} numericOnly />
+            <ProductConfigInput
+              label="Value"
+              placeholder="Enter Value"
+              value={penaltyValue}
+              onChange={handlePenaltyValueChange}
+              numericOnly
+              requirement="required"
+            />
             <ProductConfigInput
               label="Trigger Duration"
               placeholder="Select Section"
               value={penaltyTriggerDuration}
               onChange={setPenaltyTriggerDuration}
               numericOnly
+              requirement="required"
             />
             <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
               Add

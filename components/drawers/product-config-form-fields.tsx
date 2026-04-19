@@ -35,6 +35,12 @@ export function ProductConfigTabs({ steps, activeStep, onStepChange }: ProductCo
   )
 }
 
+function requirementSuffix(requirement?: "required" | "optional") {
+  if (requirement === "required") return " (Required)"
+  if (requirement === "optional") return " (Optional)"
+  return ""
+}
+
 interface ProductConfigInputProps {
   label: string
   placeholder?: string
@@ -43,6 +49,8 @@ interface ProductConfigInputProps {
   type?: "text" | "number"
   numericOnly?: boolean
   disabled?: boolean
+  /** Shown next to the label per merchant validation spec */
+  requirement?: "required" | "optional"
 }
 
 export function ProductConfigInput({
@@ -53,6 +61,7 @@ export function ProductConfigInput({
   type = "text",
   numericOnly = false,
   disabled = false,
+  requirement,
 }: ProductConfigInputProps) {
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (!numericOnly) {
@@ -65,7 +74,12 @@ export function ProductConfigInput({
 
   return (
     <div className="min-w-0 w-full space-y-2">
-      {label ? <label className="block text-sm font-medium text-gray-700">{label}</label> : null}
+      {label.trim() ? (
+        <label className="block text-sm font-medium text-gray-700">
+          {label}
+          <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
+        </label>
+      ) : null}
       <input
         type={type}
         value={value}
@@ -85,6 +99,7 @@ interface ProductConfigSelectProps {
   value: string
   options: string[]
   onChange: (value: string) => void
+  requirement?: "required" | "optional"
 }
 
 export function ProductConfigSelect({
@@ -93,10 +108,16 @@ export function ProductConfigSelect({
   value,
   options,
   onChange,
+  requirement,
 }: ProductConfigSelectProps) {
   return (
     <div className="min-w-0 w-full space-y-2">
-      {label ? <label className="block text-sm font-medium text-gray-700">{label}</label> : null}
+      {label.trim() ? (
+        <label className="block text-sm font-medium text-gray-700">
+          {label}
+          <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
+        </label>
+      ) : null}
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
           className="h-10 min-w-0 w-full max-w-full data-[size=default]:h-10 rounded-md border border-[#e5e7eb] bg-white px-3 py-0 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 shadow-none"
@@ -120,9 +141,10 @@ interface ProductConfigToggleProps {
   label: string
   checked: boolean
   onChange: (checked: boolean) => void
+  requirement?: "required" | "optional"
 }
 
-export function ProductConfigToggle({ id, label, checked, onChange }: ProductConfigToggleProps) {
+export function ProductConfigToggle({ id, label, checked, onChange, requirement }: ProductConfigToggleProps) {
   return (
     <div className="flex items-center gap-3">
       <Switch
@@ -133,6 +155,7 @@ export function ProductConfigToggle({ id, label, checked, onChange }: ProductCon
       />
       <label htmlFor={id} className="cursor-pointer text-sm leading-snug text-gray-700">
         {label}
+        <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
       </label>
     </div>
   )
@@ -161,6 +184,8 @@ export interface ProductConfigRepaymentWorkflowPanelProps {
   amountLabel?: string
   minPlaceholder?: string
   maxPlaceholder?: string
+  workflowRequirement?: "required" | "optional"
+  amountFieldsRequirement?: "required" | "optional"
 }
 
 /**
@@ -178,6 +203,8 @@ export function ProductConfigRepaymentWorkflowPanel({
   amountLabel = "Loan Amount",
   minPlaceholder = "Min Amount",
   maxPlaceholder = "Max Amount",
+  workflowRequirement = "required",
+  amountFieldsRequirement = "required",
 }: ProductConfigRepaymentWorkflowPanelProps) {
   const list = workflows.length ? workflows : [...DEFAULT_REPAYMENT_WORKFLOWS]
 
@@ -195,7 +222,10 @@ export function ProductConfigRepaymentWorkflowPanel({
     <div className="rounded-xl bg-white ">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-4 sm:items-start">
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-slate-800">Repayment Workflow</h3>
+          <h3 className="text-sm font-semibold text-slate-800">
+            Repayment Workflow
+            <span className="font-normal text-gray-500">{requirementSuffix(workflowRequirement)}</span>
+          </h3>
           <div className="flex flex-col gap-3">
             {list.map((wf) => {
               const id = `repayment-workflow-${wf.replace(/\s/g, "-")}`
@@ -216,10 +246,27 @@ export function ProductConfigRepaymentWorkflowPanel({
           </div>
         </div>
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-slate-800">{amountLabel}</h3>
+          <h3 className="text-sm font-semibold text-slate-800">
+            {amountLabel}
+            <span className="font-normal text-gray-500">{requirementSuffix(amountFieldsRequirement)}</span>
+          </h3>
           <div className="space-y-2">
-            <ProductConfigInput label="" placeholder={minPlaceholder} value={minAmount} onChange={onMinAmountChange} numericOnly />
-            <ProductConfigInput label="" placeholder={maxPlaceholder} value={maxAmount} onChange={onMaxAmountChange} numericOnly />
+            <ProductConfigInput
+              label="Minimum"
+              placeholder={minPlaceholder}
+              value={minAmount}
+              onChange={onMinAmountChange}
+              numericOnly
+              requirement={amountFieldsRequirement}
+            />
+            <ProductConfigInput
+              label="Maximum"
+              placeholder={maxPlaceholder}
+              value={maxAmount}
+              onChange={onMaxAmountChange}
+              numericOnly
+              requirement={amountFieldsRequirement}
+            />
           </div>
         </div>
       </div>

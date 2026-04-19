@@ -21,6 +21,7 @@ import {
   ProductConfigTabs,
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
+import { validateAllMortgageSteps, validateMortgageStep } from "@/lib/productConfigureStepValidation"
 
 interface ConfigureMortgageDrawerProps {
   isOpen: boolean
@@ -171,6 +172,7 @@ export default function ConfigureMortgageDrawer({
   const [penaltyValue, setPenaltyValue] = useState("")
   const [penaltyTriggerDuration, setPenaltyTriggerDuration] = useState("")
   const [penalties, setPenalties] = useState<PenaltyItem[]>([])
+  const [stepErrors, setStepErrors] = useState<string[]>([])
 
   const isPercentType = (value: string) => value.toLowerCase().includes("percent")
   const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
@@ -315,6 +317,10 @@ export default function ConfigureMortgageDrawer({
     }
     loadOptions()
   }, [isOpen, prefetchedOptions])
+
+  useEffect(() => {
+    setStepErrors([])
+  }, [step])
 
   useEffect(() => {
     if (!isOpen) return
@@ -547,12 +553,66 @@ export default function ConfigureMortgageDrawer({
     if (step > 1) setStep((prev) => prev - 1)
   }
 
+  const mortgageValidationBase = () => ({
+    name,
+    tenure,
+    description,
+    mortgageTypeSelected: selectedMortgageType,
+    previewImage,
+    structure: {
+      interestRate,
+      interestMethod,
+      repaymentWorkflow,
+      minAmount: minLoanAmount,
+      maxAmount: maxLoanAmount,
+      repaymentSchedule,
+      amortizationSchedule,
+      repaymentFrequency,
+      acceptableNpa,
+      equityRequirement,
+      equityRequirementMode,
+      equityFixedAmount,
+      equityPercentage,
+    },
+    selectedSecurities,
+    documents,
+    charges,
+    enableLateRepaymentCharges,
+    penalties,
+    contractId,
+    airSignSecretKey,
+    airSignUid,
+    properties: properties.map((p) => ({
+      name: p.name,
+      type: p.type,
+      value: p.value,
+      location: p.location,
+      description: p.description,
+      facilities: p.facilities,
+      previewFiles: p.previewFiles,
+      videoUrl: p.videoUrl,
+    })),
+  })
+
   const handleNext = async () => {
     if (step < STEPS.length) {
-      setStep((prev) => prev + 1)
+      const { ok, errors } = validateMortgageStep({ step, ...mortgageValidationBase() })
+      if (!ok) {
+        setStepErrors(errors)
         return
       }
-      
+      setStepErrors([])
+      setStep((prev) => prev + 1)
+      return
+    }
+
+    const finalCheck = validateAllMortgageSteps(mortgageValidationBase())
+    if (!finalCheck.ok) {
+      setStepErrors(finalCheck.errors)
+      return
+    }
+    setStepErrors([])
+
     const documentsPayload = await Promise.all(
       documents.map(async (doc) => ({
         name: doc.name,
@@ -662,6 +722,20 @@ export default function ConfigureMortgageDrawer({
       <div className="mx-auto w-full">
         <ProductConfigTabs steps={STEPS} activeStep={step} onStepChange={setStep} />
 
+      {stepErrors.length > 0 ? (
+        <div
+          className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+          role="alert"
+        >
+          <p className="mb-2 font-medium">Please fix the following before continuing:</p>
+          <ul className="list-inside list-disc space-y-1">
+            {stepErrors.map((msg) => (
+              <li key={msg}>{msg}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {step === 1 && (
           <ProductConfigAboutStep
             idPrefix="mortgage"
@@ -701,6 +775,7 @@ export default function ConfigureMortgageDrawer({
                 value={interestRate}
                 onChange={handleInterestRateChange}
                 numericOnly
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Interest Method"
@@ -708,6 +783,7 @@ export default function ConfigureMortgageDrawer({
                 value={interestMethod}
                 options={interestMethodOptions}
                 onChange={setInterestMethod}
+                requirement="required"
             />
           </div>
 
@@ -717,6 +793,7 @@ export default function ConfigureMortgageDrawer({
                 label="Allow Moratorium for this instrument"
                 checked={allowMoratorium}
                 onChange={setAllowMoratorium}
+                requirement="optional"
               />
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <ProductConfigSelect
@@ -725,6 +802,7 @@ export default function ConfigureMortgageDrawer({
                   value={moratoriumSelectDuration}
                   options={moratoriumDurationOptions}
                   onChange={setMoratoriumSelectDuration}
+                  requirement="optional"
                 />
                 {allowMoratorium ? (
                   <>
@@ -734,6 +812,7 @@ export default function ConfigureMortgageDrawer({
                     value={moratoriumDurationOf}
                     options={moratoriumDurationOptions}
                     onChange={setMoratoriumDurationOf}
+                    requirement="optional"
                   />
                   <ProductConfigSelect
                     label="Type of Moratorium"
@@ -741,6 +820,7 @@ export default function ConfigureMortgageDrawer({
                     value={moratoriumType}
                     options={moratoriumTypeOptions}
                     onChange={setMoratoriumType}
+                    requirement="optional"
                   />
                   </>
                 ) : null}
@@ -765,6 +845,7 @@ export default function ConfigureMortgageDrawer({
                 value={repaymentSchedule}
                 options={repaymentScheduleOptions}
                 onChange={setRepaymentSchedule}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Amortization Schedule"
@@ -772,6 +853,7 @@ export default function ConfigureMortgageDrawer({
                 value={amortizationSchedule}
                 options={amortizationScheduleOptions}
                 onChange={setAmortizationSchedule}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Repayment Frequency"
@@ -779,6 +861,7 @@ export default function ConfigureMortgageDrawer({
                 value={repaymentFrequency}
                 options={repaymentFrequencyOptions}
                 onChange={setRepaymentFrequency}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Acceptable NPA"
@@ -786,6 +869,7 @@ export default function ConfigureMortgageDrawer({
                 value={acceptableNpa}
                 options={acceptableNpaOptions}
                 onChange={setAcceptableNpa}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Equity Requirement"
@@ -793,6 +877,7 @@ export default function ConfigureMortgageDrawer({
                 value={equityRequirement}
                 options={equityRequirementOptions}
                 onChange={handleEquityRequirementChange}
+                requirement="required"
               />
               {equityRequirementMode === "fixed" ? (
                 <ProductConfigInput
@@ -801,6 +886,7 @@ export default function ConfigureMortgageDrawer({
                   value={equityFixedAmount}
                   onChange={handleEquityFixedAmountChange}
                   numericOnly
+                  requirement="required"
                 />
               ) : null}
               {equityRequirementMode === "percentage" ? (
@@ -809,6 +895,7 @@ export default function ConfigureMortgageDrawer({
                   placeholder="e.g. 10%"
                   value={equityPercentage}
                   onChange={handleEquityPercentageChange}
+                  requirement="required"
                 />
               ) : null}
             </div>
@@ -818,7 +905,9 @@ export default function ConfigureMortgageDrawer({
         {step === 3 && (
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Security Requirements</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Security Requirements <span className="font-normal text-gray-500">(Required)</span>
+              </label>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {securityOptions.map((option) => (
                   <ProductConfigToggle
@@ -835,10 +924,16 @@ export default function ConfigureMortgageDrawer({
             <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
               <p className="text-sm font-medium text-gray-700">
                 Document Requirements{" "}
-                <span className="font-normal text-gray-500">→ Requires customer to download fill the form</span>
+                <span className="font-normal text-gray-500">(Required) Requires customer to download fill the form</span>
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-                <ProductConfigInput label="Name Document" placeholder="Name document" value={documentName} onChange={setDocumentName} />
+                <ProductConfigInput
+                  label="Name Document"
+                  placeholder="Name document"
+                  value={documentName}
+                  onChange={setDocumentName}
+                  requirement="required"
+                />
                 <div className="flex flex-col gap-2 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center">
                   <Upload className="shrink-0 text-gray-500" size={18} />
                   <div className="min-w-0 flex-1 text-xs text-gray-600">
@@ -876,7 +971,9 @@ export default function ConfigureMortgageDrawer({
             </div>
 
             <div className="space-y-3">
-              <p className="text-sm font-medium text-gray-700">Other Requirements</p>
+              <p className="text-sm font-medium text-gray-700">
+                Other Requirements <span className="font-normal text-gray-500">(Optional)</span>
+              </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-start">
                 <ProductConfigSelect
                   label="Requirement type"
@@ -884,6 +981,7 @@ export default function ConfigureMortgageDrawer({
                   value={otherRequirementType}
                   options={otherRequirementOptions}
                   onChange={handleOtherRequirementTypeChange}
+                  requirement="optional"
                 />
                 <ProductConfigSelect
                   label="Content Type"
@@ -891,6 +989,7 @@ export default function ConfigureMortgageDrawer({
                   value={otherRequirementContentType}
                   options={contentTypeOptions}
                   onChange={handleOtherRequirementContentTypeChange}
+                  requirement="optional"
                 />
                 {shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType) ? (
                   <div className="min-w-0 w-full">
@@ -935,6 +1034,7 @@ export default function ConfigureMortgageDrawer({
                     placeholder="Description"
                     value={otherRequirementDescription}
                     onChange={setOtherRequirementDescription}
+                    requirement="optional"
                   />
                 )}
                 <div className="w-full space-y-2">
@@ -974,14 +1074,27 @@ export default function ConfigureMortgageDrawer({
           </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <ProductConfigInput label="Contract ID" placeholder="Enter Contract ID" value={contractId} onChange={setContractId} />
+              <ProductConfigInput
+                label="Contract ID"
+                placeholder="Enter Contract ID"
+                value={contractId}
+                onChange={setContractId}
+                requirement="required"
+              />
               <ProductConfigInput
                 label="AirSign Secret Key"
                 placeholder="Enter secret key"
                 value={airSignSecretKey}
                 onChange={setAirSignSecretKey}
+                requirement="required"
               />
-              <ProductConfigInput label="AirSign UID" placeholder="Enter UID" value={airSignUid} onChange={setAirSignUid} />
+              <ProductConfigInput
+                label="AirSign UID"
+                placeholder="Enter UID"
+                value={airSignUid}
+                onChange={setAirSignUid}
+                requirement="required"
+              />
             </div>
           </div>
         )}
@@ -994,6 +1107,7 @@ export default function ConfigureMortgageDrawer({
                 placeholder="e.g Processing Fee"
                 value={chargeName}
                 onChange={setChargeName}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Fee Type"
@@ -1001,8 +1115,16 @@ export default function ConfigureMortgageDrawer({
                 value={chargeFeeType}
                 options={feeTypeOptions}
                 onChange={handleChargeFeeTypeChange}
+                requirement="required"
               />
-              <ProductConfigInput label="Value" placeholder="Enter Value" value={chargeValue} onChange={handleChargeValueChange} numericOnly />
+              <ProductConfigInput
+                label="Value"
+                placeholder="Enter Value"
+                value={chargeValue}
+                onChange={handleChargeValueChange}
+                numericOnly
+                requirement="required"
+              />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                 Add
               </Button>
@@ -1060,21 +1182,36 @@ export default function ConfigureMortgageDrawer({
               <>
                 <div>
                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_0.9fr_0.85fr_1.25fr_auto]">
-                  <ProductConfigInput label="Name of Penalty" placeholder="e.g Processing Fee" value={penaltyName} onChange={setPenaltyName} />
+                  <ProductConfigInput
+                    label="Name of Penalty"
+                    placeholder="e.g Processing Fee"
+                    value={penaltyName}
+                    onChange={setPenaltyName}
+                    requirement="optional"
+                  />
                   <ProductConfigSelect
                     label="Type"
                     placeholder="Select Section"
                     value={penaltyType}
                     options={penaltyTypeOptions}
                     onChange={handlePenaltyTypeChange}
+                    requirement="required"
                   />
-                  <ProductConfigInput label="Value" placeholder="Enter Value" value={penaltyValue} onChange={handlePenaltyValueChange} numericOnly />
+                  <ProductConfigInput
+                    label="Value"
+                    placeholder="Enter Value"
+                    value={penaltyValue}
+                    onChange={handlePenaltyValueChange}
+                    numericOnly
+                    requirement="required"
+                  />
                   <ProductConfigSelect
                     label="Trigger Duration"
                     placeholder="Select Section"
                     value={penaltyTriggerDuration}
                     options={triggerDurationOptions}
                     onChange={setPenaltyTriggerDuration}
+                    requirement="required"
                   />
                   <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                     Add
@@ -1127,6 +1264,7 @@ export default function ConfigureMortgageDrawer({
                 placeholder="e.g 3 bedroom flat"
                 value={propertyName}
                 onChange={setPropertyName}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Property Type"
@@ -1134,19 +1272,28 @@ export default function ConfigureMortgageDrawer({
                 value={propertyType}
                 options={propertyTypeOptions}
                 onChange={setPropertyType}
+                requirement="required"
               />
-              <ProductConfigInput label="Value of Property" placeholder="Enter Value" value={propertyValue} onChange={setPropertyValue} numericOnly />
+              <ProductConfigInput
+                label="Value of Property"
+                placeholder="Enter Value"
+                value={propertyValue}
+                onChange={setPropertyValue}
+                numericOnly
+                requirement="required"
+              />
             </div>
             <ProductConfigInput
               label="Location of Property"
               placeholder="e.g Lagos, Nigeria"
               value={propertyLocation}
               onChange={setPropertyLocation}
+              requirement="required"
             />
 
             <div className="min-w-0 w-full space-y-2">
               <label className="block text-sm font-medium text-gray-700" htmlFor="mortgage-property-description">
-                Property description
+                Property description <span className="font-normal text-gray-500">(Required)</span>
               </label>
               <textarea
                 id="mortgage-property-description"
@@ -1159,7 +1306,9 @@ export default function ConfigureMortgageDrawer({
             </div>
 
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-700">Property facilities</p>
+              <p className="text-sm font-medium text-gray-700">
+                Property facilities <span className="font-normal text-gray-500">(Required)</span>
+              </p>
               <p className="text-xs text-gray-500">Select all that apply for this listing.</p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
                 <input
@@ -1191,13 +1340,16 @@ export default function ConfigureMortgageDrawer({
               placeholder="https://…"
               value={propertyVideoUrl}
               onChange={setPropertyVideoUrl}
+              requirement="optional"
             />
 
             <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Upload className="shrink-0 text-gray-500" size={18} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-700">Add image</p>
+                  <p className="text-sm font-medium text-gray-700">
+                    Add image <span className="font-normal text-gray-500">(Required)</span>
+                  </p>
                   <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
                 </div>
                 <input

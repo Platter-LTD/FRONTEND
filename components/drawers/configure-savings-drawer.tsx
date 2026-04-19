@@ -14,6 +14,7 @@ import {
   ProductConfigTabs,
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
+import { validateAllSavingsSteps, validateSavingsStep } from "@/lib/productConfigureStepValidation"
 
 interface ConfigureSavingsDrawerProps {
   isOpen: boolean
@@ -130,6 +131,11 @@ export default function ConfigureSavingsDrawer({
   }
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [stepErrors, setStepErrors] = useState<string[]>([])
+
+  useEffect(() => {
+    setStepErrors([])
+  }, [step])
 
   useEffect(() => {
     if (!isOpen) return
@@ -237,6 +243,27 @@ export default function ConfigureSavingsDrawer({
     if (step > 1) setStep((s) => s - 1)
   }
 
+  const savingsValidationBase = () => ({
+    name,
+    duration: durationOfSavings,
+    description,
+    savingsTypes,
+    previewImage,
+    interestRate,
+    interestMethod,
+    savingsType,
+    withdrawalFlexibility,
+    minSavingsAmount: removeCommas(minSavingsAmount),
+    maxSavingsAmount: removeCommas(maxSavingsAmount),
+    termsAndConditions,
+    contractId,
+    airSignSecretKey,
+    airSignUid,
+    charges,
+    chargeForcefulWithdrawal,
+    withdrawalPenalties,
+  })
+
   const handleNext = async () => {
     if (step < STEPS.length) {
       if (step === 2) {
@@ -248,9 +275,22 @@ export default function ConfigureSavingsDrawer({
         }
         setErrors((prev) => ({ ...prev, maxAmount: "" }))
       }
+      const { ok, errors: vErrs } = validateSavingsStep({ step, ...savingsValidationBase() })
+      if (!ok) {
+        setStepErrors(vErrs)
+        return
+      }
+      setStepErrors([])
       setStep((s) => s + 1)
       return
     }
+
+    const all = validateAllSavingsSteps(savingsValidationBase())
+    if (!all.ok) {
+      setStepErrors(all.errors)
+      return
+    }
+    setStepErrors([])
 
     const minAmount = parseFloat(removeCommas(minSavingsAmount))
     const maxAmount = parseFloat(removeCommas(maxSavingsAmount))
@@ -311,6 +351,20 @@ export default function ConfigureSavingsDrawer({
       <div className="mx-auto w-full">
         <ProductConfigTabs steps={STEPS} activeStep={step} onStepChange={setStep} />
 
+        {stepErrors.length > 0 ? (
+          <div
+            className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            role="alert"
+          >
+            <p className="mb-2 font-medium">Please fix the following before continuing:</p>
+            <ul className="list-inside list-disc space-y-1">
+              {stepErrors.map((msg) => (
+                <li key={msg}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {step === 1 && (
           <ProductConfigAboutStep
             idPrefix="savings"
@@ -345,6 +399,7 @@ export default function ConfigureSavingsDrawer({
                 value={interestRate}
                 onChange={handleInterestRateChange}
                 numericOnly
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Interest Method"
@@ -352,6 +407,7 @@ export default function ConfigureSavingsDrawer({
                 value={interestMethod}
                 options={interestMethodOptions}
                 onChange={setInterestMethod}
+                requirement="required"
               />
             </div>
 
@@ -362,6 +418,7 @@ export default function ConfigureSavingsDrawer({
                 value={savingsType}
                 options={savingsTypeOptions}
                 onChange={setSavingsType}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Withdrawal Flexibility"
@@ -369,20 +426,37 @@ export default function ConfigureSavingsDrawer({
                 value={withdrawalFlexibility}
                 options={withdrawalFlexibilityOptions}
                 onChange={setWithdrawalFlexibility}
+                requirement="required"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Savings Amount</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Savings Amount <span className="font-normal text-gray-500">(Required)</span>
+              </label>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <ProductConfigInput label="" placeholder="Min Amount" value={minSavingsAmount} onChange={(v) => handleCurrencyChange(v, setMinSavingsAmount)} />
-                <ProductConfigInput label="" placeholder="Max Amount" value={maxSavingsAmount} onChange={(v) => handleCurrencyChange(v, setMaxSavingsAmount)} />
+                <ProductConfigInput
+                  label="Minimum"
+                  placeholder="Min Amount"
+                  value={minSavingsAmount}
+                  onChange={(v) => handleCurrencyChange(v, setMinSavingsAmount)}
+                  requirement="required"
+                />
+                <ProductConfigInput
+                  label="Maximum"
+                  placeholder="Max Amount"
+                  value={maxSavingsAmount}
+                  onChange={(v) => handleCurrencyChange(v, setMaxSavingsAmount)}
+                  requirement="required"
+                />
               </div>
               {errors.maxAmount ? <p className="text-xs text-red-600">{errors.maxAmount}</p> : null}
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Savings Terms & Condition</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Savings Terms & Condition <span className="font-normal text-gray-500">(Required)</span>
+              </label>
               <textarea
                 value={termsAndConditions}
                 onChange={(e) => setTermsAndConditions(e.target.value)}
@@ -393,14 +467,27 @@ export default function ConfigureSavingsDrawer({
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <ProductConfigInput label="Contract ID" placeholder="Enter Contract ID" value={contractId} onChange={setContractId} />
+              <ProductConfigInput
+                label="Contract ID"
+                placeholder="Enter Contract ID"
+                value={contractId}
+                onChange={setContractId}
+                requirement="required"
+              />
               <ProductConfigInput
                 label="AirSign Secret Key"
                 placeholder="Enter secret key"
                 value={airSignSecretKey}
                 onChange={setAirSignSecretKey}
+                requirement="required"
               />
-              <ProductConfigInput label="AirSign UID" placeholder="Enter UID" value={airSignUid} onChange={setAirSignUid} />
+              <ProductConfigInput
+                label="AirSign UID"
+                placeholder="Enter UID"
+                value={airSignUid}
+                onChange={setAirSignUid}
+                requirement="required"
+              />
             </div>
           </div>
         )}
@@ -413,6 +500,7 @@ export default function ConfigureSavingsDrawer({
                 placeholder="e.g Processing Fee"
                 value={chargeName}
                 onChange={setChargeName}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Fee Type"
@@ -420,8 +508,16 @@ export default function ConfigureSavingsDrawer({
                 value={chargeFeeType}
                   options={feeTypeOptions}
                   onChange={handleChargeFeeTypeChange}
+                  requirement="required"
               />
-                <ProductConfigInput label="Value" placeholder="Enter Value" value={chargeValue} onChange={handleChargeValueChange} numericOnly />
+                <ProductConfigInput
+                  label="Value"
+                  placeholder="Enter Value"
+                  value={chargeValue}
+                  onChange={handleChargeValueChange}
+                  numericOnly
+                  requirement="required"
+                />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                 Add
               </Button>
@@ -458,26 +554,42 @@ export default function ConfigureSavingsDrawer({
               label="Charge for Forceful Withdrawal"
               checked={chargeForcefulWithdrawal}
               onChange={setChargeForcefulWithdrawal}
+              requirement="optional"
             />
 
             {chargeForcefulWithdrawal && (
               <>
                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_0.9fr_0.85fr_1.25fr_auto]">
-                  <ProductConfigInput label="Name of Penalty" placeholder="e.g Processing Fee" value={penaltyName} onChange={setPenaltyName} />
+                  <ProductConfigInput
+                    label="Name of Penalty"
+                    placeholder="e.g Processing Fee"
+                    value={penaltyName}
+                    onChange={setPenaltyName}
+                    requirement="required"
+                  />
                   <ProductConfigSelect
                     label="Type"
                     placeholder="Select Section"
                     value={penaltyType}
                     options={penaltyTypeOptions}
                     onChange={handlePenaltyTypeChange}
+                    requirement="required"
                   />
-                  <ProductConfigInput label="Value" placeholder="Enter Value" value={penaltyValue} onChange={handlePenaltyValueChange} numericOnly />
+                  <ProductConfigInput
+                    label="Value"
+                    placeholder="Enter Value"
+                    value={penaltyValue}
+                    onChange={handlePenaltyValueChange}
+                    numericOnly
+                    requirement="required"
+                  />
                   <ProductConfigSelect
                     label="Trigger Duration"
                     placeholder="Select Section"
                     value={penaltyTriggerDuration}
                     options={triggerDurationOptions}
                     onChange={setPenaltyTriggerDuration}
+                    requirement="required"
                   />
                   <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                     Add

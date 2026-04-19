@@ -13,6 +13,7 @@ import {
   ProductConfigTabs,
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
+import { validateAllInvestmentSteps, validateInvestmentStep } from "@/lib/productConfigureStepValidation"
 
 interface ConfigureInvestmentDrawerProps {
   isOpen: boolean
@@ -134,7 +135,7 @@ export default function ConfigureInvestmentDrawer({
   const [airSignSecretKey, setAirSignSecretKey] = useState("")
   const [airSignUid, setAirSignUid] = useState("")
 
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [stepErrors, setStepErrors] = useState<string[]>([])
 
   useEffect(() => {
     if (!isOpen) return
@@ -185,6 +186,10 @@ export default function ConfigureInvestmentDrawer({
     }
     fetchOptions()
   }, [isOpen, step])
+
+  useEffect(() => {
+    setStepErrors([])
+  }, [step])
 
   const formatWithCommas = (value: string) => {
     const numericValue = value.replace(/[^0-9.]/g, "")
@@ -241,27 +246,48 @@ export default function ConfigureInvestmentDrawer({
     if (step > 1) setStep((s) => s - 1)
   }
 
+  const investmentValidationBase = () => ({
+    name,
+    duration,
+    description,
+    investmentTypes,
+    previewImage,
+    roi,
+    interestMethod,
+    investmentType,
+    withdrawalFlexibility,
+    minAmount: removeCommas(minAmount),
+    maxAmount: removeCommas(maxAmount),
+    termsAndConditions,
+    enableUnitInvestment,
+    unitAmount: removeCommas(unitAmount),
+    minQuantity,
+    charges,
+    chargeForcefulWithdrawal,
+    withdrawalPenalties,
+    contractId,
+    airSignSecretKey,
+    airSignUid,
+  })
+
   const handleNext = async () => {
     if (step < STEPS.length) {
-      if (step === 2) {
-        const min = parseFloat(removeCommas(minAmount))
-        const max = parseFloat(removeCommas(maxAmount))
-        if (removeCommas(minAmount) && removeCommas(maxAmount) && max < min) {
-          setErrors((prev) => ({ ...prev, maxAmount: "Maximum must be greater than minimum" }))
-          return
-        }
-        setErrors((prev) => ({ ...prev, maxAmount: "" }))
+      const { ok, errors } = validateInvestmentStep({ step, ...investmentValidationBase() })
+      if (!ok) {
+        setStepErrors(errors)
+        return
       }
+      setStepErrors([])
       setStep((s) => s + 1)
       return
     }
 
-    const min = parseFloat(removeCommas(minAmount))
-    const max = parseFloat(removeCommas(maxAmount))
-    if (removeCommas(minAmount) && removeCommas(maxAmount) && max < min) {
-      setErrors((prev) => ({ ...prev, maxAmount: "Maximum must be greater than minimum" }))
+    const all = validateAllInvestmentSteps(investmentValidationBase())
+    if (!all.ok) {
+      setStepErrors(all.errors)
       return
     }
+    setStepErrors([])
 
     const previewImagePayload = previewImage
       ? {
@@ -320,6 +346,20 @@ export default function ConfigureInvestmentDrawer({
       <div className="mx-auto w-full">
         <ProductConfigTabs steps={STEPS} activeStep={step} onStepChange={setStep} />
 
+        {stepErrors.length > 0 ? (
+          <div
+            className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            role="alert"
+          >
+            <p className="mb-2 font-medium">Please fix the following before continuing:</p>
+            <ul className="list-inside list-disc space-y-1">
+              {stepErrors.map((msg) => (
+                <li key={msg}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {step === 1 && (
           <ProductConfigAboutStep
             idPrefix="investment"
@@ -355,6 +395,7 @@ export default function ConfigureInvestmentDrawer({
                 value={roi}
                 onChange={handleRoiChange}
                 numericOnly
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Interest Method"
@@ -362,6 +403,7 @@ export default function ConfigureInvestmentDrawer({
                 value={interestMethod}
                 options={interestMethodOptions}
                 onChange={setInterestMethod}
+                requirement="required"
               />
             </div>
 
@@ -372,6 +414,7 @@ export default function ConfigureInvestmentDrawer({
                 value={investmentType}
                 options={investmentTypeOptions}
                 onChange={setInvestmentType}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Withdrawal Flexibility"
@@ -379,20 +422,38 @@ export default function ConfigureInvestmentDrawer({
                 value={withdrawalFlexibility}
                 options={withdrawalFlexibilityOptions}
                 onChange={setWithdrawalFlexibility}
+                requirement="required"
               />
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Investment Amount</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Investment Amount
+                <span className="font-normal text-gray-500"> (Required)</span>
+              </label>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <ProductConfigInput label="" placeholder="Min Amount" value={minAmount} onChange={(v) => handleCurrencyChange(v, setMinAmount)} />
-                <ProductConfigInput label="" placeholder="Max Amount" value={maxAmount} onChange={(v) => handleCurrencyChange(v, setMaxAmount)} />
+                <ProductConfigInput
+                  label="Minimum"
+                  placeholder="Min Amount"
+                  value={minAmount}
+                  onChange={(v) => handleCurrencyChange(v, setMinAmount)}
+                  requirement="required"
+                />
+                <ProductConfigInput
+                  label="Maximum"
+                  placeholder="Max Amount"
+                  value={maxAmount}
+                  onChange={(v) => handleCurrencyChange(v, setMaxAmount)}
+                  requirement="required"
+                />
               </div>
-              {errors.maxAmount ? <p className="text-xs text-red-600">{errors.maxAmount}</p> : null}
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Investment Terms &amp; Condition</label>
+              <label className="block text-sm font-medium text-gray-700">
+                Investment Terms &amp; Condition
+                <span className="font-normal text-gray-500"> (Required)</span>
+              </label>
               <textarea
                 value={termsAndConditions}
                 onChange={(e) => setTermsAndConditions(e.target.value)}
@@ -407,21 +468,47 @@ export default function ConfigureInvestmentDrawer({
               label="Enable Unit Investment Purchase"
               checked={enableUnitInvestment}
               onChange={setEnableUnitInvestment}
+              requirement="optional"
             />
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-              <ProductConfigToggle id="investment-moratorium" label="Moratorium" checked={moratoriumEnabled} onChange={setMoratoriumEnabled} />
+              <ProductConfigToggle
+                id="investment-moratorium"
+                label="Moratorium"
+                checked={moratoriumEnabled}
+                onChange={setMoratoriumEnabled}
+                requirement="optional"
+              />
               {moratoriumEnabled ? (
                 <div className="min-w-[140px] flex-1 sm:max-w-xs">
-                  <ProductConfigInput label="" placeholder="Enter days" value={moratoriumDays} onChange={setMoratoriumDays} numericOnly />
+                  <ProductConfigInput
+                    label="Moratorium (days)"
+                    placeholder="Enter days"
+                    value={moratoriumDays}
+                    onChange={setMoratoriumDays}
+                    numericOnly
+                    requirement="optional"
+                  />
                 </div>
               ) : null}
             </div>
 
             {enableUnitInvestment && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <ProductConfigInput label="Unit Amount" placeholder="Amount" value={unitAmount} onChange={(v) => handleCurrencyChange(v, setUnitAmount)} />
-                <ProductConfigInput label="Min Quantity" placeholder="Min Quantity" value={minQuantity} onChange={setMinQuantity} />
+                <ProductConfigInput
+                  label="Unit Amount"
+                  placeholder="Amount"
+                  value={unitAmount}
+                  onChange={(v) => handleCurrencyChange(v, setUnitAmount)}
+                  requirement="required"
+                />
+                <ProductConfigInput
+                  label="Min Quantity"
+                  placeholder="Min Quantity"
+                  value={minQuantity}
+                  onChange={setMinQuantity}
+                  requirement="required"
+                />
               </div>
             )}
           </div>
@@ -435,6 +522,7 @@ export default function ConfigureInvestmentDrawer({
                 placeholder="e.g Processing Fee"
                 value={chargeName}
                 onChange={setChargeName}
+                requirement="required"
               />
               <ProductConfigSelect
                 label="Fee Type"
@@ -442,8 +530,16 @@ export default function ConfigureInvestmentDrawer({
                 value={chargeFeeType}
                   options={feeTypeOptions}
                   onChange={handleChargeFeeTypeChange}
+                  requirement="required"
               />
-                <ProductConfigInput label="Value" placeholder="Enter Value" value={chargeValue} onChange={handleChargeValueChange} numericOnly />
+                <ProductConfigInput
+                  label="Value"
+                  placeholder="Enter Value"
+                  value={chargeValue}
+                  onChange={handleChargeValueChange}
+                  numericOnly
+                  requirement="required"
+                />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                 Add
               </Button>
@@ -480,26 +576,42 @@ export default function ConfigureInvestmentDrawer({
               label="Charge for Forceful Withdrawal"
               checked={chargeForcefulWithdrawal}
               onChange={setChargeForcefulWithdrawal}
+              requirement="optional"
             />
 
             {chargeForcefulWithdrawal && (
               <>
                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_0.9fr_0.85fr_1.25fr_auto]">
-                  <ProductConfigInput label="Name of Penalty" placeholder="e.g Processing Fee" value={penaltyName} onChange={setPenaltyName} />
+                  <ProductConfigInput
+                    label="Name of Penalty"
+                    placeholder="e.g Processing Fee"
+                    value={penaltyName}
+                    onChange={setPenaltyName}
+                    requirement="optional"
+                  />
                   <ProductConfigSelect
                     label="Type"
                     placeholder="Select Section"
                     value={penaltyType}
                     options={penaltyTypeOptions}
                     onChange={handlePenaltyTypeChange}
+                    requirement="optional"
                   />
-                  <ProductConfigInput label="Value" placeholder="Enter Value" value={penaltyValue} onChange={handlePenaltyValueChange} numericOnly />
+                  <ProductConfigInput
+                    label="Value"
+                    placeholder="Enter Value"
+                    value={penaltyValue}
+                    onChange={handlePenaltyValueChange}
+                    numericOnly
+                    requirement="optional"
+                  />
                   <ProductConfigSelect
                     label="Trigger Duration"
                     placeholder="Select Section"
                     value={penaltyTriggerDuration}
                     options={triggerDurationOptions}
                     onChange={setPenaltyTriggerDuration}
+                    requirement="optional"
                   />
                   <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                     Add
@@ -540,14 +652,21 @@ export default function ConfigureInvestmentDrawer({
             )}
 
             <div className="grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 sm:grid-cols-3">
-              <ProductConfigInput label="Contract ID" placeholder="Enter Contract ID" value={contractId} onChange={setContractId} />
+              <ProductConfigInput
+                label="Contract ID"
+                placeholder="Enter Contract ID"
+                value={contractId}
+                onChange={setContractId}
+                requirement="required"
+              />
               <ProductConfigInput
                 label="AirSign Secret Key"
                 placeholder="Enter secret key"
                 value={airSignSecretKey}
                 onChange={setAirSignSecretKey}
+                requirement="required"
               />
-              <ProductConfigInput label="AirSign UID" placeholder="Enter UID" value={airSignUid} onChange={setAirSignUid} />
+              <ProductConfigInput label="AirSign UID" placeholder="Enter UID" value={airSignUid} onChange={setAirSignUid} requirement="required" />
             </div>
           </div>
         )}

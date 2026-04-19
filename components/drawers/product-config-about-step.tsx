@@ -5,6 +5,12 @@ import { Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ProductConfigInput, ProductConfigSelect } from "@/components/drawers/product-config-form-fields"
 
+function requirementSuffix(requirement?: "required" | "optional") {
+  if (requirement === "required") return " (Required)"
+  if (requirement === "optional") return " (Optional)"
+  return ""
+}
+
 /** One row in the “add name + description” list (loan type, savings type, commodity type, etc.) */
 export interface ProductAboutTypeRow {
   name: string
@@ -62,6 +68,8 @@ export interface ProductConfigAboutStepProps {
 
   accentColor?: string
   className?: string
+  /** Marks About fields per merchant spec (default: all required). */
+  fieldRequirement?: "required" | "optional"
 }
 
 const TEXTAREA_CLASS =
@@ -107,6 +115,7 @@ export function ProductConfigAboutStep({
   previewOuterStyle = "dashed",
   accentColor = "#9A813F",
   className = "",
+  fieldRequirement = "required",
 }: ProductConfigAboutStepProps) {
   const previewInputRef = useRef<HTMLInputElement>(null)
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
@@ -135,18 +144,28 @@ export function ProductConfigAboutStep({
   return (
     <div className={`space-y-4 ${className}`.trim()}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <ProductConfigInput label={nameLabel} placeholder={namePlaceholder} value={name} onChange={onNameChange} />
+        <ProductConfigInput
+          label={nameLabel}
+          placeholder={namePlaceholder}
+          value={name}
+          onChange={onNameChange}
+          requirement={fieldRequirement}
+        />
         <ProductConfigSelect
           label={durationLabel}
           placeholder={durationPlaceholder}
           value={durationValue}
           options={durationOptions}
           onChange={onDurationChange}
+          requirement={fieldRequirement}
         />
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">{descriptionLabel}</label>
+        <label className="block text-sm font-medium text-gray-700">
+          {descriptionLabel}
+          <span className="font-normal text-gray-500">{requirementSuffix(fieldRequirement)}</span>
+        </label>
         <textarea
           value={description}
           onChange={(ev) => onDescriptionChange(ev.target.value)}
@@ -157,7 +176,10 @@ export function ProductConfigAboutStep({
       </div>
 
       <div className="space-y-3">
-        <label className="block text-sm font-medium text-gray-700">{typeSectionLabel}</label>
+        <label className="block text-sm font-medium text-gray-700">
+          {typeSectionLabel}
+          <span className="font-normal text-gray-500">{requirementSuffix(fieldRequirement)}</span>
+        </label>
         {typeInputMode === "select" ? (
           <ProductConfigSelect
             label=""
@@ -165,11 +187,24 @@ export function ProductConfigAboutStep({
             value={typeSelectedValue}
             options={typeSelectOptions}
             onChange={(value) => onTypeSelectedValueChange?.(value)}
+            requirement={fieldRequirement}
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
-            <ProductConfigInput label="" placeholder="Enter Name" value={typeNameDraft} onChange={onTypeNameDraftChange} />
-            <ProductConfigInput label="" placeholder="Enter Description" value={typeDescDraft} onChange={onTypeDescDraftChange} />
+            <ProductConfigInput
+              label="Type name"
+              placeholder="Enter Name"
+              value={typeNameDraft}
+              onChange={onTypeNameDraftChange}
+              requirement={fieldRequirement}
+            />
+            <ProductConfigInput
+              label="Type description"
+              placeholder="Enter Description"
+              value={typeDescDraft}
+              onChange={onTypeDescDraftChange}
+              requirement={fieldRequirement}
+            />
             <Button
               type="button"
               onClick={onAddType}
@@ -210,7 +245,10 @@ export function ProductConfigAboutStep({
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">Preview Image</label>
+        <label className="block text-sm font-medium text-gray-700">
+          Preview Image
+          <span className="font-normal text-gray-500">{requirementSuffix(fieldRequirement)}</span>
+        </label>
         <div className={`flex flex-col gap-3 sm:flex-row sm:items-stretch ${outerPreviewClass}`}>
           <div className="flex flex-1 flex-col justify-center gap-2 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center">
             <Upload className="shrink-0 text-gray-500" size={18} />

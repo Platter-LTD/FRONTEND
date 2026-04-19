@@ -15,6 +15,7 @@ import {
   ProductConfigTabs,
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
+import { validateAllCommoditySteps, validateCommodityStep } from "@/lib/productConfigureStepValidation"
 
 interface ConfigureCommodityDrawerProps {
   isOpen: boolean
@@ -150,6 +151,7 @@ export default function ConfigureCommodityDrawer({
   const [priceDate, setPriceDate] = useState("")
   const [priceSource, setPriceSource] = useState("")
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
+  const [stepErrors, setStepErrors] = useState<string[]>([])
 
   const resetForm = useCallback(() => {
     setStep(1)
@@ -175,7 +177,12 @@ export default function ConfigureCommodityDrawer({
     setForcefulWithdrawal(true)
     setPenalties([])
     setPriceRows([])
+    setStepErrors([])
   }, [commodityData?.name, commodityData?.description])
+
+  useEffect(() => {
+    setStepErrors([])
+  }, [step])
 
   useEffect(() => {
     if (isOpen) resetForm()
@@ -313,11 +320,48 @@ export default function ConfigureCommodityDrawer({
     if (step > 1) setStep((s) => s - 1)
   }
 
+  const commodityValidationBase = () => ({
+    isInvestment,
+    name,
+    duration,
+    description,
+    typeRows,
+    previewImage,
+    yieldMethod,
+    offerYieldOn,
+    offerYieldValue,
+    withdrawalFlexibility,
+    unitAmount: removeCommas(unitAmount),
+    minQuantityPurchase,
+    maxAmount: removeCommas(maxAmount),
+    termsAndConditions,
+    moratoriumEnabled,
+    moratoriumDays,
+    contractId,
+    airSignSecretKey,
+    airSignUid,
+    charges,
+    priceRows: priceRows.map((r) => ({ price: r.price, date: r.date, source: r.source })),
+  })
+
   const handleNext = async () => {
     if (step < steps.length) {
+      const { ok, errors } = validateCommodityStep({ step, ...commodityValidationBase() })
+      if (!ok) {
+        setStepErrors(errors)
+        return
+      }
+      setStepErrors([])
       setStep((s) => s + 1)
       return
     }
+
+    const all = validateAllCommoditySteps(commodityValidationBase())
+    if (!all.ok) {
+      setStepErrors(all.errors)
+      return
+    }
+    setStepErrors([])
 
     const previewPayload = previewImage
       ? {
@@ -415,6 +459,20 @@ export default function ConfigureCommodityDrawer({
       <div className="mx-auto w-full">
         <ProductConfigTabs steps={[...steps]} activeStep={step} onStepChange={setStep} />
 
+        {stepErrors.length > 0 ? (
+          <div
+            className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+            role="alert"
+          >
+            <p className="mb-2 font-medium">Please fix the following before continuing:</p>
+            <ul className="list-inside list-disc space-y-1">
+              {stepErrors.map((msg) => (
+                <li key={msg}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {step === 1 && (
           <ProductConfigAboutStep
             idPrefix={isInvestment ? "investment-commodity" : "commodity"}
@@ -449,11 +507,13 @@ export default function ConfigureCommodityDrawer({
                 value={yieldMethod}
                 options={yieldMethodOptions}
                 onChange={setYieldMethod}
+                requirement="required"
               />
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <label htmlFor="offer-yield" className="text-sm font-medium text-gray-700">
                     {offerYieldLabel}
+                    <span className="font-normal text-gray-500"> (Optional)</span>
                   </label>
                   <Switch
                     id="offer-yield"
@@ -464,11 +524,12 @@ export default function ConfigureCommodityDrawer({
                 </div>
                 {offerYieldOn ? (
                   <ProductConfigInput
-                    label=""
+                    label="Offer yield value"
                     placeholder="e.g 10%"
                     value={offerYieldValue}
                     onChange={handleOfferYieldValueChange}
                     numericOnly
+                    requirement="required"
                   />
                 ) : null}
               </div>
@@ -481,26 +542,39 @@ export default function ConfigureCommodityDrawer({
                 value={withdrawalFlexibility}
                 options={withdrawalFlexibilityOptions}
                 onChange={setWithdrawalFlexibility}
+                requirement="required"
               />
               <ProductConfigInput
                 label="Unit Amount"
                 placeholder="e.g N10,000"
                 value={unitAmount}
                 onChange={(v) => handleCurrencyChange(v, setUnitAmount)}
+                requirement="required"
               />
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <ProductConfigInput label="Min Quantity Purchase" placeholder="Min Quantity" value={minQuantityPurchase} onChange={setMinQuantityPurchase} numericOnly />
+              <ProductConfigInput
+                label="Min Quantity Purchase"
+                placeholder="Min Quantity"
+                value={minQuantityPurchase}
+                onChange={setMinQuantityPurchase}
+                numericOnly
+                requirement="required"
+              />
               <ProductConfigInput
                 label="Max Amount"
                 placeholder="Max Amount"
                 value={maxAmount}
                 onChange={(v) => handleCurrencyChange(v, setMaxAmount)}
+                requirement="required"
               />
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">{termsLabel}</label>
+              <label className="block text-sm font-medium text-gray-700">
+                {termsLabel}
+                <span className="font-normal text-gray-500"> (Required)</span>
+              </label>
               <textarea
                 value={termsAndConditions}
                 onChange={(e) => setTermsAndConditions(e.target.value)}
@@ -510,34 +584,43 @@ export default function ConfigureCommodityDrawer({
               />
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-3">
-                <Switch
-                  id="commodity-moratorium"
-                  checked={moratoriumEnabled}
-                  onCheckedChange={setMoratoriumEnabled}
-                  className="h-5 w-9 shrink-0 data-[state=checked]:bg-[#9A813F] data-[state=unchecked]:bg-slate-200"
-                />
-                <label htmlFor="commodity-moratorium" className="text-sm font-medium text-gray-700">
-                  Moratorium
-                </label>
-              </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <ProductConfigToggle
+                id="commodity-moratorium"
+                label="Moratorium (minimum holding period)"
+                checked={moratoriumEnabled}
+                onChange={setMoratoriumEnabled}
+                requirement="optional"
+              />
               <div className="w-full sm:max-w-xs">
                 <ProductConfigInput
-                  label=""
+                  label="Holding period (days)"
                   placeholder="Enter days"
                   value={moratoriumDays}
                   onChange={setMoratoriumDays}
                   numericOnly
                   disabled={!moratoriumEnabled}
+                  requirement="optional"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <ProductConfigInput label="Contract ID" placeholder="Enter Contract ID" value={contractId} onChange={setContractId} />
-              <ProductConfigInput label="AirSign Secret Key" placeholder="Enter secret key" value={airSignSecretKey} onChange={setAirSignSecretKey} />
-              <ProductConfigInput label="AirSign UID" placeholder="Enter UID" value={airSignUid} onChange={setAirSignUid} />
+              <ProductConfigInput
+                label="Contract ID"
+                placeholder="Enter Contract ID"
+                value={contractId}
+                onChange={setContractId}
+                requirement="required"
+              />
+              <ProductConfigInput
+                label="AirSign Secret Key"
+                placeholder="Enter secret key"
+                value={airSignSecretKey}
+                onChange={setAirSignSecretKey}
+                requirement="required"
+              />
+              <ProductConfigInput label="AirSign UID" placeholder="Enter UID" value={airSignUid} onChange={setAirSignUid} requirement="required" />
             </div>
           </div>
         )}
@@ -545,15 +628,29 @@ export default function ConfigureCommodityDrawer({
         {step === 3 && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
-              <ProductConfigInput label="Name of Charge or Fee" placeholder="e.g Processing Fee" value={chargeName} onChange={setChargeName} />
+              <ProductConfigInput
+                label="Name of Charge or Fee"
+                placeholder="e.g Processing Fee"
+                value={chargeName}
+                onChange={setChargeName}
+                requirement="required"
+              />
               <ProductConfigSelect
                 label="Fee Type"
                 placeholder="Select Section"
                 value={chargeFeeType}
                   options={feeTypeOptions}
                   onChange={handleChargeFeeTypeChange}
+                  requirement="required"
               />
-              <ProductConfigInput label="Value" placeholder="Enter Value" value={chargeValue} onChange={handleChargeValueChange} numericOnly />
+              <ProductConfigInput
+                label="Value"
+                placeholder="Enter Value"
+                value={chargeValue}
+                onChange={handleChargeValueChange}
+                numericOnly
+                requirement="required"
+              />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                 Add
               </Button>
@@ -582,26 +679,47 @@ export default function ConfigureCommodityDrawer({
               </div>
             )}
 
-            <ProductConfigToggle id="commodity-forceful" label="Charge for Forceful Withdrawal" checked={forcefulWithdrawal} onChange={setForcefulWithdrawal} />
+            <ProductConfigToggle
+              id="commodity-forceful"
+              label="Charge for Forceful Withdrawal"
+              checked={forcefulWithdrawal}
+              onChange={setForcefulWithdrawal}
+              requirement="optional"
+            />
 
             {forcefulWithdrawal && (
               <>
                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_0.9fr_0.85fr_1.25fr_auto]">
-                  <ProductConfigInput label="Name of Penalty" placeholder="e.g Processing Fee" value={penaltyName} onChange={setPenaltyName} />
+                  <ProductConfigInput
+                    label="Name of Penalty"
+                    placeholder="e.g Processing Fee"
+                    value={penaltyName}
+                    onChange={setPenaltyName}
+                    requirement="optional"
+                  />
                   <ProductConfigSelect
                     label="Type"
                     placeholder="Select Section"
                     value={penaltyType}
                     options={penaltyTypeOptions}
                     onChange={handlePenaltyTypeChange}
+                    requirement="optional"
                   />
-                  <ProductConfigInput label="Value" placeholder="Enter Value" value={penaltyValue} onChange={handlePenaltyValueChange} numericOnly />
+                  <ProductConfigInput
+                    label="Value"
+                    placeholder="Enter Value"
+                    value={penaltyValue}
+                    onChange={handlePenaltyValueChange}
+                    numericOnly
+                    requirement="optional"
+                  />
                   <ProductConfigSelect
                     label="Trigger Duration"
                     placeholder="Select Section"
                     value={penaltyTriggerDuration}
                     options={triggerDurationOptions}
                     onChange={setPenaltyTriggerDuration}
+                    requirement="optional"
                   />
                   <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                     Add
@@ -649,9 +767,13 @@ export default function ConfigureCommodityDrawer({
                 value={priceDraft}
                 onChange={setPriceDraft}
                 numericOnly
+                requirement="required"
               />
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">Select Date</label>
+                <label className="block text-sm font-medium text-gray-700">
+                  Select Date
+                  <span className="font-normal text-gray-500"> (Required)</span>
+                </label>
                 <input
                   type="date"
                   value={priceDate}
@@ -659,7 +781,7 @@ export default function ConfigureCommodityDrawer({
                   className="h-10 w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
                 />
               </div>
-              <ProductConfigInput label="Source" placeholder="Enter Value" value={priceSource} onChange={setPriceSource} />
+              <ProductConfigInput label="Source" placeholder="Enter Value" value={priceSource} onChange={setPriceSource} requirement="required" />
               <Button type="button" onClick={addPriceRow} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                 Add
               </Button>

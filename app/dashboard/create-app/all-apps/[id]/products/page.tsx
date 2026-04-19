@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Plus, Package, ExternalLink, AlertCircle, RefreshCw, Loader2 } from "lucide-react"
+import { Plus, Package, ExternalLink, AlertCircle, RefreshCw, Loader2, MoreVertical, Pencil, Trash2 } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
@@ -21,6 +21,12 @@ import SavingsCreatedSuccessDrawer from "@/components/drawers/savings-created-su
 import CommodityCreatedSuccessDrawer from "@/components/drawers/commodity-created-success-drawer"
 import { productApi } from "@/lib/services/product-api"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   prefetchLoanConfigureOptions,
   prefetchMortgageConfigureOptions,
@@ -478,6 +484,26 @@ export default function ProductsPage() {
     router.push(`/dashboard/create-app/all-apps/${appId}/products/${productType.toLowerCase()}/${productId}`)
   }
 
+  const handleEditProductFromMenu = (product: { id: string; type: string; status?: string }) => {
+    const st = String(product.status ?? "").toLowerCase()
+    if (st === "incomplete") {
+      void handleConfigureProduct(product.id, product.type)
+    } else {
+      handleProductClick(product.id, product.type)
+    }
+  }
+
+  const handleDeleteProductFromMenu = async (productId: string) => {
+    if (!confirm("Delete this product? This cannot be undone.")) return
+    try {
+      await productApi.deleteProduct(productId)
+      await fetchProducts()
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : "Failed to delete product. Please try again.")
+    }
+  }
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -522,7 +548,7 @@ export default function ProductsPage() {
       {/* Products Table */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         {loading ? (
-          <TableSkeleton columnCount={6} rowCount={5} />
+          <TableSkeleton columnCount={7} rowCount={5} />
         ) : error ? (
           <div className="text-center py-12 px-4">
             <AlertCircle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
@@ -576,6 +602,7 @@ export default function ProductsPage() {
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Customers</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Date Created</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Action</th>
+                  <th className="w-12 py-3 px-2 text-right font-medium text-gray-900" aria-label="More actions" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -605,8 +632,8 @@ export default function ProductsPage() {
                     <td className="py-3 px-4 text-gray-600">
                       {product.createdAt ? new Date(product.createdAt).toLocaleDateString() : 'N/A'}
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-4">
+                    <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-wrap items-center gap-4">
                         <button
                           onClick={(e) => {
                             e.stopPropagation()
@@ -637,6 +664,36 @@ export default function ProductsPage() {
                           </button>
                         )}
                       </div>
+                    </td>
+                    <td className="py-3 px-2 text-right" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-600 hover:bg-gray-100"
+                            aria-label="Product actions"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="gap-2"
+                            onClick={() => handleEditProductFromMenu(product)}
+                            disabled={prefetchingProductId === product.id}
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Edit product
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="gap-2 text-red-600 focus:text-red-600"
+                            onClick={() => void handleDeleteProductFromMenu(product.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            Delete product
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))}

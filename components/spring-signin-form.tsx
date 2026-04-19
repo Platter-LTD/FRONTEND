@@ -94,7 +94,7 @@ export function SpringSigninForm() {
                             placeholder="Email"
                             value={formData.email}
                             onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-                            className="h-14 bg-white border-gray-200 focus:border-[#7C3AED] focus:ring-[#7C3AED]/20 rounded-lg text-base"
+                            className="h-14 rounded-lg border-gray-200 bg-white px-4 text-base focus:border-[#7C3AED] focus:ring-[#7C3AED]/20"
                             required
                             disabled={isSubmitting || rateLimited}
                         />
@@ -108,7 +108,7 @@ export function SpringSigninForm() {
                                 placeholder="Password"
                                 value={formData.password}
                                 onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
-                                className="h-14 bg-white border-gray-200 focus:border-[#7C3AED] focus:ring-[#7C3AED]/20 rounded-lg pr-10 text-base"
+                                className="h-14 rounded-lg border-gray-200 bg-white px-4 pr-11 text-base focus:border-[#7C3AED] focus:ring-[#7C3AED]/20"
                                 required
                                 disabled={isSubmitting || rateLimited}
                             />

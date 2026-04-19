@@ -28,6 +28,7 @@ export default function ProductTypeListPage() {
   const appId = params.id as string
   const [products, setProducts] = useState<any[]>([])
   const [activations, setActivations] = useState<{ [key: string]: boolean }>({})
+  const [pendingToggles, setPendingToggles] = useState<{ [key: string]: boolean }>({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -57,9 +58,13 @@ export default function ProductTypeListPage() {
 
       const activationMap: { [key: string]: boolean } = {}
       appRows.forEach((row: any) => {
-        const pid = row.productId ?? row.id
+        const pid = row.productId ?? row.id ?? row._id
         if (pid) {
-          activationMap[String(pid)] = row.isActive !== false && row.isActive !== "inactive"
+          const active = row.isActive !== false && row.isActive !== "inactive"
+          activationMap[String(pid)] = active
+          if (row.id) activationMap[String(row.id)] = active
+          if (row._id) activationMap[String(row._id)] = active
+          if (row.productId) activationMap[String(row.productId)] = active
         }
       })
       setActivations(activationMap)
@@ -99,18 +104,27 @@ export default function ProductTypeListPage() {
     return productType.charAt(0).toUpperCase() + productType.slice(1)
   }
 
-  const handleToggleActivation = async (productId: string, currentState: boolean) => {
+  const handleToggleActivation = async (toggleId: string, rowId: string, currentState: boolean) => {
     try {
       const newState = !currentState
-      await productApi.toggleAppProductActivation(appId, productId, newState)
+      setPendingToggles((prev) => ({ ...prev, [toggleId]: true }))
+
+      await productApi.toggleAppProductActivation(appId, toggleId, newState)
 
       setActivations((prev) => ({
         ...prev,
-        [productId]: newState,
+        [toggleId]: newState,
+        [rowId]: newState,
       }))
     } catch (error) {
       console.error("Error toggling product activation:", error)
       alert("Failed to toggle product activation. Please try again.")
+    } finally {
+      setPendingToggles((prev) => {
+        const next = { ...prev }
+        delete next[toggleId]
+        return next
+      })
     }
   }
 
@@ -175,7 +189,9 @@ export default function ProductTypeListPage() {
             <tbody className="divide-y divide-gray-200">
               {products.map((product) => {
                 const id = productRowId(product)
-                const isActive = activations[id] || false
+                const toggleId = String(product?.productId ?? id)
+                const isActive = Boolean(activations[toggleId] ?? activations[id] ?? false)
+                const isPending = Boolean(pendingToggles[toggleId])
                 return (
                   <tr
                     key={id || product.name}
@@ -207,11 +223,12 @@ export default function ProductTypeListPage() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (id) void handleToggleActivation(id, isActive)
+                          if (!isPending && toggleId) void handleToggleActivation(toggleId, id, isActive)
                         }}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                           isActive ? "bg-[#9A813F]" : "bg-gray-200"
                         }`}
+                        disabled={isPending}
                         aria-label={isActive ? "Deactivate for app" : "Activate for app"}
                       >
                         <span

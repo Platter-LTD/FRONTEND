@@ -140,7 +140,7 @@ export function SigninForm() {
               placeholder="Email"
               value={formData.email}
               onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-              className="w-full h-14"
+              className="h-14 w-full px-4"
               required
               disabled={rateLimited}
             />
@@ -156,7 +156,7 @@ export function SigninForm() {
               placeholder="Password"
               value={formData.password}
               onChange={(e) => setFormData((prev) => ({ ...prev, password: e.target.value }))}
-              className="w-full h-14"
+              className="h-14 w-full px-4 pr-11"
               required
               disabled={rateLimited}
             />
