@@ -93,6 +93,10 @@ function classifyEquityRequirementMode(selected: string): "zero" | "fixed" | "pe
   return "none"
 }
 
+function asBool(value: unknown) {
+  return value === true || value === "true" || value === 1 || value === "1"
+}
+
 export default function ConfigureMortgageDrawer({
   isOpen,
   onClose,
@@ -321,6 +325,60 @@ export default function ConfigureMortgageDrawer({
   useEffect(() => {
     setStepErrors([])
   }, [step])
+
+  useEffect(() => {
+    if (!isOpen || !mortgageData) return
+    const about = (mortgageData.about ?? {}) as Record<string, any>
+    const structure = (mortgageData.structure ?? {}) as Record<string, any>
+    const requirements = (mortgageData.requirements ?? {}) as Record<string, any>
+    const fees = (mortgageData.feesAndCharges ?? {}) as Record<string, any>
+
+    setName(String(mortgageData.name ?? ""))
+    setTenure(String(mortgageData.tenure ?? about.tenure ?? ""))
+    setDescription(String(mortgageData.description ?? ""))
+    const mt = Array.isArray(mortgageData.mortgageTypes ?? about.mortgageTypes)
+      ? (mortgageData.mortgageTypes ?? about.mortgageTypes)
+      : []
+    setSelectedMortgageType(String(mt[0]?.name ?? ""))
+
+    setInterestRate(String(mortgageData.interestRate ?? structure.interestRate ?? ""))
+    setInterestMethod(String(mortgageData.interestMethod ?? structure.interestMethod ?? ""))
+    setAllowMoratorium(asBool(mortgageData.allowMoratorium ?? structure.allowMoratorium))
+    setMoratoriumSelectDuration(String(mortgageData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? ""))
+    setMoratoriumDurationOf(String(mortgageData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""))
+    setMoratoriumType(String(mortgageData.moratoriumType ?? structure.moratoriumType ?? ""))
+    setRepaymentWorkflow(String(mortgageData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0]))
+    setMinLoanAmount(String(mortgageData.minLoanAmount ?? structure.minLoanAmount ?? ""))
+    setMaxLoanAmount(String(mortgageData.maxLoanAmount ?? structure.maxLoanAmount ?? ""))
+    setRepaymentSchedule(String(mortgageData.repaymentSchedule ?? structure.repaymentSchedule ?? ""))
+    setAmortizationSchedule(String(mortgageData.amortizationSchedule ?? structure.amortizationSchedule ?? ""))
+    setRepaymentFrequency(String(mortgageData.repaymentFrequency ?? structure.repaymentFrequency ?? ""))
+    setAcceptableNpa(String(mortgageData.acceptableNpa ?? structure.acceptableNpa ?? ""))
+    setEquityRequirement(String(mortgageData.equityRequirement ?? structure.equityRequirement ?? ""))
+    setEquityFixedAmount(String(mortgageData.equityFixedAmount ?? structure.equityFixedAmount ?? ""))
+    setEquityPercentage(String(mortgageData.equityPercentage ?? structure.equityPercentage ?? ""))
+
+    setSelectedSecurities(
+      Array.isArray(mortgageData.securityRequirements ?? requirements.securityRequirements)
+        ? (mortgageData.securityRequirements ?? requirements.securityRequirements).map((x: any) => String(x))
+        : [],
+    )
+    setOtherRequirements(
+      Array.isArray(mortgageData.otherRequirements ?? requirements.otherRequirements)
+        ? (mortgageData.otherRequirements ?? requirements.otherRequirements)
+        : [],
+    )
+    setContractId(String(mortgageData.contractId ?? structure.contractId ?? ""))
+    setAirSignSecretKey(String(mortgageData.airSignSecretKey ?? structure.airSignSecretKey ?? ""))
+    setAirSignUid(String(mortgageData.airSignUid ?? structure.airSignUid ?? ""))
+    setCharges(Array.isArray(mortgageData.charges ?? fees.charges) ? (mortgageData.charges ?? fees.charges) : [])
+    setDeductChargesOnLoan(asBool(mortgageData.deductChargesOnLoan ?? fees.deductChargesOnLoan))
+    setCustomerPayChargesBeforeDisbursement(
+      asBool(mortgageData.customerPayChargesBeforeDisbursement ?? fees.customerPayChargesBeforeDisbursement),
+    )
+    setEnableLateRepaymentCharges(asBool(mortgageData.enableLateRepaymentCharges ?? fees.enableLateRepaymentCharges))
+    setPenalties(Array.isArray(mortgageData.penalties ?? fees.penalties) ? (mortgageData.penalties ?? fees.penalties) : [])
+  }, [isOpen, mortgageData])
 
   useEffect(() => {
     if (!isOpen) return
@@ -762,6 +820,8 @@ export default function ConfigureMortgageDrawer({
             typeSelectedValue={selectedMortgageType}
             onTypeSelectedValueChange={setSelectedMortgageType}
             previewFile={previewImage}
+            previewLabel={String(mortgageData?.previewImage?.fileName ?? mortgageData?.previewImageName ?? "")}
+            previewImageUrl={String(mortgageData?.previewImage?.url ?? mortgageData?.previewImageUrl ?? "")}
             onPreviewFileChange={setPreviewImage}
           />
         )}

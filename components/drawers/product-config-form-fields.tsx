@@ -102,6 +102,16 @@ interface ProductConfigSelectProps {
   requirement?: "required" | "optional"
 }
 
+function normalizeOptionToken(input: string) {
+  return input
+    .toLowerCase()
+    .replace(/->/g, " ")
+    .replace(/[()%]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
 export function ProductConfigSelect({
   label,
   placeholder,
@@ -110,6 +120,14 @@ export function ProductConfigSelect({
   onChange,
   requirement,
 }: ProductConfigSelectProps) {
+  const resolvedValue = (() => {
+    if (!value) return ""
+    if (options.includes(value)) return value
+    const target = normalizeOptionToken(value)
+    const match = options.find((option) => normalizeOptionToken(option) === target)
+    return match ?? ""
+  })()
+
   return (
     <div className="min-w-0 w-full space-y-2">
       {label.trim() ? (
@@ -118,7 +136,7 @@ export function ProductConfigSelect({
           <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
         </label>
       ) : null}
-      <Select value={value} onValueChange={onChange}>
+      <Select value={resolvedValue} onValueChange={onChange}>
         <SelectTrigger
           className="h-10 min-w-0 w-full max-w-full data-[size=default]:h-10 rounded-md border border-[#e5e7eb] bg-white px-3 py-0 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 shadow-none"
         >

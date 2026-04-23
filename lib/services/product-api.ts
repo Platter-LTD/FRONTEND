@@ -369,9 +369,10 @@ export const productApi = {
 
   // Update product
   async updateProduct(productId: string, updates: any) {
-    const response = await fetch(`/api/product/${productId}`, {
+    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
+      credentials: 'include',
       body: JSON.stringify(updates),
     });
 
@@ -379,6 +380,24 @@ export const productApi = {
 
     if (!response.ok) {
       throw new Error(data.error || 'Failed to update product');
+    }
+
+    return data;
+  },
+
+  // Manage product (status-gated edit path for complete products)
+  async manageProduct(productId: string, updates: any) {
+    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}/manage`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify(updates),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to manage product');
     }
 
     return data;
@@ -414,9 +433,29 @@ export const productApi = {
   // Create or update product configuration
   async saveProductConfiguration(productId: string, productType: string, configuration: any) {
     const payload = buildConfigurationPayload(productType, configuration);
-    const response = await fetch(`/api/product/${encodeURIComponent(productId)}`, {
+    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to save configuration');
+    }
+
+    return data;
+  },
+
+  // Save configuration through /manage endpoint (for complete products)
+  async saveProductConfigurationWithManage(productId: string, productType: string, configuration: any) {
+    const payload = buildConfigurationPayload(productType, configuration);
+    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}/manage`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      credentials: 'include',
       body: JSON.stringify(payload),
     });
 

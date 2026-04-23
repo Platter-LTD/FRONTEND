@@ -62,6 +62,10 @@ export interface ProductConfigAboutStepProps {
 
   previewFile: File | null
   onPreviewFileChange: (file: File | null) => void
+  /** Existing backend file name when editing (no local File yet). */
+  previewLabel?: string
+  /** Existing backend image URL when editing (optional). */
+  previewImageUrl?: string
   showPreviewThumbnail?: boolean
   /** Outer preview container border */
   previewOuterStyle?: "dashed" | "solid"
@@ -111,6 +115,8 @@ export function ProductConfigAboutStep({
   addMoreLabel = "Add More",
   previewFile,
   onPreviewFileChange,
+  previewLabel = "",
+  previewImageUrl = "",
   showPreviewThumbnail = true,
   previewOuterStyle = "dashed",
   accentColor = "#9A813F",
@@ -253,7 +259,7 @@ export function ProductConfigAboutStep({
           <div className="flex flex-1 flex-col justify-center gap-2 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center">
             <Upload className="shrink-0 text-gray-500" size={18} />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-700">{previewFile?.name || "Add image"}</p>
+              <p className="text-sm font-medium text-gray-700">{previewFile?.name || previewLabel || "Add image"}</p>
               <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
             </div>
             <input ref={previewInputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handlePreviewInput} />
@@ -271,6 +277,9 @@ export function ProductConfigAboutStep({
               {thumbUrl && previewFile?.type.startsWith("image/") ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={thumbUrl} alt="" className="h-full w-full object-cover" />
+              ) : previewImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={previewImageUrl} alt="" className="h-full w-full object-cover" />
               ) : (
                 <span className="px-1 text-center text-[10px] text-gray-400">Preview</span>
               )}

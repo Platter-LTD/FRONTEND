@@ -68,6 +68,10 @@ function classifyEquityRequirementMode(selected: string): "zero" | "fixed" | "pe
   return "none"
 }
 
+function asBool(value: unknown) {
+  return value === true || value === "true" || value === 1 || value === "1"
+}
+
 export default function ConfigureLoanDrawer({
   isOpen,
   onClose,
@@ -264,6 +268,61 @@ export default function ConfigureLoanDrawer({
     }
     loadOptions()
   }, [isOpen, prefetchedOptions])
+
+  useEffect(() => {
+    if (!isOpen || !loanData) return
+    const about = (loanData.about ?? {}) as Record<string, any>
+    const structure = (loanData.structure ?? {}) as Record<string, any>
+    const requirements = (loanData.requirements ?? {}) as Record<string, any>
+    const fees = (loanData.feesAndCharges ?? {}) as Record<string, any>
+
+    setName(String(loanData.name ?? ""))
+    setTenure(String(loanData.tenure ?? about.tenure ?? ""))
+    setDescription(String(loanData.description ?? ""))
+    setLoanTypes(
+      Array.isArray(loanData.loanTypes ?? about.loanTypes)
+        ? (loanData.loanTypes ?? about.loanTypes).map((t: any) => ({
+            name: String(t?.name ?? ""),
+            description: String(t?.description ?? ""),
+          }))
+        : [],
+    )
+
+    setInterestRate(String(loanData.interestRate ?? structure.interestRate ?? ""))
+    setInterestMethod(String(loanData.interestMethod ?? structure.interestMethod ?? ""))
+    const allowMoratoriumValue = asBool(loanData.allowMoratorium ?? structure.allowMoratorium)
+    setAllowMoratorium(allowMoratoriumValue)
+    setMoratoriumSelectDuration(String(loanData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? ""))
+    setMoratoriumDurationOf(String(loanData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""))
+    setMoratoriumType(String(loanData.moratoriumType ?? structure.moratoriumType ?? ""))
+    setRepaymentWorkflow(String(loanData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0]))
+    setMinLoanAmount(String(loanData.minLoanAmount ?? structure.minLoanAmount ?? ""))
+    setMaxLoanAmount(String(loanData.maxLoanAmount ?? structure.maxLoanAmount ?? ""))
+    setRepaymentSchedule(String(loanData.repaymentSchedule ?? structure.repaymentSchedule ?? ""))
+    setAmortizationSchedule(String(loanData.amortizationSchedule ?? structure.amortizationSchedule ?? ""))
+    setRepaymentFrequency(String(loanData.repaymentFrequency ?? structure.repaymentFrequency ?? ""))
+    setAcceptableNpa(String(loanData.acceptableNpa ?? structure.acceptableNpa ?? ""))
+    setEquityRequirement(String(loanData.equityRequirement ?? structure.equityRequirement ?? ""))
+    setEquityFixedAmount(String(loanData.equityFixedAmount ?? structure.equityFixedAmount ?? ""))
+    setEquityPercentage(String(loanData.equityPercentage ?? structure.equityPercentage ?? ""))
+
+    setSelectedSecurities(
+      Array.isArray(loanData.securityRequirements ?? requirements.securityRequirements)
+        ? (loanData.securityRequirements ?? requirements.securityRequirements).map((x: any) => String(x))
+        : [],
+    )
+    setOtherRequirements(
+      Array.isArray(loanData.otherRequirements ?? requirements.otherRequirements)
+        ? (loanData.otherRequirements ?? requirements.otherRequirements)
+        : [],
+    )
+    setCharges(Array.isArray(loanData.charges ?? fees.charges) ? (loanData.charges ?? fees.charges) : [])
+    setChargePaymentMode(
+      (loanData.chargePaymentMode ?? fees.chargePaymentMode) === "customer-pay" ? "customer-pay" : "deduct",
+    )
+    setEnableLateRepaymentCharges(asBool(loanData.enableLateRepaymentCharges ?? fees.enableLateRepaymentCharges))
+    setPenalties(Array.isArray(loanData.penalties ?? fees.penalties) ? (loanData.penalties ?? fees.penalties) : [])
+  }, [isOpen, loanData])
 
   const addLoanType = () => {
     if (!loanTypeName.trim() || !loanTypeDescription.trim()) return
@@ -512,6 +571,8 @@ export default function ConfigureLoanDrawer({
           onAddType={addLoanType}
           typeRows={loanTypes}
           previewFile={previewImage}
+          previewLabel={String(loanData?.previewImage?.fileName ?? loanData?.previewImageName ?? "")}
+          previewImageUrl={String(loanData?.previewImage?.url ?? loanData?.previewImageUrl ?? "")}
           onPreviewFileChange={setPreviewImage}
         />
       )}

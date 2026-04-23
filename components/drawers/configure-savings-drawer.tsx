@@ -53,6 +53,10 @@ interface WithdrawalPenaltyItem {
   triggerDuration: string
 }
 
+function asBool(value: unknown) {
+  return value === true || value === "true" || value === 1 || value === "1"
+}
+
 export default function ConfigureSavingsDrawer({
   isOpen,
   onClose,
@@ -182,6 +186,44 @@ export default function ConfigureSavingsDrawer({
     }
     fetchOptions()
   }, [isOpen, prefetchedOptions])
+
+  useEffect(() => {
+    if (!isOpen || !savingsData) return
+    const about = (savingsData.about ?? {}) as Record<string, any>
+    const structure = (savingsData.structure ?? {}) as Record<string, any>
+    const fees = (savingsData.feesAndCharges ?? {}) as Record<string, any>
+
+    setName(String(savingsData.name ?? ""))
+    setDurationOfSavings(String(savingsData.durationOfSavings ?? savingsData.duration ?? about.tenure ?? ""))
+    setDescription(String(savingsData.description ?? ""))
+    setSavingsTypes(
+      Array.isArray(savingsData.savingsTypes ?? about.savingsTypes)
+        ? (savingsData.savingsTypes ?? about.savingsTypes).map((t: any) => ({
+            name: String(t?.name ?? ""),
+            description: String(t?.description ?? ""),
+          }))
+        : [],
+    )
+
+    setInterestRate(String(savingsData.interestRate ?? structure.interestRate ?? ""))
+    setInterestMethod(String(savingsData.interestMethod ?? structure.interestMethod ?? ""))
+    setSavingsType(String(savingsData.savingsType ?? structure.savingsType ?? ""))
+    setWithdrawalFlexibility(String(savingsData.withdrawalFlexibility ?? structure.withdrawalFlexibility ?? ""))
+    setMinSavingsAmount(String(savingsData.minSavingsAmount ?? structure.minSavingsAmount ?? ""))
+    setMaxSavingsAmount(String(savingsData.maxSavingsAmount ?? structure.maxSavingsAmount ?? ""))
+    setTermsAndConditions(String(savingsData.termsAndConditions ?? structure.termsAndConditions ?? ""))
+    setContractId(String(savingsData.contractId ?? structure.contractId ?? ""))
+    setAirSignSecretKey(String(savingsData.airSignSecretKey ?? structure.airSignSecretKey ?? ""))
+    setAirSignUid(String(savingsData.airSignUid ?? structure.airSignUid ?? ""))
+
+    setCharges(Array.isArray(savingsData.charges ?? fees.charges) ? (savingsData.charges ?? fees.charges) : [])
+    setChargeForcefulWithdrawal(asBool(savingsData.chargeForcefulWithdrawal ?? fees.chargeForcefulWithdrawal))
+    setWithdrawalPenalties(
+      Array.isArray(savingsData.withdrawalPenalties ?? fees.penalties)
+        ? (savingsData.withdrawalPenalties ?? fees.penalties)
+        : [],
+    )
+  }, [isOpen, savingsData])
 
   const formatWithCommas = (value: string) => {
     const numericValue = value.replace(/[^0-9.]/g, "")
@@ -386,6 +428,8 @@ export default function ConfigureSavingsDrawer({
             onAddType={addSavingsType}
             typeRows={savingsTypes}
             previewFile={previewImage}
+            previewLabel={String(savingsData?.previewImage?.fileName ?? savingsData?.previewImageName ?? "")}
+            previewImageUrl={String(savingsData?.previewImage?.url ?? savingsData?.previewImageUrl ?? "")}
             onPreviewFileChange={setPreviewImage}
           />
         )}

@@ -64,3 +64,44 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     )
   }
 }
+
+/** PUT /api/v1/products/:id — Product MS update product */
+export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
+  const authHeader = request.headers.get("authorization")
+
+  if (!authHeader) {
+    return NextResponse.json({ success: false, error: "Authorization required" }, { status: 401 })
+  }
+
+  const body = await request.json().catch(() => ({}))
+  const url = `${BASE_URL}/api/v1/products/${encodeURIComponent(id)}`
+
+  try {
+    const resp = await http.put(url, body, {
+      headers: { Authorization: authHeader, ...merchantRoleHeadersFromAuthorization(authHeader) },
+    })
+
+    if (resp.status >= 200 && resp.status < 300) {
+      return NextResponse.json(resp.data)
+    }
+
+    const err = resp.data
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          (typeof err === "object" && err && "error" in err && (err as { error?: string }).error) ||
+          (typeof err === "object" && err && "message" in err && (err as { message?: string }).message) ||
+          "Failed to update product",
+      },
+      { status: resp.status || 502 },
+    )
+  } catch (error: unknown) {
+    console.error("[Products id] PUT error:", error)
+    return NextResponse.json(
+      { success: false, error: (error as Error).message || "Failed to update product" },
+      { status: 502 },
+    )
+  }
+}

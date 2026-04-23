@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Plus, Package, ExternalLink, AlertCircle, RefreshCw, Loader2, MoreVertical, Pencil, Trash2 } from "lucide-react"
+import { Plus, Package, ExternalLink, AlertCircle, RefreshCw, Loader2, MoreVertical, Pencil, Power } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
@@ -55,6 +55,7 @@ export default function ProductsPage() {
   const [loanData, setLoanData] = useState<any>(null)
   const [configuringProductId, setConfiguringProductId] = useState<string | null>(null)
   const [configuringProductType, setConfiguringProductType] = useState<string | null>(null)
+  const [configuringProductStatus, setConfiguringProductStatus] = useState<string | null>(null)
   const [prefetchingProductId, setPrefetchingProductId] = useState<string | null>(null)
   const [loanConfigurePrefetch, setLoanConfigurePrefetch] = useState<LoanConfigurePrefetched | null>(null)
   const [mortgageConfigurePrefetch, setMortgageConfigurePrefetch] = useState<MortgageConfigurePrefetched | null>(null)
@@ -201,7 +202,11 @@ export default function ProductsPage() {
     try {
       if (configuringProductId) {
         // Save configuration
-        await productApi.saveProductConfiguration(configuringProductId, 'Loan', configData)
+        if (String(configuringProductStatus ?? "").toLowerCase() === "complete") {
+          await productApi.saveProductConfigurationWithManage(configuringProductId, 'Loan', configData)
+        } else {
+          await productApi.saveProductConfiguration(configuringProductId, 'Loan', configData)
+        }
         await productApi.updateProduct(configuringProductId, { status: 'complete' })
 
         // Refetch products to ensure we have the latest data
@@ -215,6 +220,7 @@ export default function ProductsPage() {
           setIsLoanSuccessOpen(true)
           setConfiguringProductId(null)
           setConfiguringProductType(null)
+          setConfiguringProductStatus(null)
         }, 1000)
       }
     } catch (error) {
@@ -270,7 +276,11 @@ export default function ProductsPage() {
     try {
       if (configuringProductId) {
         // Save configuration and update status to complete
-        await productApi.saveProductConfiguration(configuringProductId, 'Mortgage', configData)
+        if (String(configuringProductStatus ?? "").toLowerCase() === "complete") {
+          await productApi.saveProductConfigurationWithManage(configuringProductId, 'Mortgage', configData)
+        } else {
+          await productApi.saveProductConfiguration(configuringProductId, 'Mortgage', configData)
+        }
         await productApi.updateProduct(configuringProductId, { status: 'complete' })
 
         // Refetch products to ensure we have the latest data
@@ -284,6 +294,7 @@ export default function ProductsPage() {
           setIsMortgageSuccessOpen(true)
           setConfiguringProductId(null)
           setConfiguringProductType(null)
+          setConfiguringProductStatus(null)
         }, 1000)
       }
     } catch (error) {
@@ -339,7 +350,11 @@ export default function ProductsPage() {
     try {
       if (configuringProductId) {
         // Save configuration and update status to complete
-        await productApi.saveProductConfiguration(configuringProductId, 'Savings', configData)
+        if (String(configuringProductStatus ?? "").toLowerCase() === "complete") {
+          await productApi.saveProductConfigurationWithManage(configuringProductId, 'Savings', configData)
+        } else {
+          await productApi.saveProductConfiguration(configuringProductId, 'Savings', configData)
+        }
         await productApi.updateProduct(configuringProductId, { status: 'complete' })
 
         // Refetch products to ensure we have the latest data
@@ -353,6 +368,7 @@ export default function ProductsPage() {
           setIsSavingsSuccessOpen(true)
           setConfiguringProductId(null)
           setConfiguringProductType(null)
+          setConfiguringProductStatus(null)
         }, 1000)
       }
     } catch (error) {
@@ -411,7 +427,11 @@ export default function ProductsPage() {
         // Save configuration and update status to complete.
         // Investment uses same form/flow but different productType on the backend.
         const configType = (configuringProductType || "").toLowerCase() === "investment" ? "Investment" : "Commodity"
-        await productApi.saveProductConfiguration(configuringProductId, configType, configData)
+        if (String(configuringProductStatus ?? "").toLowerCase() === "complete") {
+          await productApi.saveProductConfigurationWithManage(configuringProductId, configType, configData)
+        } else {
+          await productApi.saveProductConfiguration(configuringProductId, configType, configData)
+        }
         await productApi.updateProduct(configuringProductId, { status: 'complete' })
 
         // Refetch products to ensure we have the latest data
@@ -425,6 +445,7 @@ export default function ProductsPage() {
           setIsCommoditySuccessOpen(true)
           setConfiguringProductId(null)
           setConfiguringProductType(null)
+          setConfiguringProductStatus(null)
         }, 1000)
       }
     } catch (error) {
@@ -436,19 +457,37 @@ export default function ProductsPage() {
 
   const handleConfigureProduct = async (productId: string, productType: string) => {
     const row = products.find((p) => p.id === productId)
-    const dataStub = row
-      ? { name: row.name, description: row.description ?? "", productId: row.id }
-      : { productId }
 
     setPrefetchingProductId(productId)
     try {
+      let dataStub: any = row
+        ? { name: row.name, description: row.description ?? "", productId: row.id, ...row }
+        : { productId }
+
+      // Load full product payload/config for edit mode so the configure drawers can prefill fields.
+      try {
+        const [fullProduct, mappedConfig] = await Promise.all([
+          productApi.getProductById(productId),
+          productApi.getProductConfiguration(productId),
+        ])
+        dataStub = {
+          ...dataStub,
+          ...(fullProduct?.data ?? {}),
+          ...(mappedConfig?.success ? mappedConfig.data : {}),
+        }
+      } catch {
+        // Fall back to row data when detail/config fetch is unavailable.
+      }
+
       const type = productType.toLowerCase()
+      const effectiveStatus = String(dataStub?.status ?? row?.status ?? "").toLowerCase()
       if (type === "loan") {
         const prefetched = await prefetchLoanConfigureOptions()
         setLoanConfigurePrefetch(prefetched)
         setLoanData(dataStub)
         setConfiguringProductId(productId)
         setConfiguringProductType(productType)
+        setConfiguringProductStatus(effectiveStatus)
         setIsConfigureLoanOpen(true)
       } else if (type === "mortgage") {
         const prefetched = await prefetchMortgageConfigureOptions()
@@ -456,6 +495,7 @@ export default function ProductsPage() {
         setMortgageData(dataStub)
         setConfiguringProductId(productId)
         setConfiguringProductType(productType)
+        setConfiguringProductStatus(effectiveStatus)
         setIsConfigureMortgageOpen(true)
       } else if (type === "savings") {
         const prefetched = await prefetchSavingsConfigureOptions()
@@ -463,6 +503,7 @@ export default function ProductsPage() {
         setSavingsData(dataStub)
         setConfiguringProductId(productId)
         setConfiguringProductType(productType)
+        setConfiguringProductStatus(effectiveStatus)
         setIsConfigureSavingsOpen(true)
       } else if (type === "commodity" || type === "investment") {
         const prefetched = await prefetchCommodityConfigureOptions(type === "investment")
@@ -470,6 +511,7 @@ export default function ProductsPage() {
         setCommodityData(dataStub)
         setConfiguringProductId(productId)
         setConfiguringProductType(productType)
+        setConfiguringProductStatus(effectiveStatus)
         setIsConfigureCommodityOpen(true)
       }
     } catch (err) {
@@ -485,22 +527,28 @@ export default function ProductsPage() {
   }
 
   const handleEditProductFromMenu = (product: { id: string; type: string; status?: string }) => {
-    const st = String(product.status ?? "").toLowerCase()
-    if (st === "incomplete") {
-      void handleConfigureProduct(product.id, product.type)
-    } else {
-      handleProductClick(product.id, product.type)
-    }
+    void handleConfigureProduct(product.id, product.type)
   }
 
-  const handleDeleteProductFromMenu = async (productId: string) => {
-    if (!confirm("Delete this product? This cannot be undone.")) return
+  const handleDeactivateProductFromMenu = async (productId: string) => {
+    if (!confirm("Deactivate this product? Customers will no longer be able to use it until reactivated.")) return
     try {
-      await productApi.deleteProduct(productId)
+      await productApi.updateProduct(productId, { isActive: false })
       await fetchProducts()
     } catch (err) {
       console.error(err)
-      alert(err instanceof Error ? err.message : "Failed to delete product. Please try again.")
+      alert(err instanceof Error ? err.message : "Failed to deactivate product. Please try again.")
+    }
+  }
+
+  const handleActivateProductFromMenu = async (productId: string) => {
+    if (!confirm("Activate this product? Customers will be able to use it again.")) return
+    try {
+      await productApi.updateProduct(productId, { isActive: true })
+      await fetchProducts()
+    } catch (err) {
+      console.error(err)
+      alert(err instanceof Error ? err.message : "Failed to activate product. Please try again.")
     }
   }
 
@@ -607,6 +655,9 @@ export default function ProductsPage() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredProducts.map((product) => (
+                  (() => {
+                    const isInactive = product?.isActive === false || String(product?.status ?? "").toLowerCase() === "inactive"
+                    return (
                   <tr
                     key={product.id}
                     onClick={() => handleProductClick(product.id, product.type)}
@@ -621,11 +672,13 @@ export default function ProductsPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${product.status === 'complete'
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${String(product.status).toLowerCase() === 'complete' && !isInactive
                         ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800'
+                        : isInactive
+                          ? 'bg-gray-100 text-gray-700'
+                          : 'bg-yellow-100 text-yellow-800'
                         }`}>
-                        {product.status}
+                        {isInactive ? "inactive" : product.status}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-gray-600">{product.customers || '0'}</td>
@@ -643,26 +696,6 @@ export default function ProductsPage() {
                         >
                           Open Product
                         </button>
-                        {product.status === 'incomplete' && (
-                          <button
-                            type="button"
-                            disabled={prefetchingProductId === product.id}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              void handleConfigureProduct(product.id, product.type)
-                            }}
-                            className="bg-[#9A813F] text-white px-3 py-1 rounded text-sm font-medium hover:bg-[#8a7435] disabled:opacity-60 inline-flex items-center gap-2"
-                          >
-                            {prefetchingProductId === product.id ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                                Loading…
-                              </>
-                            ) : (
-                              "Configure"
-                            )}
-                          </button>
-                        )}
                       </div>
                     </td>
                     <td className="py-3 px-2 text-right" onClick={(e) => e.stopPropagation()}>
@@ -683,19 +716,37 @@ export default function ProductsPage() {
                             disabled={prefetchingProductId === product.id}
                           >
                             <Pencil className="h-4 w-4" />
-                            Edit product
+                            {prefetchingProductId === product.id
+                              ? "Loading..."
+                              : isInactive
+                                ? "Edit product"
+                                : String(product.status).toLowerCase() === "incomplete"
+                                ? "Configure product"
+                                : "Edit product"}
                           </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="gap-2 text-red-600 focus:text-red-600"
-                            onClick={() => void handleDeleteProductFromMenu(product.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                            Delete product
-                          </DropdownMenuItem>
+                          {isInactive ? (
+                            <DropdownMenuItem
+                              className="gap-2 text-green-700 focus:text-green-700"
+                              onClick={() => void handleActivateProductFromMenu(product.id)}
+                            >
+                              <Power className="h-4 w-4" />
+                              Activate product
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              className="gap-2 text-red-600 focus:text-red-600"
+                              onClick={() => void handleDeactivateProductFromMenu(product.id)}
+                            >
+                              <Power className="h-4 w-4" />
+                              Deactivate product
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>
                   </tr>
+                    )
+                  })()
                 ))}
               </tbody>
             </table>

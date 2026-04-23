@@ -58,6 +58,10 @@ interface PriceRow {
   source: string
 }
 
+function asBool(value: unknown) {
+  return value === true || value === "true" || value === 1 || value === "1"
+}
+
 export default function ConfigureCommodityDrawer({
   isOpen,
   onClose,
@@ -154,31 +158,57 @@ export default function ConfigureCommodityDrawer({
   const [stepErrors, setStepErrors] = useState<string[]>([])
 
   const resetForm = useCallback(() => {
+    const about = (commodityData?.about ?? {}) as Record<string, any>
+    const structure = (commodityData?.structure ?? {}) as Record<string, any>
+    const fees = (commodityData?.feesAndCharges ?? {}) as Record<string, any>
+    const incomingTypeRows =
+      (isInvestment ? commodityData?.investmentTypes : commodityData?.commodityTypes) ??
+      commodityData?.typeRows ??
+      about?.investmentTypes ??
+      about?.commodityTypes
+    const incomingPriceRows =
+      (isInvestment ? commodityData?.unitPrices : commodityData?.commodityPrices) ??
+      commodityData?.priceHistory ??
+      []
+
     setStep(1)
     setName(commodityData?.name || "")
-    setDuration("")
+    setDuration(String(commodityData?.duration ?? about?.tenure ?? ""))
     setDescription(commodityData?.description || "")
-    setTypeRows([])
+    setTypeRows(
+      Array.isArray(incomingTypeRows)
+        ? incomingTypeRows.map((r: any) => ({ name: String(r?.name ?? ""), description: String(r?.description ?? "") }))
+        : [],
+    )
     setPreviewImage(null)
-    setYieldMethod("")
-    setOfferYieldOn(true)
-    setOfferYieldValue("")
-    setWithdrawalFlexibility("")
-    setUnitAmount("")
-    setMinQuantityPurchase("")
-    setMaxAmount("")
-    setTermsAndConditions("")
-    setMoratoriumEnabled(true)
-    setMoratoriumDays("")
-    setContractId("")
-    setAirSignSecretKey("")
-    setAirSignUid("")
-    setCharges([])
-    setForcefulWithdrawal(true)
-    setPenalties([])
-    setPriceRows([])
+    setYieldMethod(String(commodityData?.yieldMethod ?? structure?.yieldMethod ?? ""))
+    setOfferYieldOn(asBool(commodityData?.offerYieldOn ?? structure?.offerYieldOn))
+    setOfferYieldValue(String(commodityData?.offerYieldValue ?? structure?.offerYieldValue ?? ""))
+    setWithdrawalFlexibility(String(commodityData?.withdrawalFlexibility ?? structure?.withdrawalFlexibility ?? ""))
+    setUnitAmount(String(commodityData?.unitAmount ?? structure?.unitAmount ?? structure?.minInvestmentAmount ?? ""))
+    setMinQuantityPurchase(String(commodityData?.minQuantityPurchase ?? structure?.minQuantityPurchase ?? ""))
+    setMaxAmount(String(commodityData?.maxAmount ?? structure?.maxAmount ?? structure?.maxInvestmentAmount ?? ""))
+    setTermsAndConditions(String(commodityData?.termsAndConditions ?? structure?.termsAndConditions ?? ""))
+    setMoratoriumEnabled(asBool(commodityData?.moratoriumEnabled ?? structure?.allowMoratorium))
+    setMoratoriumDays(String(commodityData?.moratoriumDays ?? structure?.moratoriumDuration ?? ""))
+    setContractId(String(commodityData?.contractId ?? structure?.contractId ?? ""))
+    setAirSignSecretKey(String(commodityData?.airSignSecretKey ?? structure?.airSignSecretKey ?? ""))
+    setAirSignUid(String(commodityData?.airSignUid ?? structure?.airSignUid ?? ""))
+    setCharges(Array.isArray(commodityData?.charges ?? fees?.charges) ? (commodityData?.charges ?? fees?.charges) : [])
+    setForcefulWithdrawal(asBool(commodityData?.forcefulWithdrawal ?? fees?.chargeForcefulWithdrawal))
+    setPenalties(Array.isArray(commodityData?.penalties ?? fees?.penalties) ? (commodityData?.penalties ?? fees?.penalties) : [])
+    setPriceRows(
+      Array.isArray(incomingPriceRows)
+        ? incomingPriceRows.map((r: any, i: number) => ({
+            id: String(r?.id ?? `${Date.now()}-${i}`),
+            price: String(r?.price ?? ""),
+            date: String(r?.date ?? ""),
+            source: String(r?.source ?? ""),
+          }))
+        : [],
+    )
     setStepErrors([])
-  }, [commodityData?.name, commodityData?.description])
+  }, [commodityData, isInvestment])
 
   useEffect(() => {
     setStepErrors([])
@@ -494,6 +524,8 @@ export default function ConfigureCommodityDrawer({
             onAddType={addTypeRow}
             typeRows={typeRows}
             previewFile={previewImage}
+            previewLabel={String(commodityData?.previewImage?.fileName ?? commodityData?.previewImageName ?? "")}
+            previewImageUrl={String(commodityData?.previewImage?.url ?? commodityData?.previewImageUrl ?? "")}
             onPreviewFileChange={setPreviewImage}
           />
         )}
