@@ -59,6 +59,7 @@ export type LoanStepCtx = {
   description: string
   loanTypes: { name: string; description: string }[]
   previewImage: File | null
+  hasPreviewAsset?: boolean
   structure: LoanLikeStructureInput
   selectedSecurities: string[]
   documents: unknown[]
@@ -82,7 +83,7 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
         if (!has(row.description)) errors.push(`About Product: Loan type #${i + 1} description is required.`)
       })
     }
-    if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
+    if (!ctx.previewImage && !ctx.hasPreviewAsset) errors.push("About Product: Preview file upload is required.")
   }
 
   if (step === 2) {
@@ -356,10 +357,12 @@ export type CommodityStepCtx = {
   description: string
   typeRows: { name: string; description: string }[]
   previewImage: File | null
+  hasPreviewAsset?: boolean
   yieldMethod: string
   offerYieldOn: boolean
   offerYieldValue: string
   withdrawalFlexibility: string
+  minInvestmentAmount: string
   unitAmount: string
   minQuantityPurchase: string
   maxAmount: string
@@ -388,16 +391,19 @@ export function validateCommodityStep(ctx: CommodityStepCtx): { ok: boolean; err
         if (!has(row.description)) errors.push(`${aboutLabel}: Type #${i + 1} description is required.`)
       })
     }
-    if (!ctx.previewImage) errors.push(`${aboutLabel}: Preview file upload is required.`)
+    if (!ctx.previewImage && !ctx.hasPreviewAsset) errors.push(`${aboutLabel}: Preview file upload is required.`)
   }
 
   if (ctx.step === 2) {
     if (!has(ctx.yieldMethod)) errors.push("Structure: Yield method is required.")
     if (ctx.offerYieldOn && !has(ctx.offerYieldValue)) errors.push("Structure: Offer yield value is required when offer yield is enabled.")
     if (!has(ctx.withdrawalFlexibility)) errors.push("Structure: Withdrawal flexibility is required.")
-    if (!has(ctx.unitAmount)) errors.push("Structure: Unit amount is required.")
+    if (ctx.isInvestment && !has(ctx.minInvestmentAmount))
+      errors.push("Structure: Minimum investment amount is required.")
+    if (!has(ctx.unitAmount)) errors.push(ctx.isInvestment ? "Structure: Unit price is required." : "Structure: Unit amount is required.")
     if (!has(ctx.minQuantityPurchase)) errors.push("Structure: Minimum quantity purchase is required.")
-    if (!has(ctx.maxAmount)) errors.push("Structure: Max amount is required.")
+    if (!has(ctx.maxAmount))
+      errors.push(ctx.isInvestment ? "Structure: Maximum investment amount is required." : "Structure: Max amount is required.")
     if (!has(ctx.termsAndConditions)) errors.push("Structure: Terms and conditions are required.")
     // Minimum holding period / moratorium days — optional per spec
     if (!has(ctx.contractId)) errors.push("Structure: Contract ID is required.")

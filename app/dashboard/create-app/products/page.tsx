@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Bell, User, Plus } from "lucide-react"
 import { IoIosCopy } from "react-icons/io"
 import { productApi } from "@/lib/services/product-api"
+import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
+import { toast } from "sonner"
 import CreateProductDrawer from "@/components/drawers/create-product-drawer"
 import CreateLoanDrawer from "@/components/drawers/create-loan-drawer"
 import CreateMortgageDrawer from "@/components/drawers/create-mortgage-drawer"
@@ -167,12 +169,11 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error creating loan product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to create loan product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
   const handleConfigureLoan = async (configData: any) => {
-    setIsConfigureLoanOpen(false)
     setIsProcessingOpen(true)
 
     try {
@@ -183,6 +184,7 @@ export default function ProductsPage() {
         await productApi.updateProduct(productId, { status: 'complete' })
       }
 
+      setIsConfigureLoanOpen(false)
       setTimeout(() => {
         setIsProcessingOpen(false)
         setIsLoanSuccessOpen(true)
@@ -190,7 +192,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring loan product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to configure loan product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
@@ -220,12 +222,11 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error creating mortgage product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to create mortgage product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
   const handleConfigureMortgage = async (configData: any) => {
-    setIsConfigureMortgageOpen(false)
     setIsProcessingOpen(true)
 
     try {
@@ -236,6 +237,7 @@ export default function ProductsPage() {
         await productApi.updateProduct(productId, { status: 'complete' })
       }
 
+      setIsConfigureMortgageOpen(false)
       setTimeout(() => {
         setIsProcessingOpen(false)
         setIsMortgageSuccessOpen(true)
@@ -243,7 +245,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring mortgage product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to configure mortgage product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 

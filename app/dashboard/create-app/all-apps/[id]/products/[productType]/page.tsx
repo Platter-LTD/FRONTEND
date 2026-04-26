@@ -5,6 +5,8 @@ import { ArrowLeft } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
 import { productApi } from "@/lib/services/product-api"
+import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
+import { toast } from "sonner"
 import { mergeProductsForAppByType, productRowId } from "@/lib/mergeAppCatalogProducts"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
 
@@ -118,7 +120,7 @@ export default function ProductTypeListPage() {
       }))
     } catch (error) {
       console.error("Error toggling product activation:", error)
-      alert("Failed to toggle product activation. Please try again.")
+      toast.error(formatProductApiErrorMessage(error))
     } finally {
       setPendingToggles((prev) => {
         const next = { ...prev }

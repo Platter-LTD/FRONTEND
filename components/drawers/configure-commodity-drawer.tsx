@@ -1,11 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { fileToBase64 } from "@/lib/fileUtils"
+import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import type { CommodityConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
@@ -62,6 +62,24 @@ function asBool(value: unknown) {
   return value === true || value === "true" || value === 1 || value === "1"
 }
 
+function formatAmountWithCommas(raw: unknown): string {
+  if (raw === undefined || raw === null || raw === "") return ""
+  const numericValue = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "")
+  if (!numericValue) return ""
+  const parts = numericValue.split(".")
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  return parts.join(".")
+}
+
+function previewLabelFromAssetUrl(url: string): string {
+  const seg = url.split("/").pop() || ""
+  try {
+    return decodeURIComponent(seg)
+  } catch {
+    return seg
+  }
+}
+
 export default function ConfigureCommodityDrawer({
   isOpen,
   onClose,
@@ -95,6 +113,11 @@ export default function ConfigureCommodityDrawer({
   const [typeDescDraft, setTypeDescDraft] = useState("")
   const [typeRows, setTypeRows] = useState<TypeRow[]>([])
   const [previewImage, setPreviewImage] = useState<File | null>(null)
+  const [existingPreviewAssetUrl, setExistingPreviewAssetUrl] = useState("")
+  const [minInvestmentAmount, setMinInvestmentAmount] = useState("")
+  const [enableUnitInvestmentPurchase, setEnableUnitInvestmentPurchase] = useState(true)
+  const [unitOfMeasure, setUnitOfMeasure] = useState("")
+  const [compoundingFrequency, setCompoundingFrequency] = useState("")
 
   const [yieldMethod, setYieldMethod] = useState("")
   const [offerYieldOn, setOfferYieldOn] = useState(true)
@@ -156,6 +179,7 @@ export default function ConfigureCommodityDrawer({
   const [priceSource, setPriceSource] = useState("")
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
   const [stepErrors, setStepErrors] = useState<string[]>([])
+  const commodityHydratedKeyRef = useRef<string | null>(null)
 
   const resetForm = useCallback(() => {
     const about = (commodityData?.about ?? {}) as Record<string, any>
@@ -166,14 +190,18 @@ export default function ConfigureCommodityDrawer({
       commodityData?.typeRows ??
       about?.investmentTypes ??
       about?.commodityTypes
-    const incomingPriceRows =
-      (isInvestment ? commodityData?.unitPrices : commodityData?.commodityPrices) ??
-      commodityData?.priceHistory ??
-      []
+    const incomingPriceRows = isInvestment
+      ? (commodityData?.unitPrices ?? commodityData?.priceHistory ?? [])
+      : (commodityData?.commodityPrices ??
+          commodityData?.priceHistory ??
+          [])
 
     setStep(1)
     setName(commodityData?.name || "")
-    setDuration(String(commodityData?.duration ?? about?.tenure ?? ""))
+    setDuration(String(commodityData?.duration ?? about?.duration ?? about?.tenure ?? ""))
+    setExistingPreviewAssetUrl(
+      String(about?.previewAssetUrl ?? commodityData?.previewAssetUrl ?? commodityData?.previewImage?.url ?? ""),
+    )
     setDescription(commodityData?.description || "")
     setTypeRows(
       Array.isArray(incomingTypeRows)
@@ -181,22 +209,124 @@ export default function ConfigureCommodityDrawer({
         : [],
     )
     setPreviewImage(null)
-    setYieldMethod(String(commodityData?.yieldMethod ?? structure?.yieldMethod ?? ""))
-    setOfferYieldOn(asBool(commodityData?.offerYieldOn ?? structure?.offerYieldOn))
-    setOfferYieldValue(String(commodityData?.offerYieldValue ?? structure?.offerYieldValue ?? ""))
     setWithdrawalFlexibility(String(commodityData?.withdrawalFlexibility ?? structure?.withdrawalFlexibility ?? ""))
-    setUnitAmount(String(commodityData?.unitAmount ?? structure?.unitAmount ?? structure?.minInvestmentAmount ?? ""))
-    setMinQuantityPurchase(String(commodityData?.minQuantityPurchase ?? structure?.minQuantityPurchase ?? ""))
-    setMaxAmount(String(commodityData?.maxAmount ?? structure?.maxAmount ?? structure?.maxInvestmentAmount ?? ""))
-    setTermsAndConditions(String(commodityData?.termsAndConditions ?? structure?.termsAndConditions ?? ""))
-    setMoratoriumEnabled(asBool(commodityData?.moratoriumEnabled ?? structure?.allowMoratorium))
-    setMoratoriumDays(String(commodityData?.moratoriumDays ?? structure?.moratoriumDuration ?? ""))
+    if (isInvestment) {
+      const invAmt = structure.investmentAmount as Record<string, unknown> | undefined
+      if (invAmt && typeof invAmt === "object") {
+        setMinInvestmentAmount(formatAmountWithCommas(invAmt.min ?? ""))
+        setMaxAmount(formatAmountWithCommas(invAmt.max ?? ""))
+      } else {
+        setMinInvestmentAmount(formatAmountWithCommas(commodityData?.minInvestmentAmount ?? ""))
+        setMaxAmount(
+          formatAmountWithCommas(
+            commodityData?.maxInvestmentAmount ?? structure.maxInvestmentAmount ?? structure.maxAmount ?? "",
+          ),
+        )
+      }
+      const u = structure.unitAmount
+      if (u && typeof u === "object" && !Array.isArray(u)) {
+        const uo = u as Record<string, unknown>
+        setUnitAmount(formatAmountWithCommas(uo.amount ?? ""))
+        setMinQuantityPurchase(String(uo.minQuantity ?? structure.minQuantityPurchase ?? ""))
+      } else {
+        setUnitAmount(formatAmountWithCommas(structure.minInvestmentAmount ?? commodityData?.unitAmount ?? ""))
+        setMinQuantityPurchase(String(commodityData?.minQuantityPurchase ?? structure.minQuantityPurchase ?? ""))
+      }
+      const roi = structure.returnsOnInvestment
+      if (roi != null && String(roi).trim() !== "") {
+        setOfferYieldOn(true)
+        const rs = String(roi).trim()
+        setOfferYieldValue(rs.includes("%") ? rs : `${rs.replace(/%/g, "")}%`)
+      } else {
+        setOfferYieldOn(asBool(commodityData?.offerYieldOn ?? structure?.offerYieldOn))
+        setOfferYieldValue(String(commodityData?.offerYieldValue ?? structure?.offerYieldValue ?? ""))
+      }
+      setYieldMethod(String(structure.interestMethod ?? commodityData?.yieldMethod ?? structure.yieldMethod ?? ""))
+      setEnableUnitInvestmentPurchase(
+        asBool(commodityData?.enableUnitInvestmentPurchase ?? structure.enableUnitInvestmentPurchase ?? true),
+      )
+      const mor = structure.moratorium
+      if (mor != null && String(mor).trim() !== "" && !Number.isNaN(Number(mor))) {
+        setMoratoriumEnabled(true)
+        setMoratoriumDays(String(mor))
+      } else {
+        setMoratoriumEnabled(asBool(commodityData?.moratoriumEnabled ?? structure?.allowMoratorium))
+        setMoratoriumDays(String(commodityData?.moratoriumDays ?? structure?.moratoriumDuration ?? ""))
+      }
+      setTermsAndConditions(
+        String(
+          commodityData?.termsAndConditions ??
+            structure?.investmentTermsAndCondition ??
+            structure?.termsAndConditions ??
+            "",
+        ),
+      )
+      setUnitOfMeasure("")
+      setCompoundingFrequency("")
+    } else {
+      setMinInvestmentAmount("")
+      setEnableUnitInvestmentPurchase(true)
+      setYieldMethod(String(commodityData?.yieldMethod ?? structure?.yieldMethod ?? ""))
+      setOfferYieldOn(
+        asBool(structure.offerYieldEnabled ?? structure.offerYieldOn ?? commodityData?.offerYieldOn),
+      )
+      const oy = structure.offerYield ?? structure.offerYieldValue
+      if (oy != null && String(oy).trim() !== "") {
+        const rs = String(oy).trim()
+        setOfferYieldValue(rs.includes("%") ? rs : `${rs.replace(/%/g, "")}%`)
+      } else {
+        setOfferYieldValue(String(commodityData?.offerYieldValue ?? structure?.offerYieldValue ?? ""))
+      }
+      setUnitAmount(formatAmountWithCommas(structure.unitAmount ?? commodityData?.unitAmount ?? ""))
+      setMinQuantityPurchase(String(structure.minQuantityPurchase ?? commodityData?.minQuantityPurchase ?? ""))
+      setMaxAmount(formatAmountWithCommas(structure.maxAmount ?? commodityData?.maxAmount ?? ""))
+      setTermsAndConditions(
+        String(
+          structure?.commodityTermsAndCondition ??
+            commodityData?.termsAndConditions ??
+            structure?.termsAndConditions ??
+            "",
+        ),
+      )
+      const morC = structure.moratorium
+      if (morC != null && String(morC).trim() !== "" && !Number.isNaN(Number(morC))) {
+        setMoratoriumEnabled(true)
+        setMoratoriumDays(String(morC))
+      } else {
+        setMoratoriumEnabled(asBool(commodityData?.moratoriumEnabled ?? structure?.allowMoratorium))
+        setMoratoriumDays(String(commodityData?.moratoriumDays ?? structure?.moratoriumDuration ?? ""))
+      }
+      setUnitOfMeasure(String(commodityData?.unitOfMeasure ?? ""))
+      const cfg = commodityData?.config as Record<string, unknown> | undefined
+      setCompoundingFrequency(String(cfg?.compoundingFrequency ?? commodityData?.compoundingFrequency ?? ""))
+    }
     setContractId(String(commodityData?.contractId ?? structure?.contractId ?? ""))
     setAirSignSecretKey(String(commodityData?.airSignSecretKey ?? structure?.airSignSecretKey ?? ""))
     setAirSignUid(String(commodityData?.airSignUid ?? structure?.airSignUid ?? ""))
-    setCharges(Array.isArray(commodityData?.charges ?? fees?.charges) ? (commodityData?.charges ?? fees?.charges) : [])
-    setForcefulWithdrawal(asBool(commodityData?.forcefulWithdrawal ?? fees?.chargeForcefulWithdrawal))
-    setPenalties(Array.isArray(commodityData?.penalties ?? fees?.penalties) ? (commodityData?.penalties ?? fees?.penalties) : [])
+    setCharges(
+      Array.isArray(commodityData?.charges ?? fees?.charges ?? fees?.fees)
+        ? (commodityData?.charges ?? fees?.charges ?? fees?.fees)
+        : [],
+    )
+    setForcefulWithdrawal(
+      asBool(
+        commodityData?.forcefulWithdrawal ??
+          commodityData?.chargeForForcefulWithdrawal ??
+          fees?.chargeForcefulWithdrawal ??
+          fees?.chargeForForcefulWithdrawal,
+      ),
+    )
+    const rawPen = commodityData?.penalties ?? fees?.penalties ?? fees?.forcefulWithdrawalPenalties ?? []
+    setPenalties(
+      Array.isArray(rawPen)
+        ? rawPen.map((p: Record<string, unknown>) => ({
+            name: String(p?.name ?? ""),
+            type: String(p?.type ?? p?.penaltyType ?? ""),
+            value: String(p?.value ?? ""),
+            triggerDuration: String(p?.triggerDuration ?? ""),
+          }))
+        : [],
+    )
     setPriceRows(
       Array.isArray(incomingPriceRows)
         ? incomingPriceRows.map((r: any, i: number) => ({
@@ -215,8 +345,16 @@ export default function ConfigureCommodityDrawer({
   }, [step])
 
   useEffect(() => {
-    if (isOpen) resetForm()
-  }, [isOpen, resetForm])
+    if (!isOpen) {
+      commodityHydratedKeyRef.current = null
+      return
+    }
+    const pid = String(commodityData?.id ?? commodityData?.productId ?? "")
+    const nextKey = `${pid}:${isInvestment}`
+    if (commodityHydratedKeyRef.current === nextKey) return
+    commodityHydratedKeyRef.current = nextKey
+    resetForm()
+  }, [isOpen, commodityData, isInvestment, resetForm])
 
   useEffect(() => {
     if (!isOpen) return
@@ -357,10 +495,17 @@ export default function ConfigureCommodityDrawer({
     description,
     typeRows,
     previewImage,
+    hasPreviewAsset: !!(
+      existingPreviewAssetUrl ||
+      (commodityData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ||
+      commodityData?.previewAssetUrl ||
+      commodityData?.previewImage?.url
+    ),
     yieldMethod,
     offerYieldOn,
     offerYieldValue,
     withdrawalFlexibility,
+    minInvestmentAmount: removeCommas(minInvestmentAmount),
     unitAmount: removeCommas(unitAmount),
     minQuantityPurchase,
     maxAmount: removeCommas(maxAmount),
@@ -393,14 +538,10 @@ export default function ConfigureCommodityDrawer({
     }
     setStepErrors([])
 
-    const previewPayload = previewImage
-      ? {
-          fileName: previewImage.name,
-          fileType: previewImage.type,
-          fileSize: previewImage.size,
-          fileBase64: await fileToBase64(previewImage),
-        }
-      : null
+    let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
+    if (previewImage) {
+      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+    }
 
     const payload = {
       ...commodityData,
@@ -410,9 +551,11 @@ export default function ConfigureCommodityDrawer({
       typeRows,
       commodityTypes: !isInvestment ? typeRows : undefined,
       investmentTypes: isInvestment ? typeRows : undefined,
-      previewImage: previewPayload,
+      previewImage: null,
+      previewAssetUrl: previewAssetUrlSubmit,
       yieldMethod,
       offerYieldOn,
+      offerYieldEnabled: offerYieldOn,
       offerYieldValue,
       withdrawalFlexibility,
       unitAmount: removeCommas(unitAmount),
@@ -426,6 +569,7 @@ export default function ConfigureCommodityDrawer({
       airSignUid,
       charges,
       forcefulWithdrawal,
+      chargeForForcefulWithdrawal: forcefulWithdrawal,
       penalties,
       commodityPrices: !isInvestment ? priceRows : undefined,
       unitPrices: isInvestment ? priceRows : undefined,
@@ -439,6 +583,9 @@ export default function ConfigureCommodityDrawer({
         tradingCycle: yieldMethod,
         investmentTenure: duration,
         investmentType: commodityData?.investmentType ?? commodityData?.productType ?? commodityData?.productSubtype,
+        investmentStructureType: String(
+          (commodityData?.structure as Record<string, unknown> | undefined)?.investmentType ?? "unit_based",
+        ),
         securityRequirements: [],
         minimumOrderQuantity: minQuantityPurchase,
         price: removeCommas(maxAmount),
@@ -446,19 +593,29 @@ export default function ConfigureCommodityDrawer({
         minimumRedemptionAmount: "",
         expectedAnnualReturn: offerYieldOn ? offerYieldValue : "",
         additionalRequirements: [],
-        minInvestmentAmount: removeCommas(unitAmount),
+        minInvestmentAmount: removeCommas(minInvestmentAmount),
         maxInvestmentAmount: removeCommas(maxAmount),
+        unitAmountPrice: removeCommas(unitAmount),
+        enableUnitInvestmentPurchase,
         expectedReturn: offerYieldOn ? offerYieldValue : "",
       })
     } else {
+      const lastRow = priceRows.length ? priceRows[priceRows.length - 1] : null
+      const lastPriceNum = lastRow ? Number.parseFloat(removeCommas(lastRow.price)) : NaN
+      const minQtyNum = Number.parseInt(String(minQuantityPurchase).replace(/,/g, ""), 10)
       onSubmit({
         ...payload,
         purpose: description,
         tradingCycle: yieldMethod,
         commodityTenure: duration,
         securityRequirements: [],
-        minInvestmentAmount: removeCommas(unitAmount),
-        maxInvestmentAmount: removeCommas(maxAmount),
+        price: Number.isFinite(lastPriceNum) ? lastPriceNum : commodityData?.price,
+        minimumQuantity: Number.isFinite(minQtyNum) ? minQtyNum : undefined,
+        unitOfMeasure: unitOfMeasure.trim() || undefined,
+        compoundingFrequency: compoundingFrequency.trim() || undefined,
+        config: compoundingFrequency.trim()
+          ? { compoundingFrequency: compoundingFrequency.trim() }
+          : undefined,
         managementFee: "",
         minWithdrawalAmount: minQuantityPurchase,
         expectedReturn: offerYieldOn ? offerYieldValue : "",
@@ -524,8 +681,24 @@ export default function ConfigureCommodityDrawer({
             onAddType={addTypeRow}
             typeRows={typeRows}
             previewFile={previewImage}
-            previewLabel={String(commodityData?.previewImage?.fileName ?? commodityData?.previewImageName ?? "")}
-            previewImageUrl={String(commodityData?.previewImage?.url ?? commodityData?.previewImageUrl ?? "")}
+            previewLabel={String(
+              previewImage?.name ??
+                ((existingPreviewAssetUrl ? previewLabelFromAssetUrl(existingPreviewAssetUrl) : "") ||
+                  commodityData?.previewImage?.fileName ||
+                  commodityData?.previewImageName ||
+                  ""),
+            )}
+            previewImageUrl={
+              previewImage
+                ? ""
+                : String(
+                    existingPreviewAssetUrl ||
+                      (commodityData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ||
+                      commodityData?.previewImage?.url ||
+                      commodityData?.previewImageUrl ||
+                      "",
+                  )
+            }
             onPreviewFileChange={setPreviewImage}
           />
         )}
@@ -534,7 +707,7 @@ export default function ConfigureCommodityDrawer({
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <ProductConfigSelect
-                label="Yield Method"
+                label={isInvestment ? "Interest method" : "Yield Method"}
                 placeholder="Select Section"
                 value={yieldMethod}
                 options={yieldMethodOptions}
@@ -567,7 +740,7 @@ export default function ConfigureCommodityDrawer({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className={`grid grid-cols-1 gap-4 ${isInvestment ? "" : "sm:grid-cols-2"}`}>
               <ProductConfigSelect
                 label="Withdrawal Flexibility"
                 placeholder="Select"
@@ -576,31 +749,74 @@ export default function ConfigureCommodityDrawer({
                 onChange={setWithdrawalFlexibility}
                 requirement="required"
               />
-              <ProductConfigInput
-                label="Unit Amount"
-                placeholder="e.g N10,000"
-                value={unitAmount}
-                onChange={(v) => handleCurrencyChange(v, setUnitAmount)}
-                requirement="required"
-              />
+              {!isInvestment ? (
+                <ProductConfigInput
+                  label="Unit Amount"
+                  placeholder="e.g N10,000"
+                  value={unitAmount}
+                  onChange={(v) => handleCurrencyChange(v, setUnitAmount)}
+                  requirement="required"
+                />
+              ) : null}
             </div>
 
+            {isInvestment ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <ProductConfigInput
+                  label="Minimum investment"
+                  placeholder="e.g 50,000"
+                  value={minInvestmentAmount}
+                  onChange={(v) => handleCurrencyChange(v, setMinInvestmentAmount)}
+                  requirement="required"
+                />
+                <ProductConfigInput
+                  label="Maximum investment"
+                  placeholder="e.g 5,000,000"
+                  value={maxAmount}
+                  onChange={(v) => handleCurrencyChange(v, setMaxAmount)}
+                  requirement="required"
+                />
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <ProductConfigInput
-                label="Min Quantity Purchase"
-                placeholder="Min Quantity"
-                value={minQuantityPurchase}
-                onChange={setMinQuantityPurchase}
-                numericOnly
-                requirement="required"
-              />
-              <ProductConfigInput
-                label="Max Amount"
-                placeholder="Max Amount"
-                value={maxAmount}
-                onChange={(v) => handleCurrencyChange(v, setMaxAmount)}
-                requirement="required"
-              />
+              {isInvestment ? (
+                <>
+                  <ProductConfigInput
+                    label="Unit price (per unit)"
+                    placeholder="e.g 1,000"
+                    value={unitAmount}
+                    onChange={(v) => handleCurrencyChange(v, setUnitAmount)}
+                    requirement="required"
+                  />
+                  <ProductConfigInput
+                    label="Min Quantity Purchase"
+                    placeholder="Min Quantity"
+                    value={minQuantityPurchase}
+                    onChange={setMinQuantityPurchase}
+                    numericOnly
+                    requirement="required"
+                  />
+                </>
+              ) : (
+                <>
+                  <ProductConfigInput
+                    label="Min Quantity Purchase"
+                    placeholder="Min Quantity"
+                    value={minQuantityPurchase}
+                    onChange={setMinQuantityPurchase}
+                    numericOnly
+                    requirement="required"
+                  />
+                  <ProductConfigInput
+                    label="Max Amount"
+                    placeholder="Max Amount"
+                    value={maxAmount}
+                    onChange={(v) => handleCurrencyChange(v, setMaxAmount)}
+                    requirement="required"
+                  />
+                </>
+              )}
             </div>
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
@@ -615,6 +831,16 @@ export default function ConfigureCommodityDrawer({
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
               />
             </div>
+
+            {isInvestment ? (
+              <ProductConfigToggle
+                id="enable-unit-investment-purchase"
+                label="Enable unit investment purchase"
+                checked={enableUnitInvestmentPurchase}
+                onChange={setEnableUnitInvestmentPurchase}
+                requirement="optional"
+              />
+            ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <ProductConfigToggle

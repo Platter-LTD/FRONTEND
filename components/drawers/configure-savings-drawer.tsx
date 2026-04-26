@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState, type ChangeEvent } from "react"
+import { useEffect, useRef, useState, type ChangeEvent } from "react"
 import { X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
-import { fileToBase64 } from "@/lib/fileUtils"
+import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import type { SavingsConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
@@ -53,6 +53,32 @@ interface WithdrawalPenaltyItem {
   triggerDuration: string
 }
 
+function formatAmountWithCommas(raw: unknown): string {
+  if (raw === undefined || raw === null || raw === "") return ""
+  const numericValue = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "")
+  if (!numericValue) return ""
+  const parts = numericValue.split(".")
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  return parts.join(".")
+}
+
+function previewLabelFromAssetUrl(url: string): string {
+  const seg = url.split("/").pop() || ""
+  try {
+    return decodeURIComponent(seg)
+  } catch {
+    return seg
+  }
+}
+
+
+
+
+
+
+
+
+
 function asBool(value: unknown) {
   return value === true || value === "true" || value === 1 || value === "1"
 }
@@ -81,6 +107,7 @@ export default function ConfigureSavingsDrawer({
   const [typeDescDraft, setTypeDescDraft] = useState("")
   const [savingsTypes, setSavingsTypes] = useState<SavingsTypeItem[]>([])
   const [previewImage, setPreviewImage] = useState<File | null>(null)
+  const [existingPreviewAssetUrl, setExistingPreviewAssetUrl] = useState("")
 
   const [interestRate, setInterestRate] = useState("")
   const [interestMethod, setInterestMethod] = useState("")
@@ -103,6 +130,7 @@ export default function ConfigureSavingsDrawer({
   const [penaltyValue, setPenaltyValue] = useState("")
   const [penaltyTriggerDuration, setPenaltyTriggerDuration] = useState("")
   const [withdrawalPenalties, setWithdrawalPenalties] = useState<WithdrawalPenaltyItem[]>([])
+  const savingsHydratedKeyRef = useRef<string | null>(null)
 
   const isPercentType = (value: string) => value.toLowerCase().includes("percent")
   const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
@@ -188,13 +216,34 @@ export default function ConfigureSavingsDrawer({
   }, [isOpen, prefetchedOptions])
 
   useEffect(() => {
-    if (!isOpen || !savingsData) return
+    if (!isOpen) {
+      savingsHydratedKeyRef.current = null
+      return
+    }
+    if (!savingsData) return
+    const productKey = String(savingsData.id ?? savingsData.productId ?? "")
+    if (productKey) {
+      if (savingsHydratedKeyRef.current === productKey) return
+      savingsHydratedKeyRef.current = productKey
+    } else if (savingsHydratedKeyRef.current === "__noid__") {
+      return
+    } else {
+      savingsHydratedKeyRef.current = "__noid__"
+    }
     const about = (savingsData.about ?? {}) as Record<string, any>
     const structure = (savingsData.structure ?? {}) as Record<string, any>
     const fees = (savingsData.feesAndCharges ?? {}) as Record<string, any>
 
     setName(String(savingsData.name ?? ""))
-    setDurationOfSavings(String(savingsData.durationOfSavings ?? savingsData.duration ?? about.tenure ?? ""))
+    setDurationOfSavings(
+      String(
+        savingsData.durationOfSavings ??
+          savingsData.duration ??
+          about.duration ??
+          about.tenure ??
+          "",
+      ),
+    )
     setDescription(String(savingsData.description ?? ""))
     setSavingsTypes(
       Array.isArray(savingsData.savingsTypes ?? about.savingsTypes)
@@ -205,22 +254,49 @@ export default function ConfigureSavingsDrawer({
         : [],
     )
 
+    const savingsAmount = (structure.savingsAmount ?? {}) as Record<string, unknown>
+    setExistingPreviewAssetUrl(
+      String(about.previewAssetUrl ?? savingsData.previewAssetUrl ?? savingsData.previewImage?.url ?? ""),
+    )
+
     setInterestRate(String(savingsData.interestRate ?? structure.interestRate ?? ""))
     setInterestMethod(String(savingsData.interestMethod ?? structure.interestMethod ?? ""))
     setSavingsType(String(savingsData.savingsType ?? structure.savingsType ?? ""))
     setWithdrawalFlexibility(String(savingsData.withdrawalFlexibility ?? structure.withdrawalFlexibility ?? ""))
-    setMinSavingsAmount(String(savingsData.minSavingsAmount ?? structure.minSavingsAmount ?? ""))
-    setMaxSavingsAmount(String(savingsData.maxSavingsAmount ?? structure.maxSavingsAmount ?? ""))
+    setMinSavingsAmount(
+      formatAmountWithCommas(
+        savingsData.minSavingsAmount ?? structure.minSavingsAmount ?? savingsAmount.min ?? "",
+      ),
+    )
+    setMaxSavingsAmount(
+      formatAmountWithCommas(
+        savingsData.maxSavingsAmount ?? structure.maxSavingsAmount ?? savingsAmount.max ?? "",
+      ),
+    )
     setTermsAndConditions(String(savingsData.termsAndConditions ?? structure.termsAndConditions ?? ""))
     setContractId(String(savingsData.contractId ?? structure.contractId ?? ""))
     setAirSignSecretKey(String(savingsData.airSignSecretKey ?? structure.airSignSecretKey ?? ""))
     setAirSignUid(String(savingsData.airSignUid ?? structure.airSignUid ?? ""))
 
     setCharges(Array.isArray(savingsData.charges ?? fees.charges) ? (savingsData.charges ?? fees.charges) : [])
-    setChargeForcefulWithdrawal(asBool(savingsData.chargeForcefulWithdrawal ?? fees.chargeForcefulWithdrawal))
+    setChargeForcefulWithdrawal(
+      asBool(
+        savingsData.chargeForcefulWithdrawal ??
+          savingsData.chargeForForcefulWithdrawal ??
+          fees.chargeForcefulWithdrawal ??
+          fees.chargeForForcefulWithdrawal,
+      ),
+    )
+    const rawPenalties =
+      savingsData.withdrawalPenalties ?? fees.penalties ?? fees.forcefulWithdrawalPenalties ?? []
     setWithdrawalPenalties(
-      Array.isArray(savingsData.withdrawalPenalties ?? fees.penalties)
-        ? (savingsData.withdrawalPenalties ?? fees.penalties)
+      Array.isArray(rawPenalties)
+        ? rawPenalties.map((p: Record<string, unknown>) => ({
+            name: String(p?.name ?? ""),
+            type: String(p?.type ?? p?.penaltyType ?? ""),
+            value: String(p?.value ?? ""),
+            triggerDuration: String(p?.triggerDuration ?? ""),
+          }))
         : [],
     )
   }, [isOpen, savingsData])
@@ -341,14 +417,10 @@ export default function ConfigureSavingsDrawer({
       return
     }
 
-    const previewImagePayload = previewImage
-      ? {
-          fileName: previewImage.name,
-          fileType: previewImage.type,
-          fileSize: previewImage.size,
-          fileBase64: await fileToBase64(previewImage),
-        }
-      : null
+    let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
+    if (previewImage) {
+      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+    }
 
     onSubmit({
       ...savingsData,
@@ -356,7 +428,8 @@ export default function ConfigureSavingsDrawer({
       durationOfSavings,
       description,
       savingsTypes,
-      previewImage: previewImagePayload,
+      previewImage: null,
+      previewAssetUrl: previewAssetUrlSubmit,
       interestRate,
       interestMethod,
       savingsType,
@@ -428,8 +501,24 @@ export default function ConfigureSavingsDrawer({
             onAddType={addSavingsType}
             typeRows={savingsTypes}
             previewFile={previewImage}
-            previewLabel={String(savingsData?.previewImage?.fileName ?? savingsData?.previewImageName ?? "")}
-            previewImageUrl={String(savingsData?.previewImage?.url ?? savingsData?.previewImageUrl ?? "")}
+            previewLabel={String(
+              previewImage?.name ??
+                ((existingPreviewAssetUrl ? previewLabelFromAssetUrl(existingPreviewAssetUrl) : "") ||
+                  savingsData?.previewImage?.fileName ||
+                  savingsData?.previewImageName ||
+                  ""),
+            )}
+            previewImageUrl={
+              previewImage
+                ? ""
+                : String(
+                    existingPreviewAssetUrl ||
+                      savingsData?.about?.previewAssetUrl ||
+                      savingsData?.previewImage?.url ||
+                      savingsData?.previewImageUrl ||
+                      "",
+                  )
+            }
             onPreviewFileChange={setPreviewImage}
           />
         )}

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
-import { fileToBase64 } from "@/lib/fileUtils"
+import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
 import {
@@ -289,14 +289,15 @@ export default function ConfigureInvestmentDrawer({
     }
     setStepErrors([])
 
-    const previewImagePayload = previewImage
-      ? {
-          fileName: previewImage.name,
-          fileType: previewImage.type,
-          fileSize: previewImage.size,
-          fileBase64: await fileToBase64(previewImage),
-        }
-      : null
+    let previewAssetUrlSubmit = String(
+      (investmentData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ??
+        investmentData?.previewAssetUrl ??
+        investmentData?.previewImage?.url ??
+        "",
+    ).trim() || undefined
+    if (previewImage) {
+      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+    }
 
     onSubmit({
       ...investmentData,
@@ -304,7 +305,8 @@ export default function ConfigureInvestmentDrawer({
       durationOfInvestment: duration,
       description,
       investmentTypes,
-      previewImage: previewImagePayload,
+      previewImage: null,
+      previewAssetUrl: previewAssetUrlSubmit,
       returnsOnInvestment: roi,
       interestMethod,
       investmentType,

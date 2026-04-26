@@ -20,6 +20,8 @@ import MortgageCreatedSuccessDrawer from "@/components/drawers/mortgage-created-
 import SavingsCreatedSuccessDrawer from "@/components/drawers/savings-created-success-drawer"
 import CommodityCreatedSuccessDrawer from "@/components/drawers/commodity-created-success-drawer"
 import { productApi } from "@/lib/services/product-api"
+import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
+import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   DropdownMenu,
@@ -190,13 +192,11 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error creating loan product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to create loan product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
   const handleConfigureLoan = async (configData: any) => {
-    setIsConfigureLoanOpen(false)
-    setLoanConfigurePrefetch(null)
     setIsProcessingOpen(true)
 
     try {
@@ -215,6 +215,8 @@ export default function ProductsPage() {
           setProducts(productsData.data)
         }
 
+        setIsConfigureLoanOpen(false)
+        setLoanConfigurePrefetch(null)
         setTimeout(() => {
           setIsProcessingOpen(false)
           setIsLoanSuccessOpen(true)
@@ -226,7 +228,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring loan product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to configure loan product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
@@ -264,13 +266,11 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error creating mortgage product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to create mortgage product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
   const handleConfigureMortgage = async (configData: any) => {
-    setIsConfigureMortgageOpen(false)
-    setMortgageConfigurePrefetch(null)
     setIsProcessingOpen(true)
 
     try {
@@ -289,6 +289,8 @@ export default function ProductsPage() {
           setProducts(productsData.data)
         }
 
+        setIsConfigureMortgageOpen(false)
+        setMortgageConfigurePrefetch(null)
         setTimeout(() => {
           setIsProcessingOpen(false)
           setIsMortgageSuccessOpen(true)
@@ -300,7 +302,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring mortgage product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to configure mortgage product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
@@ -338,13 +340,11 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error creating savings product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to create savings product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
   const handleConfigureSavings = async (configData: any) => {
-    setIsConfigureSavingsOpen(false)
-    setSavingsConfigurePrefetch(null)
     setIsProcessingOpen(true)
 
     try {
@@ -363,6 +363,8 @@ export default function ProductsPage() {
           setProducts(productsData.data)
         }
 
+        setIsConfigureSavingsOpen(false)
+        setSavingsConfigurePrefetch(null)
         setTimeout(() => {
           setIsProcessingOpen(false)
           setIsSavingsSuccessOpen(true)
@@ -374,7 +376,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring savings product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to configure savings product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
@@ -413,13 +415,11 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error creating commodity product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to create commodity product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
   const handleConfigureCommodity = async (configData: any) => {
-    setIsConfigureCommodityOpen(false)
-    setCommodityConfigurePrefetch(null)
     setIsProcessingOpen(true)
 
     try {
@@ -440,6 +440,8 @@ export default function ProductsPage() {
           setProducts(productsData.data)
         }
 
+        setIsConfigureCommodityOpen(false)
+        setCommodityConfigurePrefetch(null)
         setTimeout(() => {
           setIsProcessingOpen(false)
           setIsCommoditySuccessOpen(true)
@@ -451,7 +453,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring commodity product:', error)
       setIsProcessingOpen(false)
-      alert('Failed to configure commodity product. Please try again.')
+      toast.error(formatProductApiErrorMessage(error))
     }
   }
 
@@ -516,7 +518,7 @@ export default function ProductsPage() {
       }
     } catch (err) {
       console.error(err)
-      alert("Failed to load configuration options. Please try again.")
+      toast.error(formatProductApiErrorMessage(err))
     } finally {
       setPrefetchingProductId(null)
     }
@@ -537,7 +539,7 @@ export default function ProductsPage() {
       await fetchProducts()
     } catch (err) {
       console.error(err)
-      alert(err instanceof Error ? err.message : "Failed to deactivate product. Please try again.")
+      toast.error(formatProductApiErrorMessage(err))
     }
   }
 
@@ -548,7 +550,7 @@ export default function ProductsPage() {
       await fetchProducts()
     } catch (err) {
       console.error(err)
-      alert(err instanceof Error ? err.message : "Failed to activate product. Please try again.")
+      toast.error(formatProductApiErrorMessage(err))
     }
   }
 

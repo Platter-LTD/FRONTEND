@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { Upload, X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
-import { fileToBase64 } from "@/lib/fileUtils"
+import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
 import {
+  normalizeOtherRequirementRowFromApi,
   serializeOtherRequirementsForSubmit,
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
@@ -77,6 +78,8 @@ interface PropertyItem {
   location: string
   description: string
   facilities: string[]
+  customFacilities?: string[]
+  imageUrls?: string[]
   videoUrl: string
   previewFiles: File[]
   previewObjectUrls: string[]
@@ -95,6 +98,24 @@ function classifyEquityRequirementMode(selected: string): "zero" | "fixed" | "pe
 
 function asBool(value: unknown) {
   return value === true || value === "true" || value === 1 || value === "1"
+}
+
+function formatAmountWithCommas(raw: unknown): string {
+  if (raw === undefined || raw === null || raw === "") return ""
+  const numericValue = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "")
+  if (!numericValue) return ""
+  const parts = numericValue.split(".")
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  return parts.join(".")
+}
+
+function previewLabelFromAssetUrl(url: string): string {
+  const seg = url.split("/").pop() || ""
+  try {
+    return decodeURIComponent(seg)
+  } catch {
+    return seg
+  }
 }
 
 export default function ConfigureMortgageDrawer({
@@ -129,6 +150,7 @@ export default function ConfigureMortgageDrawer({
   const [description, setDescription] = useState(mortgageData?.description || "")
   const [selectedMortgageType, setSelectedMortgageType] = useState("")
   const [previewImage, setPreviewImage] = useState<File | null>(null)
+  const [existingPreviewAssetUrl, setExistingPreviewAssetUrl] = useState("")
 
   const [interestRate, setInterestRate] = useState("")
   const [interestMethod, setInterestMethod] = useState("")
@@ -159,6 +181,7 @@ export default function ConfigureMortgageDrawer({
   const [otherRequirements, setOtherRequirements] = useState<OtherRequirementItem[]>([])
   const documentsInputRef = useRef<HTMLInputElement>(null)
   const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
+  const mortgageHydratedKeyRef = useRef<string | null>(null)
 
   const [contractId, setContractId] = useState("")
   const [airSignSecretKey, setAirSignSecretKey] = useState("")
@@ -327,7 +350,20 @@ export default function ConfigureMortgageDrawer({
   }, [step])
 
   useEffect(() => {
-    if (!isOpen || !mortgageData) return
+    if (!isOpen) {
+      mortgageHydratedKeyRef.current = null
+      return
+    }
+    if (!mortgageData) return
+    const productKey = String(mortgageData.id ?? mortgageData.productId ?? "")
+    if (productKey) {
+      if (mortgageHydratedKeyRef.current === productKey) return
+      mortgageHydratedKeyRef.current = productKey
+    } else if (mortgageHydratedKeyRef.current === "__noid__") {
+      return
+    } else {
+      mortgageHydratedKeyRef.current = "__noid__"
+    }
     const about = (mortgageData.about ?? {}) as Record<string, any>
     const structure = (mortgageData.structure ?? {}) as Record<string, any>
     const requirements = (mortgageData.requirements ?? {}) as Record<string, any>
@@ -335,6 +371,9 @@ export default function ConfigureMortgageDrawer({
 
     setName(String(mortgageData.name ?? ""))
     setTenure(String(mortgageData.tenure ?? about.tenure ?? ""))
+    setExistingPreviewAssetUrl(
+      String(about.previewAssetUrl ?? mortgageData.previewAssetUrl ?? mortgageData.previewImage?.url ?? ""),
+    )
     setDescription(String(mortgageData.description ?? ""))
     const mt = Array.isArray(mortgageData.mortgageTypes ?? about.mortgageTypes)
       ? (mortgageData.mortgageTypes ?? about.mortgageTypes)
@@ -348,8 +387,17 @@ export default function ConfigureMortgageDrawer({
     setMoratoriumDurationOf(String(mortgageData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""))
     setMoratoriumType(String(mortgageData.moratoriumType ?? structure.moratoriumType ?? ""))
     setRepaymentWorkflow(String(mortgageData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0]))
-    setMinLoanAmount(String(mortgageData.minLoanAmount ?? structure.minLoanAmount ?? ""))
-    setMaxLoanAmount(String(mortgageData.maxLoanAmount ?? structure.maxLoanAmount ?? ""))
+    const loanAmount = (structure.loanAmount ?? {}) as Record<string, unknown>
+    setMinLoanAmount(
+      formatAmountWithCommas(
+        mortgageData.minLoanAmount ?? structure.minLoanAmount ?? loanAmount.min ?? "",
+      ),
+    )
+    setMaxLoanAmount(
+      formatAmountWithCommas(
+        mortgageData.maxLoanAmount ?? structure.maxLoanAmount ?? loanAmount.max ?? "",
+      ),
+    )
     setRepaymentSchedule(String(mortgageData.repaymentSchedule ?? structure.repaymentSchedule ?? ""))
     setAmortizationSchedule(String(mortgageData.amortizationSchedule ?? structure.amortizationSchedule ?? ""))
     setRepaymentFrequency(String(mortgageData.repaymentFrequency ?? structure.repaymentFrequency ?? ""))
@@ -358,20 +406,47 @@ export default function ConfigureMortgageDrawer({
     setEquityFixedAmount(String(mortgageData.equityFixedAmount ?? structure.equityFixedAmount ?? ""))
     setEquityPercentage(String(mortgageData.equityPercentage ?? structure.equityPercentage ?? ""))
 
-    setSelectedSecurities(
-      Array.isArray(mortgageData.securityRequirements ?? requirements.securityRequirements)
-        ? (mortgageData.securityRequirements ?? requirements.securityRequirements).map((x: any) => String(x))
-        : [],
-    )
+    const rawProps = mortgageData.properties
+    if (Array.isArray(rawProps)) {
+      if (rawProps.length) {
+        setProperties(
+          rawProps.map((p: Record<string, unknown>, idx: number) => ({
+            id: String(p.id ?? `prop-${idx}`),
+            name: String(p.name ?? ""),
+            type: String(p.propertyType ?? p.type ?? ""),
+            value: formatAmountWithCommas(p.value ?? ""),
+            location: String(p.location ?? ""),
+            description: String(p.propertyDescription ?? p.description ?? ""),
+            facilities: [
+              ...(Array.isArray(p.facilities) ? (p.facilities as string[]).map(String) : []),
+              ...(Array.isArray(p.customFacilities) ? (p.customFacilities as string[]).map(String) : []),
+            ],
+            customFacilities: Array.isArray(p.customFacilities)
+              ? (p.customFacilities as string[]).map(String)
+              : [],
+            imageUrls: Array.isArray(p.imageUrls) ? (p.imageUrls as string[]).map(String) : [],
+            videoUrl: String(p.videoUrl ?? ""),
+            previewFiles: [],
+            previewObjectUrls: [],
+          })),
+        )
+      } else {
+        setProperties([])
+      }
+    }
+
+    const otherReqRaw = mortgageData.otherRequirements ?? requirements.otherRequirements
     setOtherRequirements(
-      Array.isArray(mortgageData.otherRequirements ?? requirements.otherRequirements)
-        ? (mortgageData.otherRequirements ?? requirements.otherRequirements)
-        : [],
+      Array.isArray(otherReqRaw) ? otherReqRaw.map((row: unknown) => normalizeOtherRequirementRowFromApi(row)) : [],
     )
     setContractId(String(mortgageData.contractId ?? structure.contractId ?? ""))
     setAirSignSecretKey(String(mortgageData.airSignSecretKey ?? structure.airSignSecretKey ?? ""))
     setAirSignUid(String(mortgageData.airSignUid ?? structure.airSignUid ?? ""))
-    setCharges(Array.isArray(mortgageData.charges ?? fees.charges) ? (mortgageData.charges ?? fees.charges) : [])
+    setCharges(
+      Array.isArray(mortgageData.charges ?? fees.charges ?? fees.fees)
+        ? (mortgageData.charges ?? fees.charges ?? fees.fees)
+        : [],
+    )
     setDeductChargesOnLoan(asBool(mortgageData.deductChargesOnLoan ?? fees.deductChargesOnLoan))
     setCustomerPayChargesBeforeDisbursement(
       asBool(mortgageData.customerPayChargesBeforeDisbursement ?? fees.customerPayChargesBeforeDisbursement),
@@ -379,6 +454,37 @@ export default function ConfigureMortgageDrawer({
     setEnableLateRepaymentCharges(asBool(mortgageData.enableLateRepaymentCharges ?? fees.enableLateRepaymentCharges))
     setPenalties(Array.isArray(mortgageData.penalties ?? fees.penalties) ? (mortgageData.penalties ?? fees.penalties) : [])
   }, [isOpen, mortgageData])
+
+  useEffect(() => {
+    if (!isOpen || !mortgageData) return
+    const requirements = (mortgageData.requirements ?? {}) as Record<string, any>
+    const sec = requirements.security
+
+    if (sec && typeof sec === "object") {
+      const picked: string[] = []
+      const opts = securityOptions
+      if (asBool(sec.realEstateProperties)) {
+        const m = opts.find((o) => /real\s*estate|propert(y|ies)/i.test(o))
+        if (m) picked.push(m)
+        else if (!opts.length) picked.push("Real Estate")
+      }
+      if (asBool(sec.bankGuarantee)) {
+        const m = opts.find((o) => /bank/i.test(o) && /guarantee/i.test(o))
+        if (m) picked.push(m)
+        else if (!opts.length) picked.push("Bank Guarantee")
+      }
+      setSelectedSecurities(picked)
+      return
+    }
+
+    setSelectedSecurities(
+      Array.isArray(mortgageData.securityRequirements ?? requirements.securityRequirements)
+        ? (mortgageData.securityRequirements ?? requirements.securityRequirements).map((x: any) =>
+            String(x),
+          )
+        : [],
+    )
+  }, [isOpen, mortgageData, securityOptions])
 
   useEffect(() => {
     if (!isOpen) return
@@ -393,7 +499,6 @@ export default function ConfigureMortgageDrawer({
           signal: controller.signal,
         })
         const json = await res.json().catch(() => null)
-        console.log("[keys] /api/v1/keys response:", json)
 
         const payload = (json && typeof json === "object" ? (json as any).data ?? json : {}) as any
         const secretKey = payload?.airSignSecretKey ?? payload?.secretKey ?? payload?.secret ?? ""
@@ -564,6 +669,8 @@ export default function ConfigureMortgageDrawer({
         videoUrl: propertyVideoUrl.trim(),
         previewFiles,
         previewObjectUrls,
+        imageUrls: [],
+        customFacilities: [],
       },
     ])
     setPropertyName("")
@@ -671,50 +778,76 @@ export default function ConfigureMortgageDrawer({
     }
     setStepErrors([])
 
+    const removeCommas = (value: string) => value.replace(/,/g, "")
+
     const documentsPayload = await Promise.all(
       documents.map(async (doc) => ({
         name: doc.name,
-        fileName: doc.file.name,
-        fileType: doc.file.type,
-        fileSize: doc.file.size,
-        fileBase64: await fileToBase64(doc.file),
+        fileUrl: await uploadProductMediaToUrl(doc.file),
       })),
     )
 
-    const previewImagePayload = previewImage
-      ? {
-          fileName: previewImage.name,
-          fileType: previewImage.type,
-          fileSize: previewImage.size,
-          fileBase64: await fileToBase64(previewImage),
-        }
-      : null
+    let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
+    if (previewImage) {
+      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+    }
 
     const propertiesPayload = await Promise.all(
-      properties.map(async (p) => ({
-        name: p.name,
-        type: p.type,
-        value: p.value,
-        location: p.location,
-        description: p.description,
-        facilities: p.facilities,
-        videoUrl: p.videoUrl,
-        previewImages: await Promise.all(
+      properties.map(async (p) => {
+        const previewImages = await Promise.all(
           p.previewFiles.map(async (file) => ({
             fileName: file.name,
             fileType: file.type,
             fileSize: file.size,
-            fileBase64: await fileToBase64(file),
+            url: await uploadProductMediaToUrl(file),
           })),
-        ),
-      })),
+        )
+        const custom = p.customFacilities ?? []
+        const facilitiesOnly = p.facilities.filter((f) => !custom.includes(f))
+        return {
+          name: p.name,
+          propertyType: p.type,
+          type: p.type,
+          value: removeCommas(p.value),
+          location: p.location,
+          propertyDescription: p.description,
+          description: p.description,
+          facilities: facilitiesOnly.length ? facilitiesOnly : [...p.facilities],
+          customFacilities: custom,
+          imageUrls: [...(p.imageUrls ?? [])],
+          videoUrl: p.videoUrl,
+          previewImages,
+          previewImage: previewImages[0] ?? null,
+        }
+      }),
     )
-    const propertiesPayloadWithLegacy = propertiesPayload.map((item) => ({
-      ...item,
-      previewImage: item.previewImages[0] ?? null,
-    }))
 
     const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
+
+    let equityContributionSubmit: number | undefined
+    if (equityRequirementMode === "percentage") {
+      const pct = Number.parseFloat(equityPercentage.replace(/%/g, "").trim())
+      equityContributionSubmit = Number.isFinite(pct)
+        ? pct
+        : typeof mortgageData?.equityContribution === "number"
+          ? mortgageData.equityContribution
+          : undefined
+    } else if (typeof mortgageData?.equityContribution === "number") {
+      equityContributionSubmit = mortgageData.equityContribution
+    }
+
+    let propertyValueSubmit: number | undefined
+    if (properties.length > 0) {
+      const n = Number.parseFloat(removeCommas(properties[0].value))
+      if (Number.isFinite(n)) propertyValueSubmit = n
+    }
+    if (propertyValueSubmit === undefined && mortgageData?.propertyValue != null) {
+      const pv = mortgageData.propertyValue
+      propertyValueSubmit =
+        typeof pv === "number" && Number.isFinite(pv)
+          ? pv
+          : Number.parseFloat(String(pv).replace(/,/g, "")) || undefined
+    }
 
       onSubmit({
         ...mortgageData,
@@ -727,7 +860,10 @@ export default function ConfigureMortgageDrawer({
       minFacilityAmount: minLoanAmount,
       maxFacilityAmount: maxLoanAmount,
       mortgageTypes,
-      previewImage: previewImagePayload,
+      previewImage: null,
+      previewAssetUrl: previewAssetUrlSubmit,
+      equityContribution: equityContributionSubmit,
+      propertyValue: propertyValueSubmit,
         interestRate,
         interestMethod,
       allowMoratorium,
@@ -757,7 +893,7 @@ export default function ConfigureMortgageDrawer({
       customerPayChargesBeforeDisbursement,
       enableLateRepaymentCharges,
       penalties,
-      properties: propertiesPayloadWithLegacy,
+      properties: propertiesPayload,
     })
   }
 
@@ -820,8 +956,24 @@ export default function ConfigureMortgageDrawer({
             typeSelectedValue={selectedMortgageType}
             onTypeSelectedValueChange={setSelectedMortgageType}
             previewFile={previewImage}
-            previewLabel={String(mortgageData?.previewImage?.fileName ?? mortgageData?.previewImageName ?? "")}
-            previewImageUrl={String(mortgageData?.previewImage?.url ?? mortgageData?.previewImageUrl ?? "")}
+            previewLabel={String(
+              previewImage?.name ??
+                ((existingPreviewAssetUrl ? previewLabelFromAssetUrl(existingPreviewAssetUrl) : "") ||
+                  mortgageData?.previewImage?.fileName ||
+                  mortgageData?.previewImageName ||
+                  ""),
+            )}
+            previewImageUrl={
+              previewImage
+                ? ""
+                : String(
+                    existingPreviewAssetUrl ||
+                      (mortgageData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ||
+                      mortgageData?.previewImage?.url ||
+                      mortgageData?.previewImageUrl ||
+                      "",
+                  )
+            }
             onPreviewFileChange={setPreviewImage}
           />
         )}

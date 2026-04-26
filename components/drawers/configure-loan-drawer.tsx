@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState, type ChangeEvent, useRef } from "react"
 import { Upload, X } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
-import { fileToBase64 } from "@/lib/fileUtils"
+import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
 import {
+  normalizeOtherRequirementRowFromApi,
   serializeOtherRequirementsForSubmit,
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
@@ -72,6 +73,24 @@ function asBool(value: unknown) {
   return value === true || value === "true" || value === 1 || value === "1"
 }
 
+function formatAmountWithCommas(raw: unknown): string {
+  if (raw === undefined || raw === null || raw === "") return ""
+  const numericValue = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "")
+  if (!numericValue) return ""
+  const parts = numericValue.split(".")
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  return parts.join(".")
+}
+
+function previewLabelFromAssetUrl(url: string): string {
+  const seg = url.split("/").pop() || ""
+  try {
+    return decodeURIComponent(seg)
+  } catch {
+    return seg
+  }
+}
+
 export default function ConfigureLoanDrawer({
   isOpen,
   onClose,
@@ -103,6 +122,7 @@ export default function ConfigureLoanDrawer({
   const [loanTypeDescription, setLoanTypeDescription] = useState("")
   const [loanTypes, setLoanTypes] = useState<LoanTypeItem[]>([])
   const [previewImage, setPreviewImage] = useState<File | null>(null)
+  const [existingPreviewAssetUrl, setExistingPreviewAssetUrl] = useState("")
 
   const [interestRate, setInterestRate] = useState("")
   const [interestMethod, setInterestMethod] = useState("")
@@ -133,6 +153,7 @@ export default function ConfigureLoanDrawer({
   const [otherRequirements, setOtherRequirements] = useState<OtherRequirementItem[]>([])
   const documentsInputRef = useRef<HTMLInputElement>(null)
   const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
+  const loanHydratedKeyRef = useRef<string | null>(null)
 
   const [chargeName, setChargeName] = useState("")
   const [chargeFeeType, setChargeFeeType] = useState("")
@@ -270,7 +291,20 @@ export default function ConfigureLoanDrawer({
   }, [isOpen, prefetchedOptions])
 
   useEffect(() => {
-    if (!isOpen || !loanData) return
+    if (!isOpen) {
+      loanHydratedKeyRef.current = null
+      return
+    }
+    if (!loanData) return
+    const productKey = String(loanData.id ?? loanData.productId ?? "")
+    if (productKey) {
+      if (loanHydratedKeyRef.current === productKey) return
+      loanHydratedKeyRef.current = productKey
+    } else if (loanHydratedKeyRef.current === "__noid__") {
+      return
+    } else {
+      loanHydratedKeyRef.current = "__noid__"
+    }
     const about = (loanData.about ?? {}) as Record<string, any>
     const structure = (loanData.structure ?? {}) as Record<string, any>
     const requirements = (loanData.requirements ?? {}) as Record<string, any>
@@ -278,6 +312,9 @@ export default function ConfigureLoanDrawer({
 
     setName(String(loanData.name ?? ""))
     setTenure(String(loanData.tenure ?? about.tenure ?? ""))
+    setExistingPreviewAssetUrl(
+      String(about.previewAssetUrl ?? loanData.previewAssetUrl ?? loanData.previewImage?.url ?? ""),
+    )
     setDescription(String(loanData.description ?? ""))
     setLoanTypes(
       Array.isArray(loanData.loanTypes ?? about.loanTypes)
@@ -291,38 +328,109 @@ export default function ConfigureLoanDrawer({
     setInterestRate(String(loanData.interestRate ?? structure.interestRate ?? ""))
     setInterestMethod(String(loanData.interestMethod ?? structure.interestMethod ?? ""))
     const allowMoratoriumValue = asBool(loanData.allowMoratorium ?? structure.allowMoratorium)
-    setAllowMoratorium(allowMoratoriumValue)
-    setMoratoriumSelectDuration(String(loanData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? ""))
-    setMoratoriumDurationOf(String(loanData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""))
+    const morStr = structure.moratorium
+    if (morStr != null && String(morStr).trim() !== "" && !Number.isNaN(Number(morStr))) {
+      setAllowMoratorium(true)
+      setMoratoriumSelectDuration(String(morStr))
+      setMoratoriumDurationOf("")
+    } else {
+      setAllowMoratorium(allowMoratoriumValue)
+      setMoratoriumSelectDuration(String(loanData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? ""))
+      setMoratoriumDurationOf(String(loanData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""))
+    }
     setMoratoriumType(String(loanData.moratoriumType ?? structure.moratoriumType ?? ""))
     setRepaymentWorkflow(String(loanData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0]))
-    setMinLoanAmount(String(loanData.minLoanAmount ?? structure.minLoanAmount ?? ""))
-    setMaxLoanAmount(String(loanData.maxLoanAmount ?? structure.maxLoanAmount ?? ""))
+    const loanAmount = (structure.loanAmount ?? {}) as Record<string, unknown>
+    setMinLoanAmount(
+      formatAmountWithCommas(loanData.minLoanAmount ?? structure.minLoanAmount ?? loanAmount.min ?? ""),
+    )
+    setMaxLoanAmount(
+      formatAmountWithCommas(loanData.maxLoanAmount ?? structure.maxLoanAmount ?? loanAmount.max ?? ""),
+    )
     setRepaymentSchedule(String(loanData.repaymentSchedule ?? structure.repaymentSchedule ?? ""))
     setAmortizationSchedule(String(loanData.amortizationSchedule ?? structure.amortizationSchedule ?? ""))
     setRepaymentFrequency(String(loanData.repaymentFrequency ?? structure.repaymentFrequency ?? ""))
-    setAcceptableNpa(String(loanData.acceptableNpa ?? structure.acceptableNpa ?? ""))
+    setAcceptableNpa(
+      String(loanData.acceptableNpa ?? structure.acceptableNPA ?? structure.acceptableNpa ?? ""),
+    )
     setEquityRequirement(String(loanData.equityRequirement ?? structure.equityRequirement ?? ""))
     setEquityFixedAmount(String(loanData.equityFixedAmount ?? structure.equityFixedAmount ?? ""))
     setEquityPercentage(String(loanData.equityPercentage ?? structure.equityPercentage ?? ""))
+
+    const otherReqRaw = loanData.otherRequirements ?? requirements.otherRequirements
+    setOtherRequirements(
+      Array.isArray(otherReqRaw) ? otherReqRaw.map((row: unknown) => normalizeOtherRequirementRowFromApi(row)) : [],
+    )
+    setCharges(
+      Array.isArray(loanData.charges ?? fees.charges ?? fees.fees)
+        ? (loanData.charges ?? fees.charges ?? fees.fees)
+        : [],
+    )
+    setChargePaymentMode(
+      asBool(
+        loanData.customerPaysChargesBeforeDisbursement ??
+          fees.customerPaysChargesBeforeDisbursement ??
+          loanData.customerPayChargesBeforeDisbursement,
+      )
+        ? "customer-pay"
+        : "deduct",
+    )
+    const late = fees.lateRepayment as Record<string, unknown> | undefined
+    setEnableLateRepaymentCharges(
+      asBool(loanData.enableLateRepaymentCharges ?? late?.enabled ?? fees.enableLateRepaymentCharges),
+    )
+    const latePenList = Array.isArray(late?.penalties) ? (late.penalties as unknown[]) : []
+    const rawPen = (loanData.penalties ?? fees.penalties ?? latePenList) as unknown[]
+    setPenalties(
+      Array.isArray(rawPen)
+        ? rawPen.map((p) => {
+            const r = p as Record<string, unknown>
+            return {
+              name: String(r?.name ?? ""),
+              type: String(r?.type ?? r?.penaltyType ?? ""),
+              value: String(r?.value ?? ""),
+              triggerDuration: String(
+                r?.triggerDuration ??
+                  (r?.triggerDurationDays != null ? `${r.triggerDurationDays}` : ""),
+              ),
+            }
+          })
+        : [],
+    )
+  }, [isOpen, loanData])
+
+  useEffect(() => {
+    if (!isOpen || !loanData) return
+    const requirements = (loanData.requirements ?? {}) as Record<string, any>
+    const sec = requirements.security
+
+    if (sec && typeof sec === "object") {
+      const picked: string[] = []
+      const opts = securityOptions
+      if (asBool(sec.guarantor)) {
+        const m = opts.find((o) => /guarantor/i.test(o))
+        if (m) picked.push(m)
+        else if (!opts.length) picked.push("Guarantor")
+      }
+      if (asBool(sec.savingsAccount)) {
+        const m = opts.find((o) => /savings/i.test(o) && /account/i.test(o))
+        if (m) picked.push(m)
+        else if (!opts.length) picked.push("Savings Account")
+      }
+      if (asBool(sec.noSecurity)) {
+        const m = opts.find((o) => /no security|no collateral|none/i.test(o))
+        if (m) picked.push(m)
+      }
+      if (picked.length) setSelectedSecurities(picked)
+      return
+    }
 
     setSelectedSecurities(
       Array.isArray(loanData.securityRequirements ?? requirements.securityRequirements)
         ? (loanData.securityRequirements ?? requirements.securityRequirements).map((x: any) => String(x))
         : [],
     )
-    setOtherRequirements(
-      Array.isArray(loanData.otherRequirements ?? requirements.otherRequirements)
-        ? (loanData.otherRequirements ?? requirements.otherRequirements)
-        : [],
-    )
-    setCharges(Array.isArray(loanData.charges ?? fees.charges) ? (loanData.charges ?? fees.charges) : [])
-    setChargePaymentMode(
-      (loanData.chargePaymentMode ?? fees.chargePaymentMode) === "customer-pay" ? "customer-pay" : "deduct",
-    )
-    setEnableLateRepaymentCharges(asBool(loanData.enableLateRepaymentCharges ?? fees.enableLateRepaymentCharges))
-    setPenalties(Array.isArray(loanData.penalties ?? fees.penalties) ? (loanData.penalties ?? fees.penalties) : [])
-  }, [isOpen, loanData])
+  }, [isOpen, loanData, securityOptions])
 
   const addLoanType = () => {
     if (!loanTypeName.trim() || !loanTypeDescription.trim()) return
@@ -428,6 +536,12 @@ export default function ConfigureLoanDrawer({
     description,
     loanTypes,
     previewImage,
+    hasPreviewAsset: !!(
+      existingPreviewAssetUrl ||
+      (loanData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ||
+      loanData?.previewAssetUrl ||
+      loanData?.previewImage?.url
+    ),
     structure: {
       interestRate,
       interestMethod,
@@ -472,21 +586,16 @@ export default function ConfigureLoanDrawer({
     const documentsPayload = await Promise.all(
       documents.map(async (doc) => ({
         name: doc.name,
-        fileName: doc.file.name,
-        fileType: doc.file.type,
-        fileSize: doc.file.size,
-        fileBase64: await fileToBase64(doc.file),
+        fileUrl: await uploadProductMediaToUrl(doc.file),
       })),
     )
 
-    const previewImagePayload = previewImage
-      ? {
-          fileName: previewImage.name,
-          fileType: previewImage.type,
-          fileSize: previewImage.size,
-          fileBase64: await fileToBase64(previewImage),
-        }
-      : null
+    let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
+    if (previewImage) {
+      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+    }
+
+    const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
 
     const loanPayload = { ...(loanData || {}) }
     delete loanPayload.moratoriumDuration
@@ -498,7 +607,8 @@ export default function ConfigureLoanDrawer({
       tenure,
       description,
       loanTypes,
-      previewImage: previewImagePayload,
+      previewImage: null,
+      previewAssetUrl: previewAssetUrlSubmit,
       interestRate,
       interestMethod,
       allowMoratorium,
@@ -512,14 +622,18 @@ export default function ConfigureLoanDrawer({
       amortizationSchedule,
       repaymentFrequency,
       acceptableNpa,
+      acceptableNPA: acceptableNpa,
       equityRequirement,
       equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
       equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
       securityRequirements: selectedSecurities,
       documentRequirements: documentsPayload,
-      otherRequirements,
+      otherRequirements: otherRequirementsPayload,
       charges,
       chargePaymentMode,
+      deductAllChargesOnLoan: chargePaymentMode === "deduct",
+      customerPaysChargesBeforeDisbursement: chargePaymentMode === "customer-pay",
+      customerPayChargesBeforeDisbursement: chargePaymentMode === "customer-pay",
       enableLateRepaymentCharges,
       penalties,
     })
@@ -571,8 +685,24 @@ export default function ConfigureLoanDrawer({
           onAddType={addLoanType}
           typeRows={loanTypes}
           previewFile={previewImage}
-          previewLabel={String(loanData?.previewImage?.fileName ?? loanData?.previewImageName ?? "")}
-          previewImageUrl={String(loanData?.previewImage?.url ?? loanData?.previewImageUrl ?? "")}
+          previewLabel={String(
+            previewImage?.name ??
+              ((existingPreviewAssetUrl ? previewLabelFromAssetUrl(existingPreviewAssetUrl) : "") ||
+                loanData?.previewImage?.fileName ||
+                loanData?.previewImageName ||
+                ""),
+          )}
+          previewImageUrl={
+            previewImage
+              ? ""
+              : String(
+                  existingPreviewAssetUrl ||
+                    (loanData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ||
+                    loanData?.previewImage?.url ||
+                    loanData?.previewImageUrl ||
+                    "",
+                )
+          }
           onPreviewFileChange={setPreviewImage}
         />
       )}
