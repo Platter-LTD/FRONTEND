@@ -226,6 +226,7 @@ const buildLoanStructure = (configuration: any) => {
           '',
       ).trim()
     : '';
+  const moratorium = allowMoratorium ? normalizeMoratoriumForApi(moratoriumStr) : undefined;
   const rw = mapRepaymentWorkflow(configuration?.repaymentWorkflow);
   const minL = parseSavingsAmountNumber(configuration?.minLoanAmount);
   const maxL = parseSavingsAmountNumber(configuration?.maxLoanAmount);
@@ -251,7 +252,7 @@ const buildLoanStructure = (configuration: any) => {
     interestMethod: interestMethod || undefined,
     allowMoratorium,
     ...(allowMoratorium && moratoriumType ? { moratoriumType } : {}),
-    ...(allowMoratorium && moratoriumStr ? { moratorium: moratoriumStr } : {}),
+    ...(allowMoratorium && moratorium !== undefined ? { moratorium } : {}),
     repaymentWorkflow: rw || undefined,
     ...(Object.keys(loanAmount).length ? { loanAmount } : {}),
     repaymentSchedule: repaymentSchedule || undefined,
@@ -301,6 +302,16 @@ const mapFeesFromCharges = (raw: any[]) =>
 
 const toBool = (v: any) => v === true || v === 'true' || v === 1 || v === '1';
 
+// Product MS validates structure.moratorium as object|number (not raw string labels).
+const normalizeMoratoriumForApi = (raw: unknown): number | { value: string } | undefined => {
+  if (raw === undefined || raw === null) return undefined;
+  const str = String(raw).trim();
+  if (!str) return undefined;
+  const num = parseSavingsAmountNumber(str);
+  if (num !== undefined && Number.isFinite(num) && num >= 0) return Math.round(num);
+  return { value: str };
+};
+
 const mapCommodityPricesForApi = (rows: any[]) => {
   if (!Array.isArray(rows) || !rows.length) return undefined;
   const mapped = rows.map((r) =>
@@ -340,16 +351,13 @@ const buildCommodityStructure = (configuration: any) => {
     typeof wdraw === 'string' && wdraw.trim() ? toEnum(wdraw) || wdraw.trim() : '';
   const minQ = parseSavingsAmountNumber(configuration?.minQuantityPurchase);
   const maxA = parseSavingsAmountNumber(configuration?.maxAmount);
-  let moratoriumFinal: number | undefined;
+  let moratoriumFinal: number | { value: string } | undefined;
   if (configuration?.moratoriumEnabled === false || configuration?.moratoriumEnabled === 'false') {
     moratoriumFinal = undefined;
   } else {
-    const moratoriumNum =
-      parseSavingsAmountNumber(configuration?.moratoriumDays ?? configuration?.moratoriumDuration) ??
-      parseSavingsAmountNumber(configuration?.moratorium);
-    if (moratoriumNum !== undefined && Number.isFinite(moratoriumNum) && moratoriumNum > 0) {
-      moratoriumFinal = Math.round(moratoriumNum);
-    }
+    moratoriumFinal = normalizeMoratoriumForApi(
+      configuration?.moratoriumDays ?? configuration?.moratoriumDuration ?? configuration?.moratorium,
+    );
   }
 
   return compactObject({
@@ -462,6 +470,11 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     const moratoriumNum = configuration?.moratoriumEnabled
       ? parseSavingsAmountNumber(configuration?.moratoriumDays ?? configuration?.moratoriumDuration)
       : undefined;
+    const moratoriumFallback = configuration?.moratoriumEnabled
+      ? normalizeMoratoriumForApi(
+          configuration?.moratoriumDays ?? configuration?.moratoriumDuration ?? configuration?.moratorium,
+        )
+      : undefined;
     let returnsOn = '';
     if (configuration?.offerYieldOn) {
       returnsOn = String(configuration?.offerYieldValue ?? '')
@@ -507,7 +520,9 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
       enableUnitInvestmentPurchase: enableUnit,
       ...(moratoriumNum !== undefined && Number.isFinite(moratoriumNum) && moratoriumNum > 0
         ? { moratorium: Math.round(moratoriumNum) }
-        : {}),
+        : moratoriumFallback !== undefined
+          ? { moratorium: moratoriumFallback }
+          : {}),
       ...(Object.keys(unitObj).length ? { unitAmount: unitObj } : {}),
     });
   } else if (isCommodity) {

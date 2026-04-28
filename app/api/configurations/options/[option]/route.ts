@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
+import { plataUpstreamAxios } from "@/lib/server/plataUpstreamAxios"
 
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
-
-const BASE_URL = (getPlataApiBaseUrl()).replace(/\/+$/, "")
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -16,20 +15,30 @@ export async function GET(request: NextRequest, context: { params: Promise<{ opt
   try {
     const { option } = await context.params
     const authHeader = request.headers.get("authorization")
-    const targetUrl = `${BASE_URL}/api/v1/configurations/options/${encodeURIComponent(option)}`
+    const path = `/api/v1/configurations/options/${encodeURIComponent(option)}`
     const maxAttempts = 3
-    let response: Response | null = null
     let lastError: unknown = null
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        response = await fetch(targetUrl, {
+        const resp = await plataUpstreamAxios.get(path, {
           headers: {
-            "Content-Type": "application/json",
             ...(authHeader && { Authorization: authHeader }),
           },
         })
-        break
+
+        const data = resp.data ?? {}
+        if (resp.status < 200 || resp.status >= 300) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: (data as { error?: string }).error || (data as { message?: string }).message || `Failed to fetch ${option} options`,
+            },
+            { status: resp.status || 502 },
+          )
+        }
+
+        return NextResponse.json(data)
       } catch (error) {
         lastError = error
         if (attempt < maxAttempts) {
@@ -39,19 +48,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ opt
       }
     }
 
-    if (!response) {
-      throw lastError instanceof Error ? lastError : new Error("Failed to fetch options")
-    }
-
-    const data = await response.json().catch(() => ({}))
-    if (!response.ok) {
-      return NextResponse.json(
-        { success: false, error: data.error || data.message || `Failed to fetch ${option} options` },
-        { status: response.status || 502 },
-      )
-    }
-
-    return NextResponse.json(data)
+    throw lastError instanceof Error ? lastError : new Error("Failed to fetch options")
   } catch (error: unknown) {
     console.error("Dynamic options proxy error:", error)
     return NextResponse.json({ success: false, error: "Failed to fetch options" }, { status: 500 })

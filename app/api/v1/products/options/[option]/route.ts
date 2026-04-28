@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
+import type { AxiosResponse } from "axios"
+import { plataUpstreamAxios } from "@/lib/server/plataUpstreamAxios"
 
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-const BASE_URL = (getPlataApiBaseUrl()).replace(/\/+$/, "")
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 type JsonBody = Record<string, unknown>
 
-function shouldTryConfigurationsFallback(response: Response, data: JsonBody): boolean {
-  if (response.status === 404) return true
+function shouldTryConfigurationsFallback(status: number, data: JsonBody): boolean {
+  if (status === 404) return true
   const msg = String(data?.error ?? data?.message ?? "").toLowerCase()
   if (!msg) return false
   return (
@@ -20,28 +21,23 @@ function shouldTryConfigurationsFallback(response: Response, data: JsonBody): bo
   )
 }
 
-function isUsableOptionsPayload(response: Response, data: JsonBody): boolean {
-  if (!response.ok) return false
+function isUsableOptionsPayload(status: number, data: JsonBody): boolean {
+  if (status < 200 || status >= 300) return false
   if (data.success === false) return false
   return Array.isArray(data.data)
 }
 
 async function fetchUpstreamJson(
-  targetUrl: string,
+  pathWithQuery: string,
   authHeader: string | null,
-): Promise<{ response: Response; data: JsonBody }> {
-  const withAuthHeaders: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(authHeader ? { Authorization: authHeader } : {}),
+): Promise<{ status: number; data: JsonBody }> {
+  const withAuth = authHeader ? { Authorization: authHeader } : {}
+  let resp: AxiosResponse<unknown> = await plataUpstreamAxios.get(pathWithQuery, { headers: withAuth })
+  if (resp.status === 404 && authHeader) {
+    resp = await plataUpstreamAxios.get(pathWithQuery, { headers: {} })
   }
-  const withoutAuthHeaders = { "Content-Type": "application/json" }
-
-  let response = await fetch(targetUrl, { headers: withAuthHeaders })
-  if (response.status === 404 && authHeader) {
-    response = await fetch(targetUrl, { headers: withoutAuthHeaders })
-  }
-  const data = (await response.json().catch(() => ({}))) as JsonBody
-  return { response, data }
+  const data = (typeof resp.data === "object" && resp.data !== null ? resp.data : {}) as JsonBody
+  return { status: resp.status, data }
 }
 
 /**
@@ -60,16 +56,16 @@ export async function GET(
     const queryString = request.nextUrl.searchParams.toString()
     const qs = queryString ? `?${queryString}` : ""
 
-    const productsUrl = `${BASE_URL}/api/v1/products/options/${encodeURIComponent(option)}${qs}`
-    const configurationsUrl = `${BASE_URL}/api/v1/configurations/options/${encodeURIComponent(option)}${qs}`
+    const productsPath = `/api/v1/products/options/${encodeURIComponent(option)}${qs}`
+    const configurationsPath = `/api/v1/configurations/options/${encodeURIComponent(option)}${qs}`
 
     const maxAttempts = 3
     let lastError: unknown = null
-    let primary: { response: Response; data: JsonBody } | null = null
+    let primary: { status: number; data: JsonBody } | null = null
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        primary = await fetchUpstreamJson(productsUrl, authHeader)
+        primary = await fetchUpstreamJson(productsPath, authHeader)
         break
       } catch (error) {
         lastError = error
@@ -84,28 +80,27 @@ export async function GET(
       throw lastError instanceof Error ? lastError : new Error("Failed to fetch product options")
     }
 
-    const { response, data } = primary
+    const { status, data } = primary
 
-    if (isUsableOptionsPayload(response, data)) {
+    if (isUsableOptionsPayload(status, data)) {
       return NextResponse.json(data)
     }
 
-    if (shouldTryConfigurationsFallback(response, data)) {
-      const fallback = await fetchUpstreamJson(configurationsUrl, authHeader)
-      if (isUsableOptionsPayload(fallback.response, fallback.data)) {
+    if (shouldTryConfigurationsFallback(status, data)) {
+      const fallback = await fetchUpstreamJson(configurationsPath, authHeader)
+      if (isUsableOptionsPayload(fallback.status, fallback.data)) {
         return NextResponse.json(fallback.data)
       }
-      // Neither products nor configurations expose this slug; return empty options (no client error).
       return NextResponse.json({ success: true, data: [] })
     }
 
-    if (!response.ok) {
+    if (status < 200 || status >= 300) {
       return NextResponse.json(
         {
           success: false,
           error: (data.error as string) || (data.message as string) || `Failed to fetch ${option} options`,
         },
-        { status: response.status || 502 },
+        { status: status || 502 },
       )
     }
 

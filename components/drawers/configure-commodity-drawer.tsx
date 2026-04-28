@@ -1,7 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { X } from "lucide-react"
+import { Loader2, X } from "lucide-react"
+import { toast } from "sonner"
+import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -16,11 +18,18 @@ import {
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
 import { validateAllCommoditySteps, validateCommodityStep } from "@/lib/productConfigureStepValidation"
+import {
+  normalizeOtherRequirementRowFromApi,
+  serializeOtherRequirementsForSubmit,
+  shouldUseOtherRequirementFileUpload,
+  type OtherRequirementDraft,
+} from "@/lib/otherRequirementPayload"
+import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 
 interface ConfigureCommodityDrawerProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: any) => void
+  onSubmit: (data: any) => void | Promise<void>
   commodityData: any
   variant?: "commodity" | "investment"
   prefetchedOptions?: CommodityConfigurePrefetched | null
@@ -57,6 +66,8 @@ interface PriceRow {
   date: string
   source: string
 }
+
+type OtherRequirementItem = OtherRequirementDraft
 
 function asBool(value: unknown) {
   return value === true || value === "true" || value === 1 || value === "1"
@@ -99,7 +110,10 @@ export default function ConfigureCommodityDrawer({
   )
 
   const [step, setStep] = useState(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [tenureOptions, setTenureOptions] = useState<string[]>(DEFAULT_TENURE)
+  const [otherRequirementOptions, setOtherRequirementOptions] = useState<string[]>([])
+  const [contentTypeOptions, setContentTypeOptions] = useState<string[]>([])
   const [yieldMethodOptions, setYieldMethodOptions] = useState<string[]>(DEFAULT_YIELD_METHOD_OPTIONS)
   const [withdrawalFlexibilityOptions, setWithdrawalFlexibilityOptions] = useState<string[]>(DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS)
   const [feeTypeOptions, setFeeTypeOptions] = useState<string[]>(DEFAULT_FEE_TYPE_OPTIONS)
@@ -180,6 +194,12 @@ export default function ConfigureCommodityDrawer({
   const [priceRows, setPriceRows] = useState<PriceRow[]>([])
   const [stepErrors, setStepErrors] = useState<string[]>([])
   const commodityHydratedKeyRef = useRef<string | null>(null)
+  const [otherRequirementType, setOtherRequirementType] = useState("")
+  const [otherRequirementContentType, setOtherRequirementContentType] = useState("")
+  const [otherRequirementDescription, setOtherRequirementDescription] = useState("")
+  const [otherRequirementFile, setOtherRequirementFile] = useState<File | null>(null)
+  const [otherRequirements, setOtherRequirements] = useState<OtherRequirementItem[]>([])
+  const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
 
   const resetForm = useCallback(() => {
     const about = (commodityData?.about ?? {}) as Record<string, any>
@@ -337,6 +357,15 @@ export default function ConfigureCommodityDrawer({
           }))
         : [],
     )
+    const requirements = (commodityData?.requirements ?? {}) as Record<string, unknown>
+    const otherReqRaw = commodityData?.otherRequirements ?? requirements.otherRequirements
+    setOtherRequirements(
+      Array.isArray(otherReqRaw) ? otherReqRaw.map((row: unknown) => normalizeOtherRequirementRowFromApi(row)) : [],
+    )
+    setOtherRequirementType("")
+    setOtherRequirementContentType("")
+    setOtherRequirementDescription("")
+    setOtherRequirementFile(null)
     setStepErrors([])
   }, [commodityData, isInvestment])
 
@@ -365,6 +394,8 @@ export default function ConfigureCommodityDrawer({
       setFeeTypeOptions(prefetchedOptions.feeType)
       setPenaltyTypeOptions(prefetchedOptions.penaltyType)
       setTriggerDurationOptions(prefetchedOptions.triggerDuration)
+      setOtherRequirementOptions(prefetchedOptions.otherRequirementType ?? [])
+      setContentTypeOptions(prefetchedOptions.requirementContentType ?? [])
       return
     }
     const url = isInvestment
@@ -383,16 +414,21 @@ export default function ConfigureCommodityDrawer({
       } catch {
         setTenureOptions(DEFAULT_TENURE)
       }
-      const [withdrawalFlexibility, feeTypes, penaltyTypes, triggerDuration] = await Promise.all([
-        fetchOptionLabels("withdrawal-flexibility", DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS),
-        fetchOptionLabels("fee-type", DEFAULT_FEE_TYPE_OPTIONS),
-        fetchOptionLabels("penalty-type", DEFAULT_PENALTY_TYPE_OPTIONS),
-        fetchProductOptionLabels("trigger-duration", TRIGGER_DURATION_OPTIONS),
-      ])
+      const [withdrawalFlexibility, feeTypes, penaltyTypes, triggerDuration, otherRequirementType, requirementContentType] =
+        await Promise.all([
+          fetchOptionLabels("withdrawal-flexibility", DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS),
+          fetchOptionLabels("fee-type", DEFAULT_FEE_TYPE_OPTIONS),
+          fetchOptionLabels("penalty-type", DEFAULT_PENALTY_TYPE_OPTIONS),
+          fetchProductOptionLabels("trigger-duration", TRIGGER_DURATION_OPTIONS),
+          fetchProductOptionLabels("loan-other-requirement-type", []),
+          fetchProductOptionLabels("loan-other-requirement-content-type", []),
+        ])
       setWithdrawalFlexibilityOptions(withdrawalFlexibility)
       setFeeTypeOptions(feeTypes)
       setPenaltyTypeOptions(penaltyTypes)
       setTriggerDurationOptions(triggerDuration)
+      setOtherRequirementOptions(otherRequirementType)
+      setContentTypeOptions(requirementContentType)
 
       const yieldOptions = await fetchOptionLabels(
         isInvestment ? "investment-trading-cycle" : "commodity-trading-cycle",
@@ -455,6 +491,57 @@ export default function ConfigureCommodityDrawer({
     setPenaltyTriggerDuration("")
   }
 
+  const handleOtherRequirementTypeChange = (v: string) => {
+    setOtherRequirementType(v)
+    if (!shouldUseOtherRequirementFileUpload(v, otherRequirementContentType)) {
+      setOtherRequirementFile(null)
+      setOtherRequirementDescription("")
+    }
+  }
+
+  const handleOtherRequirementContentTypeChange = (v: string) => {
+    setOtherRequirementContentType(v)
+    if (!shouldUseOtherRequirementFileUpload(otherRequirementType, v)) {
+      setOtherRequirementFile(null)
+      setOtherRequirementDescription("")
+    }
+  }
+
+  const addOtherRequirement = () => {
+    if (!otherRequirementType || !otherRequirementContentType) return
+    const docType = shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType)
+    if (docType) {
+      if (!otherRequirementFile) return
+      setOtherRequirements((prev) => [
+        ...prev,
+        {
+          type: otherRequirementType,
+          contentType: otherRequirementContentType,
+          description: otherRequirementDescription.trim() || otherRequirementFile.name,
+          file: otherRequirementFile,
+        },
+      ])
+    } else {
+      if (!otherRequirementDescription.trim()) return
+      setOtherRequirements((prev) => [
+        ...prev,
+        {
+          type: otherRequirementType,
+          contentType: otherRequirementContentType,
+          description: otherRequirementDescription.trim(),
+        },
+      ])
+    }
+    setOtherRequirementType("")
+    setOtherRequirementContentType("")
+    setOtherRequirementDescription("")
+    setOtherRequirementFile(null)
+  }
+
+  const removeOtherRequirement = (index: number) => {
+    setOtherRequirements((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const addPriceRow = () => {
     if (!priceDraft.trim() || !priceDate || !priceSource.trim()) return
     setPriceRows((prev) => [
@@ -485,6 +572,7 @@ export default function ConfigureCommodityDrawer({
   }
 
   const handleBack = () => {
+    if (isSubmitting) return
     if (step > 1) setStep((s) => s - 1)
   }
 
@@ -538,89 +626,105 @@ export default function ConfigureCommodityDrawer({
     }
     setStepErrors([])
 
-    let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
-    if (previewImage) {
-      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
-    }
+    setIsSubmitting(true)
+    try {
+      let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
+      if (previewImage) {
+        previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+      }
 
-    const payload = {
-      ...commodityData,
-      name,
-      description,
-      duration,
-      typeRows,
-      commodityTypes: !isInvestment ? typeRows : undefined,
-      investmentTypes: isInvestment ? typeRows : undefined,
-      previewImage: null,
-      previewAssetUrl: previewAssetUrlSubmit,
-      yieldMethod,
-      offerYieldOn,
-      offerYieldEnabled: offerYieldOn,
-      offerYieldValue,
-      withdrawalFlexibility,
-      unitAmount: removeCommas(unitAmount),
-      minQuantityPurchase,
-      maxAmount: removeCommas(maxAmount),
-      termsAndConditions,
-      moratoriumEnabled,
-      moratoriumDays,
-      contractId,
-      airSignSecretKey,
-      airSignUid,
-      charges,
-      forcefulWithdrawal,
-      chargeForForcefulWithdrawal: forcefulWithdrawal,
-      penalties,
-      commodityPrices: !isInvestment ? priceRows : undefined,
-      unitPrices: isInvestment ? priceRows : undefined,
-      priceHistory: priceRows,
-    }
+      const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
 
-    if (isInvestment) {
-      onSubmit({
-        ...payload,
-        purpose: description,
-        tradingCycle: yieldMethod,
-        investmentTenure: duration,
-        investmentType: commodityData?.investmentType ?? commodityData?.productType ?? commodityData?.productSubtype,
-        investmentStructureType: String(
-          (commodityData?.structure as Record<string, unknown> | undefined)?.investmentType ?? "unit_based",
-        ),
-        securityRequirements: [],
-        minimumOrderQuantity: minQuantityPurchase,
-        price: removeCommas(maxAmount),
-        managementFeePercent: "",
-        minimumRedemptionAmount: "",
-        expectedAnnualReturn: offerYieldOn ? offerYieldValue : "",
-        additionalRequirements: [],
-        minInvestmentAmount: removeCommas(minInvestmentAmount),
-        maxInvestmentAmount: removeCommas(maxAmount),
-        unitAmountPrice: removeCommas(unitAmount),
-        enableUnitInvestmentPurchase,
-        expectedReturn: offerYieldOn ? offerYieldValue : "",
-      })
-    } else {
-      const lastRow = priceRows.length ? priceRows[priceRows.length - 1] : null
-      const lastPriceNum = lastRow ? Number.parseFloat(removeCommas(lastRow.price)) : NaN
-      const minQtyNum = Number.parseInt(String(minQuantityPurchase).replace(/,/g, ""), 10)
-      onSubmit({
-        ...payload,
-        purpose: description,
-        tradingCycle: yieldMethod,
-        commodityTenure: duration,
-        securityRequirements: [],
-        price: Number.isFinite(lastPriceNum) ? lastPriceNum : commodityData?.price,
-        minimumQuantity: Number.isFinite(minQtyNum) ? minQtyNum : undefined,
-        unitOfMeasure: unitOfMeasure.trim() || undefined,
-        compoundingFrequency: compoundingFrequency.trim() || undefined,
-        config: compoundingFrequency.trim()
-          ? { compoundingFrequency: compoundingFrequency.trim() }
-          : undefined,
-        managementFee: "",
-        minWithdrawalAmount: minQuantityPurchase,
-        expectedReturn: offerYieldOn ? offerYieldValue : "",
-        additionalRequirements: [],
-      })
+      const payload = {
+        ...commodityData,
+        name,
+        description,
+        duration,
+        typeRows,
+        commodityTypes: !isInvestment ? typeRows : undefined,
+        investmentTypes: isInvestment ? typeRows : undefined,
+        previewImage: null,
+        previewAssetUrl: previewAssetUrlSubmit,
+        yieldMethod,
+        offerYieldOn,
+        offerYieldEnabled: offerYieldOn,
+        offerYieldValue,
+        withdrawalFlexibility,
+        unitAmount: removeCommas(unitAmount),
+        minQuantityPurchase,
+        maxAmount: removeCommas(maxAmount),
+        termsAndConditions,
+        moratoriumEnabled,
+        moratoriumDays,
+        contractId,
+        airSignSecretKey,
+        airSignUid,
+        charges,
+        forcefulWithdrawal,
+        chargeForForcefulWithdrawal: forcefulWithdrawal,
+        penalties,
+        otherRequirements: otherRequirementsPayload,
+        commodityPrices: !isInvestment ? priceRows : undefined,
+        unitPrices: isInvestment ? priceRows : undefined,
+        priceHistory: priceRows,
+      }
+
+      if (isInvestment) {
+        await Promise.resolve(
+          onSubmit({
+            ...payload,
+            purpose: description,
+            tradingCycle: yieldMethod,
+            investmentTenure: duration,
+            investmentType: commodityData?.investmentType ?? commodityData?.productType ?? commodityData?.productSubtype,
+            investmentStructureType: String(
+              (commodityData?.structure as Record<string, unknown> | undefined)?.investmentType ?? "unit_based",
+            ),
+            securityRequirements: [],
+            minimumOrderQuantity: minQuantityPurchase,
+            price: removeCommas(maxAmount),
+            managementFeePercent: "",
+            minimumRedemptionAmount: "",
+            expectedAnnualReturn: offerYieldOn ? offerYieldValue : "",
+            additionalRequirements: [],
+            minInvestmentAmount: removeCommas(minInvestmentAmount),
+            maxInvestmentAmount: removeCommas(maxAmount),
+            unitAmountPrice: removeCommas(unitAmount),
+            enableUnitInvestmentPurchase,
+            expectedReturn: offerYieldOn ? offerYieldValue : "",
+          }),
+        )
+        toast.success("Investment product configuration saved successfully.")
+      } else {
+        const lastRow = priceRows.length ? priceRows[priceRows.length - 1] : null
+        const lastPriceNum = lastRow ? Number.parseFloat(removeCommas(lastRow.price)) : NaN
+        const minQtyNum = Number.parseInt(String(minQuantityPurchase).replace(/,/g, ""), 10)
+        await Promise.resolve(
+          onSubmit({
+            ...payload,
+            purpose: description,
+            tradingCycle: yieldMethod,
+            commodityTenure: duration,
+            securityRequirements: [],
+            price: Number.isFinite(lastPriceNum) ? lastPriceNum : commodityData?.price,
+            minimumQuantity: Number.isFinite(minQtyNum) ? minQtyNum : undefined,
+            unitOfMeasure: unitOfMeasure.trim() || undefined,
+            compoundingFrequency: compoundingFrequency.trim() || undefined,
+            config: compoundingFrequency.trim()
+              ? { compoundingFrequency: compoundingFrequency.trim() }
+              : undefined,
+            managementFee: "",
+            minWithdrawalAmount: minQuantityPurchase,
+            expectedReturn: offerYieldOn ? offerYieldValue : "",
+            additionalRequirements: [],
+          }),
+        )
+        toast.success("Commodity product configuration saved successfully.")
+      }
+    } catch (err: unknown) {
+      toast.error(formatProductApiErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -863,6 +967,24 @@ export default function ConfigureCommodityDrawer({
               </div>
             </div>
 
+            <ProductConfigOtherRequirementsPanel
+              otherRequirementOptions={otherRequirementOptions}
+              contentTypeOptions={contentTypeOptions}
+              otherRequirementType={otherRequirementType}
+              otherRequirementContentType={otherRequirementContentType}
+              otherRequirementDescription={otherRequirementDescription}
+              otherRequirementFile={otherRequirementFile}
+              otherRequirements={otherRequirements}
+              uploadInputRef={otherRequirementUploadRef}
+              filePickerId={isInvestment ? "investment-other-requirement-file" : "commodity-other-requirement-file"}
+              onTypeChange={handleOtherRequirementTypeChange}
+              onContentTypeChange={handleOtherRequirementContentTypeChange}
+              onDescriptionChange={setOtherRequirementDescription}
+              onFileChange={setOtherRequirementFile}
+              onAdd={addOtherRequirement}
+              onRemoveItem={removeOtherRequirement}
+            />
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <ProductConfigInput
                 label="Contract ID"
@@ -1079,11 +1201,29 @@ export default function ConfigureCommodityDrawer({
         )}
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button onClick={handleBack} variant="outline" className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent">
+          <Button
+            onClick={handleBack}
+            variant="outline"
+            disabled={isSubmitting}
+            className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent"
+          >
             Back
           </Button>
-          <Button onClick={handleNext} className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335]">
-            {step === steps.length ? "Submit" : "Next"}
+          <Button
+            onClick={handleNext}
+            disabled={isSubmitting}
+            className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335] disabled:opacity-70"
+          >
+            {isSubmitting && step === steps.length ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                Saving…
+              </>
+            ) : step === steps.length ? (
+              "Submit"
+            ) : (
+              "Next"
+            )}
           </Button>
         </div>
       </div>

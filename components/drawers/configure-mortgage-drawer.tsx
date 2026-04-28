@@ -1,10 +1,16 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
-import { Upload, X } from "lucide-react"
+import { Loader2, Upload, X } from "lucide-react"
+import { toast } from "sonner"
+import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
+import { getImageFileValidationError, getPdfFileValidationError } from "@/lib/fileValidation"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
-import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
+import {
+  uploadProductDocumentTemplateToUrl,
+  uploadProductMediaToUrl,
+} from "@/lib/uploadProductMediaToUrl"
 import {
   normalizeOtherRequirementRowFromApi,
   serializeOtherRequirementsForSubmit,
@@ -14,6 +20,7 @@ import {
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import type { MortgageConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
+import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 import {
   DEFAULT_REPAYMENT_WORKFLOWS,
   ProductConfigInput,
@@ -27,7 +34,7 @@ import { validateAllMortgageSteps, validateMortgageStep } from "@/lib/productCon
 interface ConfigureMortgageDrawerProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: any) => void
+  onSubmit: (data: any) => void | Promise<void>
   mortgageData: any
   prefetchedOptions?: MortgageConfigurePrefetched | null
 }
@@ -85,7 +92,7 @@ interface PropertyItem {
   previewObjectUrls: string[]
 }
 
-type DocumentRequirementUpload = { file: File; name: string }
+type DocumentRequirementUpload = { name: string; file?: File; fileUrl?: string }
 
 function classifyEquityRequirementMode(selected: string): "zero" | "fixed" | "percentage" | "none" {
   const s = selected.trim().toLowerCase().replace(/\s+/g, " ")
@@ -118,6 +125,18 @@ function previewLabelFromAssetUrl(url: string): string {
   }
 }
 
+function extractMoratoriumPrefill(raw: unknown): string {
+  if (raw == null) return ""
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw)
+  if (typeof raw === "string") return raw.trim()
+  if (typeof raw === "object") {
+    const r = raw as Record<string, unknown>
+    const val = r.value ?? r.duration ?? r.days
+    if (val != null) return String(val).trim()
+  }
+  return ""
+}
+
 export default function ConfigureMortgageDrawer({
   isOpen,
   onClose,
@@ -126,6 +145,7 @@ export default function ConfigureMortgageDrawer({
   prefetchedOptions = null,
 }: ConfigureMortgageDrawerProps) {
   const [step, setStep] = useState(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [tenureOptions, setTenureOptions] = useState<string[]>(DEFAULT_TENURE_OPTIONS)
   const [interestMethodOptions, setInterestMethodOptions] = useState<string[]>(DEFAULT_INTEREST_METHOD_OPTIONS)
   const [moratoriumTypeOptions, setMoratoriumTypeOptions] = useState<string[]>(DEFAULT_MORATORIUM_TYPE_OPTIONS)
@@ -382,9 +402,28 @@ export default function ConfigureMortgageDrawer({
 
     setInterestRate(String(mortgageData.interestRate ?? structure.interestRate ?? ""))
     setInterestMethod(String(mortgageData.interestMethod ?? structure.interestMethod ?? ""))
-    setAllowMoratorium(asBool(mortgageData.allowMoratorium ?? structure.allowMoratorium))
-    setMoratoriumSelectDuration(String(mortgageData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? ""))
-    setMoratoriumDurationOf(String(mortgageData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""))
+    const allowMoratoriumValue = asBool(mortgageData.allowMoratorium ?? structure.allowMoratorium)
+    const morRaw = extractMoratoriumPrefill(
+      mortgageData.moratorium ??
+        structure.moratorium ??
+        mortgageData.moratoriumSelectDuration ??
+        structure.moratoriumSelectDuration ??
+        mortgageData.moratoriumDurationOf ??
+        structure.moratoriumDurationOf,
+    )
+    if (morRaw && !Number.isNaN(Number(morRaw))) {
+      setAllowMoratorium(true)
+      setMoratoriumSelectDuration(String(morRaw))
+      setMoratoriumDurationOf("")
+    } else {
+      setAllowMoratorium(allowMoratoriumValue)
+      setMoratoriumSelectDuration(
+        String(mortgageData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? ""),
+      )
+      setMoratoriumDurationOf(
+        morRaw || String(mortgageData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""),
+      )
+    }
     setMoratoriumType(String(mortgageData.moratoriumType ?? structure.moratoriumType ?? ""))
     setRepaymentWorkflow(String(mortgageData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0]))
     const loanAmount = (structure.loanAmount ?? {}) as Record<string, unknown>
@@ -405,6 +444,26 @@ export default function ConfigureMortgageDrawer({
     setEquityRequirement(String(mortgageData.equityRequirement ?? structure.equityRequirement ?? ""))
     setEquityFixedAmount(String(mortgageData.equityFixedAmount ?? structure.equityFixedAmount ?? ""))
     setEquityPercentage(String(mortgageData.equityPercentage ?? structure.equityPercentage ?? ""))
+
+    const docsRaw = mortgageData.documentsToDownload ?? requirements.documentsToDownload
+    setDocuments(
+      Array.isArray(docsRaw)
+        ? docsRaw
+            .map((d: unknown) => {
+              const r = d as Record<string, unknown>
+              const name = String(r?.name ?? "").trim()
+              const fileUrl =
+                typeof r?.fileUrl === "string" && r.fileUrl.trim()
+                  ? r.fileUrl.trim()
+                  : typeof r?.url === "string" && r.url.trim()
+                    ? r.url.trim()
+                    : ""
+              if (!name && !fileUrl) return null
+              return { name: name || "Document", fileUrl: fileUrl || undefined } as DocumentRequirementUpload
+            })
+            .filter((x): x is DocumentRequirementUpload => !!x)
+        : [],
+    )
 
     const rawProps = mortgageData.properties
     if (Array.isArray(rawProps)) {
@@ -624,6 +683,12 @@ export default function ConfigureMortgageDrawer({
   const handleDocumentUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+    const fileError = getPdfFileValidationError(file)
+    if (fileError) {
+      toast.error(fileError)
+      event.target.value = ""
+      return
+    }
     const name = documentName.trim().length ? documentName.trim() : file.name
     setDocuments((prev) => [...prev, { file, name }])
     event.target.value = ""
@@ -632,8 +697,21 @@ export default function ConfigureMortgageDrawer({
   const handlePropertyPreviewUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     if (!files.length) return
-    setPropertyPreviewFiles((prev) => [...prev, ...files])
-    setPropertyPreviewUrls((prev) => [...prev, ...files.map((f) => URL.createObjectURL(f))])
+    const accepted: File[] = []
+    for (const file of files) {
+      const fileError = getImageFileValidationError(file)
+      if (fileError) {
+        toast.error(fileError)
+        continue
+      }
+      accepted.push(file)
+    }
+    if (!accepted.length) {
+      event.target.value = ""
+      return
+    }
+    setPropertyPreviewFiles((prev) => [...prev, ...accepted])
+    setPropertyPreviewUrls((prev) => [...prev, ...accepted.map((f) => URL.createObjectURL(f))])
     setPropertyFormError("")
     event.target.value = ""
   }
@@ -715,6 +793,7 @@ export default function ConfigureMortgageDrawer({
   }
 
   const handleBack = () => {
+    if (isSubmitting) return
     if (step > 1) setStep((prev) => prev - 1)
   }
 
@@ -741,6 +820,7 @@ export default function ConfigureMortgageDrawer({
     },
     selectedSecurities,
     documents,
+    otherRequirements,
     charges,
     enableLateRepaymentCharges,
     penalties,
@@ -780,121 +860,133 @@ export default function ConfigureMortgageDrawer({
 
     const removeCommas = (value: string) => value.replace(/,/g, "")
 
-    const documentsPayload = await Promise.all(
-      documents.map(async (doc) => ({
-        name: doc.name,
-        fileUrl: await uploadProductMediaToUrl(doc.file),
-      })),
-    )
+    setIsSubmitting(true)
+    try {
+      const documentsPayload = await Promise.all(
+        documents.map(async (doc) => ({
+          name: doc.name,
+          fileUrl: doc.file
+            ? await uploadProductDocumentTemplateToUrl(doc.file)
+            : String(doc.fileUrl ?? "").trim(),
+        })),
+      )
 
-    let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
-    if (previewImage) {
-      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+      let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
+      if (previewImage) {
+        previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+      }
+
+      const propertiesPayload = await Promise.all(
+        properties.map(async (p) => {
+          const previewImages = await Promise.all(
+            p.previewFiles.map(async (file) => ({
+              fileName: file.name,
+              fileType: file.type,
+              fileSize: file.size,
+              url: await uploadProductMediaToUrl(file),
+            })),
+          )
+          const custom = p.customFacilities ?? []
+          const facilitiesOnly = p.facilities.filter((f) => !custom.includes(f))
+          return {
+            name: p.name,
+            propertyType: p.type,
+            type: p.type,
+            value: removeCommas(p.value),
+            location: p.location,
+            propertyDescription: p.description,
+            description: p.description,
+            facilities: facilitiesOnly.length ? facilitiesOnly : [...p.facilities],
+            customFacilities: custom,
+            imageUrls: [...(p.imageUrls ?? [])],
+            videoUrl: p.videoUrl,
+            previewImages,
+            previewImage: previewImages[0] ?? null,
+          }
+        }),
+      )
+
+      const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
+
+      let equityContributionSubmit: number | undefined
+      if (equityRequirementMode === "percentage") {
+        const pct = Number.parseFloat(equityPercentage.replace(/%/g, "").trim())
+        equityContributionSubmit = Number.isFinite(pct)
+          ? pct
+          : typeof mortgageData?.equityContribution === "number"
+            ? mortgageData.equityContribution
+            : undefined
+      } else if (typeof mortgageData?.equityContribution === "number") {
+        equityContributionSubmit = mortgageData.equityContribution
+      }
+
+      let propertyValueSubmit: number | undefined
+      if (properties.length > 0) {
+        const n = Number.parseFloat(removeCommas(properties[0].value))
+        if (Number.isFinite(n)) propertyValueSubmit = n
+      }
+      if (propertyValueSubmit === undefined && mortgageData?.propertyValue != null) {
+        const pv = mortgageData.propertyValue
+        propertyValueSubmit =
+          typeof pv === "number" && Number.isFinite(pv)
+            ? pv
+            : Number.parseFloat(String(pv).replace(/,/g, "")) || undefined
+      }
+
+      await Promise.resolve(
+        onSubmit({
+          ...mortgageData,
+          name,
+          tenure,
+          description,
+          /** Backward-compatible aliases for APIs expecting legacy mortgage drawer fields */
+          purpose: description,
+          mortgageTenure: tenure,
+          minFacilityAmount: minLoanAmount,
+          maxFacilityAmount: maxLoanAmount,
+          mortgageTypes,
+          previewImage: null,
+          previewAssetUrl: previewAssetUrlSubmit,
+          equityContribution: equityContributionSubmit,
+          propertyValue: propertyValueSubmit,
+          interestRate,
+          interestMethod,
+          allowMoratorium,
+          moratoriumDuration: allowMoratorium ? moratoriumSelectDuration || moratoriumDurationOf : "",
+          moratoriumDays: allowMoratorium ? moratoriumSelectDuration || moratoriumDurationOf : "",
+          moratoriumSelectDuration: allowMoratorium ? moratoriumSelectDuration : "",
+          moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
+          moratoriumType: allowMoratorium ? moratoriumType : "",
+          repaymentWorkflow,
+          minLoanAmount,
+          maxLoanAmount,
+          repaymentSchedule,
+          amortizationSchedule,
+          repaymentFrequency,
+          acceptableNpa,
+          equityRequirement,
+          equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
+          equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
+          securityRequirements: selectedSecurities,
+          documentRequirements: documentsPayload,
+          otherRequirements: otherRequirementsPayload,
+          contractId,
+          airSignSecretKey,
+          airSignUid,
+          charges,
+          deductChargesOnLoan,
+          customerPayChargesBeforeDisbursement,
+          enableLateRepaymentCharges,
+          penalties,
+          properties: propertiesPayload,
+        }),
+      )
+      toast.success("Mortgage product configuration saved successfully.")
+    } catch (err: unknown) {
+      toast.error(formatProductApiErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
     }
-
-    const propertiesPayload = await Promise.all(
-      properties.map(async (p) => {
-        const previewImages = await Promise.all(
-          p.previewFiles.map(async (file) => ({
-            fileName: file.name,
-            fileType: file.type,
-            fileSize: file.size,
-            url: await uploadProductMediaToUrl(file),
-          })),
-        )
-        const custom = p.customFacilities ?? []
-        const facilitiesOnly = p.facilities.filter((f) => !custom.includes(f))
-        return {
-          name: p.name,
-          propertyType: p.type,
-          type: p.type,
-          value: removeCommas(p.value),
-          location: p.location,
-          propertyDescription: p.description,
-          description: p.description,
-          facilities: facilitiesOnly.length ? facilitiesOnly : [...p.facilities],
-          customFacilities: custom,
-          imageUrls: [...(p.imageUrls ?? [])],
-          videoUrl: p.videoUrl,
-          previewImages,
-          previewImage: previewImages[0] ?? null,
-        }
-      }),
-    )
-
-    const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
-
-    let equityContributionSubmit: number | undefined
-    if (equityRequirementMode === "percentage") {
-      const pct = Number.parseFloat(equityPercentage.replace(/%/g, "").trim())
-      equityContributionSubmit = Number.isFinite(pct)
-        ? pct
-        : typeof mortgageData?.equityContribution === "number"
-          ? mortgageData.equityContribution
-          : undefined
-    } else if (typeof mortgageData?.equityContribution === "number") {
-      equityContributionSubmit = mortgageData.equityContribution
-    }
-
-    let propertyValueSubmit: number | undefined
-    if (properties.length > 0) {
-      const n = Number.parseFloat(removeCommas(properties[0].value))
-      if (Number.isFinite(n)) propertyValueSubmit = n
-    }
-    if (propertyValueSubmit === undefined && mortgageData?.propertyValue != null) {
-      const pv = mortgageData.propertyValue
-      propertyValueSubmit =
-        typeof pv === "number" && Number.isFinite(pv)
-          ? pv
-          : Number.parseFloat(String(pv).replace(/,/g, "")) || undefined
-    }
-
-      onSubmit({
-        ...mortgageData,
-      name,
-      tenure,
-      description,
-      /** Backward-compatible aliases for APIs expecting legacy mortgage drawer fields */
-      purpose: description,
-      mortgageTenure: tenure,
-      minFacilityAmount: minLoanAmount,
-      maxFacilityAmount: maxLoanAmount,
-      mortgageTypes,
-      previewImage: null,
-      previewAssetUrl: previewAssetUrlSubmit,
-      equityContribution: equityContributionSubmit,
-      propertyValue: propertyValueSubmit,
-        interestRate,
-        interestMethod,
-      allowMoratorium,
-      moratoriumDuration: allowMoratorium ? moratoriumSelectDuration || moratoriumDurationOf : "",
-      moratoriumDays: allowMoratorium ? moratoriumSelectDuration || moratoriumDurationOf : "",
-      moratoriumSelectDuration: allowMoratorium ? moratoriumSelectDuration : "",
-      moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
-      moratoriumType: allowMoratorium ? moratoriumType : "",
-      repaymentWorkflow,
-      minLoanAmount,
-      maxLoanAmount,
-      repaymentSchedule,
-      amortizationSchedule,
-      repaymentFrequency,
-      acceptableNpa,
-      equityRequirement,
-      equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
-      equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
-      securityRequirements: selectedSecurities,
-      documentRequirements: documentsPayload,
-      otherRequirements: otherRequirementsPayload,
-      contractId,
-      airSignSecretKey,
-      airSignUid,
-        charges,
-      deductChargesOnLoan,
-      customerPayChargesBeforeDisbursement,
-      enableLateRepaymentCharges,
-      penalties,
-      properties: propertiesPayload,
-    })
   }
 
   const otherRequirementSummary = (item: OtherRequirementItem) => {
@@ -1158,14 +1250,20 @@ export default function ConfigureMortgageDrawer({
               >
                     Upload
               </Button>
-                  <input ref={documentsInputRef} type="file" onChange={handleDocumentUpload} accept=".pdf,image/*" className="hidden" />
+                  <input
+                    ref={documentsInputRef}
+                    type="file"
+                    onChange={handleDocumentUpload}
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                  />
                 </div>
               </div>
               {documents.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {documents.map((doc, index) => (
                     <span
-                      key={`${doc.file.name}-${index}`}
+                      key={`${doc.file?.name ?? doc.fileUrl ?? doc.name}-${index}`}
                       className="inline-flex items-center gap-2 rounded-md bg-[#9A813F] px-3 py-2 text-xs text-white"
                     >
                       {doc.name}
@@ -1182,108 +1280,24 @@ export default function ConfigureMortgageDrawer({
               )}
             </div>
 
-            <div className="space-y-3">
-              <p className="text-sm font-medium text-gray-700">
-                Other Requirements <span className="font-normal text-gray-500">(Optional)</span>
-              </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-start">
-                <ProductConfigSelect
-                  label="Requirement type"
-                  placeholder="Requirement type"
-                  value={otherRequirementType}
-                  options={otherRequirementOptions}
-                  onChange={handleOtherRequirementTypeChange}
-                  requirement="optional"
-                />
-                <ProductConfigSelect
-                  label="Content Type"
-                  placeholder="Content type"
-                  value={otherRequirementContentType}
-                  options={contentTypeOptions}
-                  onChange={handleOtherRequirementContentTypeChange}
-                  requirement="optional"
-                />
-                {shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType) ? (
-                  <div className="min-w-0 w-full">
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700" htmlFor="mortgage-other-requirement-file">
-                        Document
-                      </label>
-                      <button
-                        id="mortgage-other-requirement-file"
-                        type="button"
-                        onClick={() => otherRequirementUploadRef.current?.click()}
-                        title={otherRequirementFile?.name || undefined}
-                        aria-label="Choose document file"
-                        className="flex h-10 w-full min-w-0 max-w-full items-center gap-2 rounded-md border border-[#e5e7eb] bg-white px-3 text-left text-sm outline-none transition hover:bg-gray-50/80 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
-                      >
-                        <span
-                          className={`min-w-0 flex-1 truncate ${otherRequirementFile ? "font-medium text-gray-900" : "text-gray-400"}`}
-                        >
-                          {otherRequirementFile ? otherRequirementFile.name : "No file selected"}
-                        </span>
-                        <Upload className="h-4 w-4 shrink-0 text-[#9A813F]" aria-hidden />
-                      </button>
-                    </div>
-                    <input
-                      ref={otherRequirementUploadRef}
-                      type="file"
-                      className="hidden"
-                      accept=".pdf,image/*"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0] ?? null
-                        setOtherRequirementFile(f)
-                        if (f && !otherRequirementDescription.trim()) {
-                          setOtherRequirementDescription(f.name)
-                        }
-                        e.target.value = ""
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <ProductConfigInput
-                    label="Description"
-                    placeholder="Description"
-                    value={otherRequirementDescription}
-                    onChange={setOtherRequirementDescription}
-                    requirement="optional"
-                  />
-                )}
-                <div className="w-full space-y-2">
-                  <span className="invisible block text-sm font-medium text-gray-700 select-none" aria-hidden>
-                    Requirement type
-                  </span>
-                  <Button
-                    type="button"
-                    onClick={addOtherRequirement}
-                    className="h-10 w-full bg-[#9A813F] text-white hover:bg-[#8A7335]"
-                  >
-                    Add
-                  </Button>
-                </div>
-              </div>
-
-              {otherRequirements.length > 0 && (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  {otherRequirements.map((item, index) => (
-                    <div
-                      key={`${item.type}-${index}`}
-                      className="flex items-start justify-between gap-2 rounded-md bg-[#9A813F] px-3 py-3 text-sm text-white"
-                    >
-                      <span className="min-w-0 flex-1 leading-snug">{otherRequirementSummary(item)}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeOtherRequirement(index)}
-                        className="shrink-0 text-white/90 hover:text-white"
-                        aria-label="Remove requirement"
-                      >
-                        <X size={18} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-          </div>
+            <ProductConfigOtherRequirementsPanel
+              otherRequirementOptions={otherRequirementOptions}
+              contentTypeOptions={contentTypeOptions}
+              otherRequirementType={otherRequirementType}
+              otherRequirementContentType={otherRequirementContentType}
+              otherRequirementDescription={otherRequirementDescription}
+              otherRequirementFile={otherRequirementFile}
+              otherRequirements={otherRequirements}
+              uploadInputRef={otherRequirementUploadRef}
+              filePickerId="mortgage-other-requirement-file"
+              onTypeChange={handleOtherRequirementTypeChange}
+              onContentTypeChange={handleOtherRequirementContentTypeChange}
+              onDescriptionChange={setOtherRequirementDescription}
+              onFileChange={setOtherRequirementFile}
+              onAdd={addOtherRequirement}
+              onRemoveItem={removeOtherRequirement}
+              summarizeItem={otherRequirementSummary}
+            />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <ProductConfigInput
@@ -1562,13 +1576,13 @@ export default function ConfigureMortgageDrawer({
                   <p className="text-sm font-medium text-gray-700">
                     Add image <span className="font-normal text-gray-500">(Required)</span>
                   </p>
-                  <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
+                  <p className="text-xs text-gray-500">PNG, JPEG, JPG, SVG, WebP • Max. 5MB</p>
                 </div>
                 <input
                   ref={propertyPreviewInputRef}
                   type="file"
                   onChange={handlePropertyPreviewUpload}
-                  accept=".pdf,image/*"
+                  accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
                   multiple
                   className="hidden"
                 />
@@ -1688,11 +1702,29 @@ export default function ConfigureMortgageDrawer({
         )}
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button onClick={handleBack} variant="outline" className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent">
+          <Button
+            onClick={handleBack}
+            variant="outline"
+            disabled={isSubmitting}
+            className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent"
+          >
             Back
           </Button>
-          <Button onClick={handleNext} className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335]">
-            {step === STEPS.length ? "Submit" : "Next"}
+          <Button
+            onClick={handleNext}
+            disabled={isSubmitting}
+            className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335] disabled:opacity-70"
+          >
+            {isSubmitting && step === STEPS.length ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                Saving…
+              </>
+            ) : step === STEPS.length ? (
+              "Submit"
+            ) : (
+              "Next"
+            )}
           </Button>
         </div>
       </div>

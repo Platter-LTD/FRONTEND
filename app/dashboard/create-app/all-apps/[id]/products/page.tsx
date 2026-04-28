@@ -228,7 +228,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring loan product:', error)
       setIsProcessingOpen(false)
-      toast.error(formatProductApiErrorMessage(error))
+      throw error
     }
   }
 
@@ -302,7 +302,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring mortgage product:', error)
       setIsProcessingOpen(false)
-      toast.error(formatProductApiErrorMessage(error))
+      throw error
     }
   }
 
@@ -376,7 +376,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring savings product:', error)
       setIsProcessingOpen(false)
-      toast.error(formatProductApiErrorMessage(error))
+      throw error
     }
   }
 
@@ -453,7 +453,7 @@ export default function ProductsPage() {
     } catch (error) {
       console.error('Error configuring commodity product:', error)
       setIsProcessingOpen(false)
-      toast.error(formatProductApiErrorMessage(error))
+      throw error
     }
   }
 

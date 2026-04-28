@@ -183,6 +183,8 @@ export type SavingsConfigurePrefetched = {
   feeType: string[]
   penaltyType: string[]
   triggerDuration: string[]
+  otherRequirementType: string[]
+  requirementContentType: string[]
 }
 
 async function fetchSavingsTenure(): Promise<string[]> {
@@ -200,13 +202,24 @@ async function fetchSavingsTenure(): Promise<string[]> {
 
 export async function prefetchSavingsConfigureOptions(): Promise<SavingsConfigurePrefetched> {
   const duration = await fetchSavingsTenure()
-  const [interestMethods, savingsTypes, withdrawalFlexibility, feeTypes, penaltyTypes, triggerDuration] = await Promise.all([
+  const [
+    interestMethods,
+    savingsTypes,
+    withdrawalFlexibility,
+    feeTypes,
+    penaltyTypes,
+    triggerDuration,
+    otherRequirementType,
+    requirementContentType,
+  ] = await Promise.all([
     fetchOptionLabels("savings-interest-method", []),
     fetchOptionLabels("savings-type", []),
     fetchOptionLabels("withdrawal-flexibility", []),
     fetchOptionLabels("fee-type", []),
     fetchOptionLabels("penalty-type", []),
     fetchProductOptionLabels("trigger-duration", []),
+    fetchProductOptionLabels("loan-other-requirement-type", []),
+    fetchProductOptionLabels("loan-other-requirement-content-type", []),
   ])
   return {
     duration,
@@ -216,6 +229,8 @@ export async function prefetchSavingsConfigureOptions(): Promise<SavingsConfigur
     feeType: feeTypes,
     penaltyType: penaltyTypes,
     triggerDuration,
+    otherRequirementType,
+    requirementContentType,
   }
 }
 
@@ -226,6 +241,8 @@ export type CommodityConfigurePrefetched = {
   feeType: string[]
   penaltyType: string[]
   triggerDuration: string[]
+  otherRequirementType: string[]
+  requirementContentType: string[]
 }
 
 export async function prefetchCommodityConfigureOptions(isInvestment: boolean): Promise<CommodityConfigurePrefetched> {
@@ -245,13 +262,16 @@ export async function prefetchCommodityConfigureOptions(isInvestment: boolean): 
     tenure = []
   }
 
-  const [withdrawalFlexibility, feeTypes, penaltyTypes, triggerDuration, yieldMethod] = await Promise.all([
-    fetchOptionLabels("withdrawal-flexibility", []),
-    fetchOptionLabels("fee-type", []),
-    fetchOptionLabels("penalty-type", []),
-    fetchProductOptionLabels("trigger-duration", []),
-    fetchOptionLabels(isInvestment ? "investment-trading-cycle" : "commodity-trading-cycle", []),
-  ])
+  const [withdrawalFlexibility, feeTypes, penaltyTypes, triggerDuration, yieldMethod, otherRequirementType, requirementContentType] =
+    await Promise.all([
+      fetchOptionLabels("withdrawal-flexibility", []),
+      fetchOptionLabels("fee-type", []),
+      fetchOptionLabels("penalty-type", []),
+      fetchProductOptionLabels("trigger-duration", []),
+      fetchOptionLabels(isInvestment ? "investment-trading-cycle" : "commodity-trading-cycle", []),
+      fetchProductOptionLabels("loan-other-requirement-type", []),
+      fetchProductOptionLabels("loan-other-requirement-content-type", []),
+    ])
 
   return {
     tenure,
@@ -260,5 +280,7 @@ export async function prefetchCommodityConfigureOptions(isInvestment: boolean): 
     feeType: feeTypes,
     penaltyType: penaltyTypes,
     triggerDuration,
+    otherRequirementType,
+    requirementContentType,
   }
 }

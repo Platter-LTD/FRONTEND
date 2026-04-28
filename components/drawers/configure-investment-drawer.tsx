@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { X } from "lucide-react"
+import { Loader2, X } from "lucide-react"
+import { toast } from "sonner"
+import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
@@ -18,7 +20,7 @@ import { validateAllInvestmentSteps, validateInvestmentStep } from "@/lib/produc
 interface ConfigureInvestmentDrawerProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: any) => void
+  onSubmit: (data: any) => void | Promise<void>
   investmentData: any
   /** Optional accent; defaults to gold used across product drawers */
   accentColor?: string
@@ -60,6 +62,7 @@ export default function ConfigureInvestmentDrawer({
   accentColor = "#9A813F",
 }: ConfigureInvestmentDrawerProps) {
   const [step, setStep] = useState(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [durationOptions, setDurationOptions] = useState<string[]>(DEFAULT_DURATION_OPTIONS)
   const [interestMethodOptions, setInterestMethodOptions] = useState<string[]>(DEFAULT_INTEREST_METHOD_OPTIONS)
   const [withdrawalFlexibilityOptions, setWithdrawalFlexibilityOptions] = useState<string[]>(DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS)
@@ -243,6 +246,7 @@ export default function ConfigureInvestmentDrawer({
   const removePenalty = (index: number) => setWithdrawalPenalties((prev) => prev.filter((_, i) => i !== index))
 
   const handleBack = () => {
+    if (isSubmitting) return
     if (step > 1) setStep((s) => s - 1)
   }
 
@@ -289,52 +293,63 @@ export default function ConfigureInvestmentDrawer({
     }
     setStepErrors([])
 
-    let previewAssetUrlSubmit = String(
-      (investmentData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ??
-        investmentData?.previewAssetUrl ??
-        investmentData?.previewImage?.url ??
-        "",
-    ).trim() || undefined
-    if (previewImage) {
-      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
-    }
+    setIsSubmitting(true)
+    try {
+      let previewAssetUrlSubmit =
+        String(
+          (investmentData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ??
+            investmentData?.previewAssetUrl ??
+            investmentData?.previewImage?.url ??
+            "",
+        ).trim() || undefined
+      if (previewImage) {
+        previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+      }
 
-    onSubmit({
-      ...investmentData,
-      name,
-      durationOfInvestment: duration,
-      description,
-      investmentTypes,
-      previewImage: null,
-      previewAssetUrl: previewAssetUrlSubmit,
-      returnsOnInvestment: roi,
-      interestMethod,
-      investmentType,
-      withdrawalFlexibility,
-      minInvestmentAmount: removeCommas(minAmount),
-      maxInvestmentAmount: removeCommas(maxAmount),
-      termsAndConditions,
-      enableUnitInvestment,
-      moratoriumEnabled,
-      moratoriumDays,
-      unitAmount: removeCommas(unitAmount),
-      minQuantity,
-      charges,
-      chargeForcefulWithdrawal,
-      withdrawalPenalties,
-      contractId,
-      airSignSecretKey,
-      airSignUid,
-      /** Fields older flows / APIs may still read */
-      purpose: description,
-      investmentTenure: duration,
-      expectedReturn: roi,
-      payoutCycle: withdrawalFlexibility,
-      riskLevel: investmentType,
-      currency: "",
-      managementFee: "",
-      prospectusDocuments: [],
-    })
+      await Promise.resolve(
+        onSubmit({
+          ...investmentData,
+          name,
+          durationOfInvestment: duration,
+          description,
+          investmentTypes,
+          previewImage: null,
+          previewAssetUrl: previewAssetUrlSubmit,
+          returnsOnInvestment: roi,
+          interestMethod,
+          investmentType,
+          withdrawalFlexibility,
+          minInvestmentAmount: removeCommas(minAmount),
+          maxInvestmentAmount: removeCommas(maxAmount),
+          termsAndConditions,
+          enableUnitInvestment,
+          moratoriumEnabled,
+          moratoriumDays,
+          unitAmount: removeCommas(unitAmount),
+          minQuantity,
+          charges,
+          chargeForcefulWithdrawal,
+          withdrawalPenalties,
+          contractId,
+          airSignSecretKey,
+          airSignUid,
+          /** Fields older flows / APIs may still read */
+          purpose: description,
+          investmentTenure: duration,
+          expectedReturn: roi,
+          payoutCycle: withdrawalFlexibility,
+          riskLevel: investmentType,
+          currency: "",
+          managementFee: "",
+          prospectusDocuments: [],
+        }),
+      )
+      toast.success("Investment product configuration saved successfully.")
+    } catch (err: unknown) {
+      toast.error(formatProductApiErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -674,15 +689,30 @@ export default function ConfigureInvestmentDrawer({
         )}
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button onClick={handleBack} variant="outline" className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent">
+          <Button
+            onClick={handleBack}
+            variant="outline"
+            disabled={isSubmitting}
+            className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent"
+          >
             Back
           </Button>
           <Button
             onClick={handleNext}
-            className="h-11 flex-1 text-white hover:opacity-95"
+            disabled={isSubmitting}
+            className="h-11 flex-1 text-white hover:opacity-95 disabled:opacity-70"
             style={{ backgroundColor: accentColor }}
           >
-            {step === STEPS.length ? "Submit" : "Next"}
+            {isSubmitting && step === STEPS.length ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                Saving…
+              </>
+            ) : step === STEPS.length ? (
+              "Submit"
+            ) : (
+              "Next"
+            )}
           </Button>
         </div>
       </div>

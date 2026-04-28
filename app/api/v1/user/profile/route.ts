@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { BACKEND } from "@/lib/endpoints"
+import { plataUpstreamAxios } from "@/lib/server/plataUpstreamAxios"
 
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
-
-const AUTH_MS_URL = getPlataApiBaseUrl()
 
 /**
  * GET /api/v1/user/profile
@@ -17,22 +16,22 @@ export async function GET(request: NextRequest) {
       request.headers.get("authorization") ||
       request.headers.get("Authorization") ||
       (cookieAccessToken ? `Bearer ${cookieAccessToken}` : null)
-    const url = `${AUTH_MS_URL.replace(/\/+$/, "")}${BACKEND.user.profile}`
 
-    const response = await fetch(url, {
-      method: "GET",
+    const resp = await plataUpstreamAxios.get(BACKEND.user.profile, {
       headers: {
-        "Content-Type": "application/json",
         ...(authHeader && { Authorization: authHeader }),
       },
     })
 
-    const data = await response.json().catch(() => ({}))
+    const data = resp.data ?? {}
 
-    if (!response.ok) {
+    if (resp.status < 200 || resp.status >= 300) {
       return NextResponse.json(
-        { success: false, error: data.error || data.message || "Failed to fetch user profile" },
-        { status: response.status || 502 },
+        {
+          success: false,
+          error: (data as { error?: string }).error || (data as { message?: string }).message || "Failed to fetch user profile",
+        },
+        { status: resp.status || 502 },
       )
     }
 
@@ -50,24 +49,23 @@ export async function PUT(request: NextRequest) {
       request.headers.get("authorization") ||
       request.headers.get("Authorization") ||
       (cookieAccessToken ? `Bearer ${cookieAccessToken}` : null)
-    const url = `${AUTH_MS_URL.replace(/\/+$/, "")}${BACKEND.user.updateProfile}`
     const body = await request.json().catch(() => ({}))
 
-    const response = await fetch(url, {
-      method: "PUT",
+    const resp = await plataUpstreamAxios.put(BACKEND.user.updateProfile, body, {
       headers: {
-        "Content-Type": "application/json",
         ...(authHeader && { Authorization: authHeader }),
       },
-      body: JSON.stringify(body),
     })
 
-    const data = await response.json().catch(() => ({}))
+    const data = resp.data ?? {}
 
-    if (!response.ok) {
+    if (resp.status < 200 || resp.status >= 300) {
       return NextResponse.json(
-        { success: false, error: data.error || data.message || "Failed to update user profile" },
-        { status: response.status || 502 },
+        {
+          success: false,
+          error: (data as { error?: string }).error || (data as { message?: string }).message || "Failed to update user profile",
+        },
+        { status: resp.status || 502 },
       )
     }
 
@@ -77,4 +75,3 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ success: false, error: "Failed to update user profile" }, { status: 500 })
   }
 }
-

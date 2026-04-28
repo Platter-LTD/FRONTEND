@@ -1,10 +1,16 @@
 "use client"
 
 import { useEffect, useMemo, useState, type ChangeEvent, useRef } from "react"
-import { Upload, X } from "lucide-react"
+import { Loader2, X } from "lucide-react"
+import { toast } from "sonner"
+import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
+import { getPdfFileValidationError } from "@/lib/fileValidation"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
-import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
+import {
+  uploadProductDocumentTemplateToUrl,
+  uploadProductMediaToUrl,
+} from "@/lib/uploadProductMediaToUrl"
 import {
   normalizeOtherRequirementRowFromApi,
   serializeOtherRequirementsForSubmit,
@@ -14,6 +20,7 @@ import {
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import type { LoanConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
+import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 import {
   DEFAULT_REPAYMENT_WORKFLOWS,
   ProductConfigInput,
@@ -27,7 +34,7 @@ import { validateAllLoanSteps, validateLoanStep } from "@/lib/productConfigureSt
 interface ConfigureLoanDrawerProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: any) => void
+  onSubmit: (data: any) => void | Promise<void>
   loanData: any
   /** When set, dropdown options are applied immediately (no in-drawer fetch). */
   prefetchedOptions?: LoanConfigurePrefetched | null
@@ -58,7 +65,7 @@ interface PenaltyItem {
   triggerDuration: string
 }
 
-type DocumentRequirementUpload = { file: File; name: string }
+type DocumentRequirementUpload = { name: string; file?: File; fileUrl?: string }
 
 function classifyEquityRequirementMode(selected: string): "zero" | "fixed" | "percentage" | "none" {
   const s = selected.trim().toLowerCase().replace(/\s+/g, " ")
@@ -91,6 +98,37 @@ function previewLabelFromAssetUrl(url: string): string {
   }
 }
 
+function normalizeOptionToken(raw: unknown): string {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[%]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+}
+
+function resolveOptionLabel(raw: unknown, options: string[]): string {
+  const target = normalizeOptionToken(raw)
+  if (!target) return ""
+  const direct = options.find((o) => normalizeOptionToken(o) === target)
+  if (direct) return direct
+  const squeezedTarget = target.replace(/\s+/g, "")
+  const fuzzy = options.find((o) => normalizeOptionToken(o).replace(/\s+/g, "") === squeezedTarget)
+  return fuzzy ?? String(raw ?? "")
+}
+
+function extractMoratoriumPrefill(raw: unknown): string {
+  if (raw == null) return ""
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw)
+  if (typeof raw === "string") return raw.trim()
+  if (typeof raw === "object") {
+    const r = raw as Record<string, unknown>
+    const val = r.value ?? r.duration ?? r.days
+    if (val != null) return String(val).trim()
+  }
+  return ""
+}
+
 export default function ConfigureLoanDrawer({
   isOpen,
   onClose,
@@ -99,6 +137,7 @@ export default function ConfigureLoanDrawer({
   prefetchedOptions = null,
 }: ConfigureLoanDrawerProps) {
   const [step, setStep] = useState(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [tenureOptions, setTenureOptions] = useState<string[]>([])
   const [interestMethodOptions, setInterestMethodOptions] = useState<string[]>([])
   const [moratoriumTypeOptions, setMoratoriumTypeOptions] = useState<string[]>([])
@@ -328,14 +367,23 @@ export default function ConfigureLoanDrawer({
     setInterestRate(String(loanData.interestRate ?? structure.interestRate ?? ""))
     setInterestMethod(String(loanData.interestMethod ?? structure.interestMethod ?? ""))
     const allowMoratoriumValue = asBool(loanData.allowMoratorium ?? structure.allowMoratorium)
-    const morStr = structure.moratorium
+    const morStr = extractMoratoriumPrefill(
+      loanData.moratorium ??
+        structure.moratorium ??
+        loanData.moratoriumSelectDuration ??
+        structure.moratoriumSelectDuration ??
+        loanData.moratoriumDurationOf ??
+        structure.moratoriumDurationOf,
+    )
     if (morStr != null && String(morStr).trim() !== "" && !Number.isNaN(Number(morStr))) {
       setAllowMoratorium(true)
       setMoratoriumSelectDuration(String(morStr))
       setMoratoriumDurationOf("")
     } else {
       setAllowMoratorium(allowMoratoriumValue)
-      setMoratoriumSelectDuration(String(loanData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? ""))
+      const selectDurationRaw =
+        loanData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? morStr ?? ""
+      setMoratoriumSelectDuration(String(selectDurationRaw))
       setMoratoriumDurationOf(String(loanData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""))
     }
     setMoratoriumType(String(loanData.moratoriumType ?? structure.moratoriumType ?? ""))
@@ -348,14 +396,47 @@ export default function ConfigureLoanDrawer({
       formatAmountWithCommas(loanData.maxLoanAmount ?? structure.maxLoanAmount ?? loanAmount.max ?? ""),
     )
     setRepaymentSchedule(String(loanData.repaymentSchedule ?? structure.repaymentSchedule ?? ""))
-    setAmortizationSchedule(String(loanData.amortizationSchedule ?? structure.amortizationSchedule ?? ""))
+    setAmortizationSchedule(
+      String(
+        loanData.amortizationSchedule ??
+          loanData.amortization ??
+          structure.amortizationSchedule ??
+          structure.amortization ??
+          "",
+      ),
+    )
     setRepaymentFrequency(String(loanData.repaymentFrequency ?? structure.repaymentFrequency ?? ""))
     setAcceptableNpa(
       String(loanData.acceptableNpa ?? structure.acceptableNPA ?? structure.acceptableNpa ?? ""),
     )
-    setEquityRequirement(String(loanData.equityRequirement ?? structure.equityRequirement ?? ""))
+    setEquityRequirement(
+      resolveOptionLabel(
+        loanData.equityRequirement ?? structure.equityRequirement ?? "",
+        equityRequirementOptions,
+      ),
+    )
     setEquityFixedAmount(String(loanData.equityFixedAmount ?? structure.equityFixedAmount ?? ""))
     setEquityPercentage(String(loanData.equityPercentage ?? structure.equityPercentage ?? ""))
+
+    const docsRaw = loanData.documentsToDownload ?? requirements.documentsToDownload
+    setDocuments(
+      Array.isArray(docsRaw)
+        ? docsRaw
+            .map((d: unknown) => {
+              const r = d as Record<string, unknown>
+              const name = String(r?.name ?? "").trim()
+              const fileUrl =
+                typeof r?.fileUrl === "string" && r.fileUrl.trim()
+                  ? r.fileUrl.trim()
+                  : typeof r?.url === "string" && r.url.trim()
+                    ? r.url.trim()
+                    : ""
+              if (!name && !fileUrl) return null
+              return { name: name || "Document", fileUrl: fileUrl || undefined } as DocumentRequirementUpload
+            })
+            .filter((x): x is DocumentRequirementUpload => !!x)
+        : [],
+    )
 
     const otherReqRaw = loanData.otherRequirements ?? requirements.otherRequirements
     setOtherRequirements(
@@ -432,6 +513,28 @@ export default function ConfigureLoanDrawer({
     )
   }, [isOpen, loanData, securityOptions])
 
+  // When options arrive after hydration, remap enum-like stored values to displayed labels.
+  useEffect(() => {
+    if (!isOpen || !loanData) return
+    const structure = (loanData.structure ?? {}) as Record<string, unknown>
+    const eqRaw = loanData.equityRequirement ?? structure.equityRequirement ?? ""
+    if (eqRaw) {
+      setEquityRequirement((prev) => {
+        const next = resolveOptionLabel(eqRaw, equityRequirementOptions)
+        return next || prev
+      })
+    }
+    const morRaw =
+      loanData.moratoriumSelectDuration ??
+      structure.moratoriumSelectDuration ??
+      loanData.moratorium ??
+      structure.moratorium
+    const resolvedMor = resolveOptionLabel(extractMoratoriumPrefill(morRaw), moratoriumDurationOptions)
+    if (resolvedMor) {
+      setMoratoriumSelectDuration((prev) => (prev ? resolveOptionLabel(prev, moratoriumDurationOptions) : resolvedMor))
+    }
+  }, [isOpen, loanData, equityRequirementOptions, moratoriumDurationOptions])
+
   const addLoanType = () => {
     if (!loanTypeName.trim() || !loanTypeDescription.trim()) return
     setLoanTypes((prev) => [...prev, { name: loanTypeName.trim(), description: loanTypeDescription.trim() }])
@@ -493,6 +596,10 @@ export default function ConfigureLoanDrawer({
     setOtherRequirementFile(null)
   }
 
+  const removeOtherRequirement = (index: number) => {
+    setOtherRequirements((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const addCharge = () => {
     if (!chargeName.trim() || !chargeFeeType || !chargeValue.trim()) return
     setCharges((prev) => [...prev, { name: chargeName.trim(), feeType: chargeFeeType, value: chargeValue.trim() }])
@@ -521,12 +628,19 @@ export default function ConfigureLoanDrawer({
   const handleDocumentUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+    const fileError = getPdfFileValidationError(file)
+    if (fileError) {
+      toast.error(fileError)
+      event.target.value = ""
+      return
+    }
     const name = documentName.trim().length ? documentName.trim() : file.name
     setDocuments((prev) => [...prev, { file, name }])
     event.target.value = ""
   }
 
   const handleBack = () => {
+    if (isSubmitting) return
     if (step > 1) setStep((prev) => prev - 1)
   }
 
@@ -559,6 +673,7 @@ export default function ConfigureLoanDrawer({
     },
     selectedSecurities,
     documents,
+    otherRequirements,
     charges,
     enableLateRepaymentCharges,
     penalties,
@@ -583,60 +698,72 @@ export default function ConfigureLoanDrawer({
     }
     setStepErrors([])
 
-    const documentsPayload = await Promise.all(
-      documents.map(async (doc) => ({
-        name: doc.name,
-        fileUrl: await uploadProductMediaToUrl(doc.file),
-      })),
-    )
+    setIsSubmitting(true)
+    try {
+      const documentsPayload = await Promise.all(
+        documents.map(async (doc) => ({
+          name: doc.name,
+          fileUrl: doc.file
+            ? await uploadProductDocumentTemplateToUrl(doc.file)
+            : String(doc.fileUrl ?? "").trim(),
+        })),
+      )
 
-    let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
-    if (previewImage) {
-      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+      let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
+      if (previewImage) {
+        previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+      }
+
+      const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
+
+      const loanPayload = { ...(loanData || {}) }
+      delete loanPayload.moratoriumDuration
+      delete loanPayload.moratoriumDays
+
+      await Promise.resolve(
+        onSubmit({
+          ...loanPayload,
+          name,
+          tenure,
+          description,
+          loanTypes,
+          previewImage: null,
+          previewAssetUrl: previewAssetUrlSubmit,
+          interestRate,
+          interestMethod,
+          allowMoratorium,
+          moratoriumSelectDuration: allowMoratorium ? moratoriumSelectDuration : "",
+          moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
+          moratoriumType: allowMoratorium ? moratoriumType : "",
+          repaymentWorkflow,
+          minLoanAmount,
+          maxLoanAmount,
+          repaymentSchedule,
+          amortizationSchedule,
+          repaymentFrequency,
+          acceptableNpa,
+          acceptableNPA: acceptableNpa,
+          equityRequirement,
+          equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
+          equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
+          securityRequirements: selectedSecurities,
+          documentRequirements: documentsPayload,
+          otherRequirements: otherRequirementsPayload,
+          charges,
+          chargePaymentMode,
+          deductAllChargesOnLoan: chargePaymentMode === "deduct",
+          customerPaysChargesBeforeDisbursement: chargePaymentMode === "customer-pay",
+          customerPayChargesBeforeDisbursement: chargePaymentMode === "customer-pay",
+          enableLateRepaymentCharges,
+          penalties,
+        }),
+      )
+      toast.success("Loan product configuration saved successfully.")
+    } catch (err: unknown) {
+      toast.error(formatProductApiErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
     }
-
-    const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
-
-    const loanPayload = { ...(loanData || {}) }
-    delete loanPayload.moratoriumDuration
-    delete loanPayload.moratoriumDays
-
-    onSubmit({
-      ...loanPayload,
-      name,
-      tenure,
-      description,
-      loanTypes,
-      previewImage: null,
-      previewAssetUrl: previewAssetUrlSubmit,
-      interestRate,
-      interestMethod,
-      allowMoratorium,
-      moratoriumSelectDuration: allowMoratorium ? moratoriumSelectDuration : "",
-      moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
-      moratoriumType: allowMoratorium ? moratoriumType : "",
-      repaymentWorkflow,
-      minLoanAmount,
-      maxLoanAmount,
-      repaymentSchedule,
-      amortizationSchedule,
-      repaymentFrequency,
-      acceptableNpa,
-      acceptableNPA: acceptableNpa,
-      equityRequirement,
-      equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
-      equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
-      securityRequirements: selectedSecurities,
-      documentRequirements: documentsPayload,
-      otherRequirements: otherRequirementsPayload,
-      charges,
-      chargePaymentMode,
-      deductAllChargesOnLoan: chargePaymentMode === "deduct",
-      customerPaysChargesBeforeDisbursement: chargePaymentMode === "customer-pay",
-      customerPayChargesBeforeDisbursement: chargePaymentMode === "customer-pay",
-      enableLateRepaymentCharges,
-      penalties,
-    })
   }
 
   return (
@@ -882,12 +1009,21 @@ export default function ConfigureLoanDrawer({
               >
                 Upload
               </Button>
-              <input ref={documentsInputRef} type="file" onChange={handleDocumentUpload} className="hidden" />
+              <input
+                ref={documentsInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={handleDocumentUpload}
+                className="hidden"
+              />
             </div>
             {documents.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {documents.map((doc, index) => (
-                  <span key={`${doc.file.name}-${index}`} className="inline-flex items-center gap-2 rounded-md bg-[#9A813F] px-3 py-2 text-xs text-white">
+                  <span
+                    key={`${doc.file?.name ?? doc.fileUrl ?? doc.name}-${index}`}
+                    className="inline-flex items-center gap-2 rounded-md bg-[#9A813F] px-3 py-2 text-xs text-white"
+                  >
                     {doc.name}
                     <button
                       type="button"
@@ -902,94 +1038,23 @@ export default function ConfigureLoanDrawer({
             )}
           </div>
 
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-gray-700">
-              Other Requirements <span className="font-normal text-gray-500">(Optional)</span>
-            </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-start">
-              <ProductConfigSelect
-                label="Requirement type"
-                placeholder="Requirement type"
-                value={otherRequirementType}
-                options={otherRequirementOptions}
-                onChange={handleOtherRequirementTypeChange}
-                requirement="optional"
-              />
-              <ProductConfigSelect
-                label="Content Type"
-                placeholder="Content type"
-                value={otherRequirementContentType}
-                options={contentTypeOptions}
-                onChange={handleOtherRequirementContentTypeChange}
-                requirement="optional"
-              />
-              {shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType) ? (
-                <div className="min-w-0 w-full">
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-gray-700" htmlFor="other-requirement-file">
-                      Document
-                    </label>
-                    <button
-                      id="other-requirement-file"
-                      type="button"
-                      onClick={() => otherRequirementUploadRef.current?.click()}
-                      title={otherRequirementFile?.name || undefined}
-                      aria-label="Choose document file"
-                      className="flex h-10 w-full min-w-0 max-w-full items-center gap-2 rounded-md border border-[#e5e7eb] bg-white px-3 text-left text-sm outline-none transition hover:bg-gray-50/80 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
-                    >
-                      <span
-                        className={`min-w-0 flex-1 truncate ${otherRequirementFile ? "font-medium text-gray-900" : "text-gray-400"}`}
-                      >
-                        {otherRequirementFile ? otherRequirementFile.name : "No file selected"}
-                      </span>
-                      <Upload className="h-4 w-4 shrink-0 text-[#9A813F]" aria-hidden />
-                    </button>
-                  </div>
-                  <input
-                    ref={otherRequirementUploadRef}
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,image/*"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0] ?? null
-                      setOtherRequirementFile(f)
-                      if (f && !otherRequirementDescription.trim()) {
-                        setOtherRequirementDescription(f.name)
-                      }
-                      e.target.value = ""
-                    }}
-                  />
-                </div>
-              ) : (
-                <ProductConfigInput
-                  label="Description"
-                  placeholder="Description"
-                  value={otherRequirementDescription}
-                  onChange={setOtherRequirementDescription}
-                />
-              )}
-              <div className="w-full space-y-2">
-                <span className="invisible block text-sm font-medium text-gray-700 select-none" aria-hidden>
-                  Requirement type
-                </span> 
-                <Button type="button" onClick={addOtherRequirement} className="h-10 w-full bg-[#9A813F] text-white hover:bg-[#8A7335]">
-                  Add
-                </Button>
-              </div>
-            </div>
-
-            {otherRequirements.length > 0 && (
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {otherRequirements.map((item, index) => (
-                  <div key={`${item.type}-${index}`} className="rounded-md bg-[#9A813F] px-3 py-2 text-sm text-white">
-                    {item.file
-                      ? `${item.type} — ${item.file.name} — ${item.contentType}`
-                      : `${item.type} — ${item.description} — ${item.contentType}`}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <ProductConfigOtherRequirementsPanel
+            otherRequirementOptions={otherRequirementOptions}
+            contentTypeOptions={contentTypeOptions}
+            otherRequirementType={otherRequirementType}
+            otherRequirementContentType={otherRequirementContentType}
+            otherRequirementDescription={otherRequirementDescription}
+            otherRequirementFile={otherRequirementFile}
+            otherRequirements={otherRequirements}
+            uploadInputRef={otherRequirementUploadRef}
+            filePickerId="loan-other-requirement-file"
+            onTypeChange={handleOtherRequirementTypeChange}
+            onContentTypeChange={handleOtherRequirementContentTypeChange}
+            onDescriptionChange={setOtherRequirementDescription}
+            onFileChange={setOtherRequirementFile}
+            onAdd={addOtherRequirement}
+            onRemoveItem={removeOtherRequirement}
+          />
         </div>
       )}
 
@@ -1116,11 +1181,29 @@ export default function ConfigureLoanDrawer({
       )}
 
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <Button onClick={handleBack} variant="outline" className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent">
+        <Button
+          onClick={handleBack}
+          variant="outline"
+          disabled={isSubmitting}
+          className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent"
+        >
           Back
         </Button>
-        <Button onClick={handleNext} className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335]">
-          {step === STEPS.length ? "Submit" : "Next"}
+        <Button
+          onClick={handleNext}
+          disabled={isSubmitting}
+          className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335] disabled:opacity-70"
+        >
+          {isSubmitting && step === STEPS.length ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+              Saving…
+            </>
+          ) : step === STEPS.length ? (
+            "Submit"
+          ) : (
+            "Next"
+          )}
         </Button>
       </div>
       </div>

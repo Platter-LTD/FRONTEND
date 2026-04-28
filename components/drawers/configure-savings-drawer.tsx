@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react"
-import { X } from "lucide-react"
+import { Loader2, X } from "lucide-react"
+import { toast } from "sonner"
+import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
@@ -15,11 +17,18 @@ import {
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
 import { validateAllSavingsSteps, validateSavingsStep } from "@/lib/productConfigureStepValidation"
+import {
+  normalizeOtherRequirementRowFromApi,
+  serializeOtherRequirementsForSubmit,
+  shouldUseOtherRequirementFileUpload,
+  type OtherRequirementDraft,
+} from "@/lib/otherRequirementPayload"
+import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 
 interface ConfigureSavingsDrawerProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: any) => void
+  onSubmit: (data: any) => void | Promise<void>
   savingsData: any
   prefetchedOptions?: SavingsConfigurePrefetched | null
 }
@@ -52,6 +61,8 @@ interface WithdrawalPenaltyItem {
   value: string
   triggerDuration: string
 }
+
+type OtherRequirementItem = OtherRequirementDraft
 
 function formatAmountWithCommas(raw: unknown): string {
   if (raw === undefined || raw === null || raw === "") return ""
@@ -91,8 +102,11 @@ export default function ConfigureSavingsDrawer({
   prefetchedOptions = null,
 }: ConfigureSavingsDrawerProps) {
   const [step, setStep] = useState(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [durationOptions, setDurationOptions] = useState<string[]>(DEFAULT_DURATION_OPTIONS)
+  const [otherRequirementOptions, setOtherRequirementOptions] = useState<string[]>([])
+  const [contentTypeOptions, setContentTypeOptions] = useState<string[]>([])
   const [interestMethodOptions, setInterestMethodOptions] = useState<string[]>(DEFAULT_INTEREST_METHOD_OPTIONS)
   const [savingsTypeOptions, setSavingsTypeOptions] = useState<string[]>(DEFAULT_SAVINGS_TYPE_OPTIONS)
   const [withdrawalFlexibilityOptions, setWithdrawalFlexibilityOptions] = useState<string[]>(DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS)
@@ -131,6 +145,12 @@ export default function ConfigureSavingsDrawer({
   const [penaltyTriggerDuration, setPenaltyTriggerDuration] = useState("")
   const [withdrawalPenalties, setWithdrawalPenalties] = useState<WithdrawalPenaltyItem[]>([])
   const savingsHydratedKeyRef = useRef<string | null>(null)
+  const [otherRequirementType, setOtherRequirementType] = useState("")
+  const [otherRequirementContentType, setOtherRequirementContentType] = useState("")
+  const [otherRequirementDescription, setOtherRequirementDescription] = useState("")
+  const [otherRequirementFile, setOtherRequirementFile] = useState<File | null>(null)
+  const [otherRequirements, setOtherRequirements] = useState<OtherRequirementItem[]>([])
+  const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
 
   const isPercentType = (value: string) => value.toLowerCase().includes("percent")
   const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
@@ -179,6 +199,8 @@ export default function ConfigureSavingsDrawer({
       setFeeTypeOptions(prefetchedOptions.feeType)
       setPenaltyTypeOptions(prefetchedOptions.penaltyType)
       setTriggerDurationOptions(prefetchedOptions.triggerDuration)
+      setOtherRequirementOptions(prefetchedOptions.otherRequirementType ?? [])
+      setContentTypeOptions(prefetchedOptions.requirementContentType ?? [])
       return
     }
     const fetchOptions = async () => {
@@ -196,14 +218,24 @@ export default function ConfigureSavingsDrawer({
       } catch {
         // keep defaults
       }
-      const [interestMethods, savingsTypes, withdrawalFlexibility, feeTypes, penaltyTypes, triggerDuration] =
-        await Promise.all([
+      const [
+        interestMethods,
+        savingsTypes,
+        withdrawalFlexibility,
+        feeTypes,
+        penaltyTypes,
+        triggerDuration,
+        otherRequirementType,
+        requirementContentType,
+      ] = await Promise.all([
         fetchOptionLabels("savings-interest-method", DEFAULT_INTEREST_METHOD_OPTIONS),
         fetchOptionLabels("savings-type", DEFAULT_SAVINGS_TYPE_OPTIONS),
         fetchOptionLabels("withdrawal-flexibility", DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS),
         fetchOptionLabels("fee-type", DEFAULT_FEE_TYPE_OPTIONS),
         fetchOptionLabels("penalty-type", DEFAULT_PENALTY_TYPE_OPTIONS),
         fetchProductOptionLabels("trigger-duration", TRIGGER_DURATION_OPTIONS),
+        fetchProductOptionLabels("loan-other-requirement-type", []),
+        fetchProductOptionLabels("loan-other-requirement-content-type", []),
       ])
       setInterestMethodOptions(interestMethods)
       setSavingsTypeOptions(savingsTypes)
@@ -211,6 +243,8 @@ export default function ConfigureSavingsDrawer({
       setFeeTypeOptions(feeTypes)
       setPenaltyTypeOptions(penaltyTypes)
       setTriggerDurationOptions(triggerDuration)
+      setOtherRequirementOptions(otherRequirementType)
+      setContentTypeOptions(requirementContentType)
     }
     fetchOptions()
   }, [isOpen, prefetchedOptions])
@@ -233,6 +267,7 @@ export default function ConfigureSavingsDrawer({
     const about = (savingsData.about ?? {}) as Record<string, any>
     const structure = (savingsData.structure ?? {}) as Record<string, any>
     const fees = (savingsData.feesAndCharges ?? {}) as Record<string, any>
+    const requirements = (savingsData.requirements ?? {}) as Record<string, unknown>
 
     setName(String(savingsData.name ?? ""))
     setDurationOfSavings(
@@ -299,6 +334,10 @@ export default function ConfigureSavingsDrawer({
           }))
         : [],
     )
+    const otherReqRaw = savingsData.otherRequirements ?? requirements.otherRequirements
+    setOtherRequirements(
+      Array.isArray(otherReqRaw) ? otherReqRaw.map((row: unknown) => normalizeOtherRequirementRowFromApi(row)) : [],
+    )
   }, [isOpen, savingsData])
 
   const formatWithCommas = (value: string) => {
@@ -357,7 +396,59 @@ export default function ConfigureSavingsDrawer({
     setWithdrawalPenalties((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const handleOtherRequirementTypeChange = (v: string) => {
+    setOtherRequirementType(v)
+    if (!shouldUseOtherRequirementFileUpload(v, otherRequirementContentType)) {
+      setOtherRequirementFile(null)
+      setOtherRequirementDescription("")
+    }
+  }
+
+  const handleOtherRequirementContentTypeChange = (v: string) => {
+    setOtherRequirementContentType(v)
+    if (!shouldUseOtherRequirementFileUpload(otherRequirementType, v)) {
+      setOtherRequirementFile(null)
+      setOtherRequirementDescription("")
+    }
+  }
+
+  const addOtherRequirement = () => {
+    if (!otherRequirementType || !otherRequirementContentType) return
+    const docType = shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType)
+    if (docType) {
+      if (!otherRequirementFile) return
+      setOtherRequirements((prev) => [
+        ...prev,
+        {
+          type: otherRequirementType,
+          contentType: otherRequirementContentType,
+          description: otherRequirementDescription.trim() || otherRequirementFile.name,
+          file: otherRequirementFile,
+        },
+      ])
+    } else {
+      if (!otherRequirementDescription.trim()) return
+      setOtherRequirements((prev) => [
+        ...prev,
+        {
+          type: otherRequirementType,
+          contentType: otherRequirementContentType,
+          description: otherRequirementDescription.trim(),
+        },
+      ])
+    }
+    setOtherRequirementType("")
+    setOtherRequirementContentType("")
+    setOtherRequirementDescription("")
+    setOtherRequirementFile(null)
+  }
+
+  const removeOtherRequirement = (index: number) => {
+    setOtherRequirements((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const handleBack = () => {
+    if (isSubmitting) return
     if (step > 1) setStep((s) => s - 1)
   }
 
@@ -417,42 +508,55 @@ export default function ConfigureSavingsDrawer({
       return
     }
 
-    let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
-    if (previewImage) {
-      previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
-    }
+    setIsSubmitting(true)
+    try {
+      let previewAssetUrlSubmit = existingPreviewAssetUrl.trim() || undefined
+      if (previewImage) {
+        previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
+      }
 
-    onSubmit({
-      ...savingsData,
-      name,
-      durationOfSavings,
-      description,
-      savingsTypes,
-      previewImage: null,
-      previewAssetUrl: previewAssetUrlSubmit,
-      interestRate,
-      interestMethod,
-      savingsType,
-      withdrawalFlexibility,
-      minSavingsAmount: removeCommas(minSavingsAmount),
-      maxSavingsAmount: removeCommas(maxSavingsAmount),
-      termsAndConditions,
-      contractId,
-      airSignSecretKey,
-      airSignUid,
-      charges,
-      chargeForcefulWithdrawal,
-      withdrawalPenalties,
-      /** Legacy field names for existing APIs */
-      purpose: description,
-      savingsTenure: durationOfSavings,
-      depositCycle: withdrawalFlexibility,
-      minDepositAmount: removeCommas(minSavingsAmount),
-      maxDepositAmount: removeCommas(maxSavingsAmount),
-      managementFee: "",
-      minWithdrawalAmount: "",
-      additionalRequirements: [],
-    })
+      const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
+
+      await Promise.resolve(
+        onSubmit({
+          ...savingsData,
+          name,
+          durationOfSavings,
+          description,
+          savingsTypes,
+          previewImage: null,
+          previewAssetUrl: previewAssetUrlSubmit,
+          interestRate,
+          interestMethod,
+          savingsType,
+          withdrawalFlexibility,
+          minSavingsAmount: removeCommas(minSavingsAmount),
+          maxSavingsAmount: removeCommas(maxSavingsAmount),
+          termsAndConditions,
+          contractId,
+          airSignSecretKey,
+          airSignUid,
+          charges,
+          chargeForcefulWithdrawal,
+          withdrawalPenalties,
+          otherRequirements: otherRequirementsPayload,
+          /** Legacy field names for existing APIs */
+          purpose: description,
+          savingsTenure: durationOfSavings,
+          depositCycle: withdrawalFlexibility,
+          minDepositAmount: removeCommas(minSavingsAmount),
+          maxDepositAmount: removeCommas(maxSavingsAmount),
+          managementFee: "",
+          minWithdrawalAmount: "",
+          additionalRequirements: [],
+        }),
+      )
+      toast.success("Savings product configuration saved successfully.")
+    } catch (err: unknown) {
+      toast.error(formatProductApiErrorMessage(err))
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -598,6 +702,24 @@ export default function ConfigureSavingsDrawer({
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
               />
             </div>
+
+            <ProductConfigOtherRequirementsPanel
+              otherRequirementOptions={otherRequirementOptions}
+              contentTypeOptions={contentTypeOptions}
+              otherRequirementType={otherRequirementType}
+              otherRequirementContentType={otherRequirementContentType}
+              otherRequirementDescription={otherRequirementDescription}
+              otherRequirementFile={otherRequirementFile}
+              otherRequirements={otherRequirements}
+              uploadInputRef={otherRequirementUploadRef}
+              filePickerId="savings-other-requirement-file"
+              onTypeChange={handleOtherRequirementTypeChange}
+              onContentTypeChange={handleOtherRequirementContentTypeChange}
+              onDescriptionChange={setOtherRequirementDescription}
+              onFileChange={setOtherRequirementFile}
+              onAdd={addOtherRequirement}
+              onRemoveItem={removeOtherRequirement}
+            />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <ProductConfigInput
@@ -765,11 +887,29 @@ export default function ConfigureSavingsDrawer({
         )}
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button onClick={handleBack} variant="outline" className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent">
+          <Button
+            onClick={handleBack}
+            variant="outline"
+            disabled={isSubmitting}
+            className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent"
+          >
             Back
           </Button>
-          <Button onClick={handleNext} className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335]">
-            {step === STEPS.length ? "Submit" : "Next"}
+          <Button
+            onClick={handleNext}
+            disabled={isSubmitting}
+            className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335] disabled:opacity-70"
+          >
+            {isSubmitting && step === STEPS.length ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                Saving…
+              </>
+            ) : step === STEPS.length ? (
+              "Submit"
+            ) : (
+              "Next"
+            )}
           </Button>
         </div>
       </div>

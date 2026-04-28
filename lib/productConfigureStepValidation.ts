@@ -3,6 +3,8 @@
  * Returns human-readable messages for UI.
  */
 
+import { isDocumentTemplateContentType } from "@/lib/otherRequirementPayload"
+
 const t = (s: string) => s.trim()
 const has = (s: string) => t(s).length > 0
 const parseNum = (s: string) => {
@@ -26,6 +28,26 @@ export type LoanLikeStructureInput = {
   equityRequirementMode: EquityMode
   equityFixedAmount: string
   equityPercentage: string
+}
+
+function isDocumentTemplateApiOrLabel(contentType: string): boolean {
+  const s = String(contentType ?? "").trim().toLowerCase()
+  if (s === "document_template") return true
+  return isDocumentTemplateContentType(contentType)
+}
+
+/** Document-to-download section filled, or equivalent: a document-template other requirement with a file or stored template URL. */
+function hasLoanDocumentRequirementCoverage(
+  documents: unknown[],
+  otherRequirements?: Array<{ contentType?: string; file?: File | null; templateFileUrl?: string | null }>,
+): boolean {
+  if (documents.length > 0) return true
+  return (otherRequirements ?? []).some((row) => {
+    if (!isDocumentTemplateApiOrLabel(String(row?.contentType ?? ""))) return false
+    const hasFile = !!row?.file
+    const hasUrl = typeof row?.templateFileUrl === "string" && row.templateFileUrl.trim().length > 0
+    return hasFile || hasUrl
+  })
 }
 
 function pushLoanLikeStructureErrors(prefix: string, s: LoanLikeStructureInput, errors: string[]) {
@@ -63,6 +85,8 @@ export type LoanStepCtx = {
   structure: LoanLikeStructureInput
   selectedSecurities: string[]
   documents: unknown[]
+  /** Optional rows from “Other Requirements”; document template + file counts toward document coverage. */
+  otherRequirements?: Array<{ contentType?: string; file?: File | null; templateFileUrl?: string | null }>
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
   penalties: { name?: string; type?: string; value?: string; triggerDuration?: string }[]
@@ -93,8 +117,11 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
 
   if (step === 3) {
     if (!ctx.selectedSecurities.length) errors.push("Requirements: Select at least one security requirement.")
-    if (!ctx.documents.length) errors.push("Requirements: Add at least one document requirement (upload a file).")
-    // Other Requirements — optional
+    if (!hasLoanDocumentRequirementCoverage(ctx.documents, ctx.otherRequirements)) {
+      errors.push(
+        "Requirements: Add at least one document to download (name + upload in Document Requirements), or add a “Document template” under Other Requirements with a file and click Add.",
+      )
+    }
   }
 
   if (step === 4) {
@@ -125,6 +152,7 @@ export type MortgageStepCtx = {
   structure: LoanLikeStructureInput
   selectedSecurities: string[]
   documents: unknown[]
+  otherRequirements?: Array<{ contentType?: string; file?: File | null; templateFileUrl?: string | null }>
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
   penalties: { name?: string; type?: string; value?: string; triggerDuration?: string }[]
@@ -161,7 +189,11 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
 
   if (step === 3) {
     if (!ctx.selectedSecurities.length) errors.push("Requirements: Select at least one security requirement.")
-    if (!ctx.documents.length) errors.push("Requirements: Add at least one document requirement (upload a file).")
+    if (!hasLoanDocumentRequirementCoverage(ctx.documents, ctx.otherRequirements)) {
+      errors.push(
+        "Requirements: Add at least one document to download (name + upload in Document Requirements), or add a “Document template” under Other Requirements with a file and click Add.",
+      )
+    }
     if (!has(ctx.contractId)) errors.push("Requirements: Contract ID is required.")
     if (!has(ctx.airSignSecretKey)) errors.push("Requirements: AirSign Secret Key is required.")
     if (!has(ctx.airSignUid)) errors.push("Requirements: AirSign UID is required.")

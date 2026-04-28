@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState, type ChangeEvent } from "react"
 import { Upload } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { ProductConfigInput, ProductConfigSelect } from "@/components/drawers/product-config-form-fields"
+import { getImageFileValidationError } from "@/lib/fileValidation"
 
 function requirementSuffix(requirement?: "required" | "optional") {
   if (requirement === "required") return " (Required)"
@@ -138,6 +140,14 @@ export function ProductConfigAboutStep({
 
   const handlePreviewInput = (e: ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null
+    if (f) {
+      const err = getImageFileValidationError(f)
+      if (err) {
+        toast.error(err)
+        e.target.value = ""
+        return
+      }
+    }
     onPreviewFileChange(f)
     e.target.value = ""
   }
@@ -260,9 +270,15 @@ export function ProductConfigAboutStep({
             <Upload className="shrink-0 text-gray-500" size={18} />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-gray-700">{previewFile?.name || previewLabel || "Add image"}</p>
-              <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
+              <p className="text-xs text-gray-500">PNG, JPEG, JPG, SVG, WebP • Max. 5MB</p>
             </div>
-            <input ref={previewInputRef} type="file" accept=".pdf,image/*" className="hidden" onChange={handlePreviewInput} />
+            <input
+              ref={previewInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+              className="hidden"
+              onChange={handlePreviewInput}
+            />
             <Button
               type="button"
               onClick={() => previewInputRef.current?.click()}

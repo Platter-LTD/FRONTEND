@@ -1,4 +1,4 @@
-import { ComplianceService } from "@/lib/services/complianceService"
+import { uploadProductDocumentTemplateToUrl } from "@/lib/uploadProductMediaToUrl"
 
 /** Product MS enum for `requirements.otherRequirements[].contentType`. */
 export type OtherRequirementContentTypeApi = "document_upload" | "document_template"
@@ -104,8 +104,8 @@ export function normalizeOtherRequirementRowFromApi(raw: unknown): OtherRequirem
 
 /**
  * Rows sent to `buildConfigurationPayload` → Product MS.
- * For `document_template`, Product MS requires `templateFileUrl` (public URL), not raw base64.
- * We upload the selected file via compliance document upload (same pattern as KYC flows).
+ * For `document_template`, Product MS expects `templateFileUrl` (URL from
+ * `POST /api/v1/products/upload-document-template` via `uploadProductDocumentTemplateToUrl`).
  */
 export async function serializeOtherRequirementsForSubmit(items: OtherRequirementDraft[]) {
   return Promise.all(
@@ -122,11 +122,7 @@ export async function serializeOtherRequirementsForSubmit(items: OtherRequiremen
       let templateFileUrl: string | undefined
       if (apiContentType === "document_template") {
         if (hasFile) {
-          const up = await ComplianceService.uploadDocument(item.file!)
-          if (!up.success || !up.url?.trim()) {
-            throw new Error(up.error || "Failed to upload template file. Please try again.")
-          }
-          templateFileUrl = up.url.trim()
+          templateFileUrl = await uploadProductDocumentTemplateToUrl(item.file!)
         } else if (existingTemplateUrl) {
           templateFileUrl = existingTemplateUrl
         } else {
