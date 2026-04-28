@@ -125,6 +125,25 @@ function previewLabelFromAssetUrl(url: string): string {
   }
 }
 
+function normalizeOptionToken(raw: unknown): string {
+  return String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[%]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+}
+
+function resolveOptionLabel(raw: unknown, options: string[]): string {
+  const target = normalizeOptionToken(raw)
+  if (!target) return ""
+  const direct = options.find((o) => normalizeOptionToken(o) === target)
+  if (direct) return direct
+  const squeezedTarget = target.replace(/\s+/g, "")
+  const fuzzy = options.find((o) => normalizeOptionToken(o).replace(/\s+/g, "") === squeezedTarget)
+  return fuzzy ?? String(raw ?? "")
+}
+
 function extractMoratoriumPrefill(raw: unknown): string {
   if (raw == null) return ""
   if (typeof raw === "number" && Number.isFinite(raw)) return String(raw)
@@ -401,7 +420,12 @@ export default function ConfigureMortgageDrawer({
     setSelectedMortgageType(String(mt[0]?.name ?? ""))
 
     setInterestRate(String(mortgageData.interestRate ?? structure.interestRate ?? ""))
-    setInterestMethod(String(mortgageData.interestMethod ?? structure.interestMethod ?? ""))
+    setInterestMethod(
+      resolveOptionLabel(
+        mortgageData.interestMethod ?? structure.interestMethod ?? "",
+        interestMethodOptions,
+      ),
+    )
     const allowMoratoriumValue = asBool(mortgageData.allowMoratorium ?? structure.allowMoratorium)
     const morRaw = extractMoratoriumPrefill(
       mortgageData.moratorium ??
@@ -418,14 +442,27 @@ export default function ConfigureMortgageDrawer({
     } else {
       setAllowMoratorium(allowMoratoriumValue)
       setMoratoriumSelectDuration(
-        String(mortgageData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? ""),
+        resolveOptionLabel(
+          mortgageData.moratoriumSelectDuration ?? structure.moratoriumSelectDuration ?? "",
+          moratoriumDurationOptions,
+        ),
       )
       setMoratoriumDurationOf(
         morRaw || String(mortgageData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""),
       )
     }
-    setMoratoriumType(String(mortgageData.moratoriumType ?? structure.moratoriumType ?? ""))
-    setRepaymentWorkflow(String(mortgageData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0]))
+    setMoratoriumType(
+      resolveOptionLabel(
+        mortgageData.moratoriumType ?? structure.moratoriumType ?? "",
+        moratoriumTypeOptions,
+      ),
+    )
+    setRepaymentWorkflow(
+      resolveOptionLabel(
+        mortgageData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0],
+        repaymentWorkflowOptions,
+      ),
+    )
     const loanAmount = (structure.loanAmount ?? {}) as Record<string, unknown>
     setMinLoanAmount(
       formatAmountWithCommas(
@@ -437,11 +474,36 @@ export default function ConfigureMortgageDrawer({
         mortgageData.maxLoanAmount ?? structure.maxLoanAmount ?? loanAmount.max ?? "",
       ),
     )
-    setRepaymentSchedule(String(mortgageData.repaymentSchedule ?? structure.repaymentSchedule ?? ""))
-    setAmortizationSchedule(String(mortgageData.amortizationSchedule ?? structure.amortizationSchedule ?? ""))
-    setRepaymentFrequency(String(mortgageData.repaymentFrequency ?? structure.repaymentFrequency ?? ""))
-    setAcceptableNpa(String(mortgageData.acceptableNpa ?? structure.acceptableNpa ?? ""))
-    setEquityRequirement(String(mortgageData.equityRequirement ?? structure.equityRequirement ?? ""))
+    setRepaymentSchedule(
+      resolveOptionLabel(
+        mortgageData.repaymentSchedule ?? structure.repaymentSchedule ?? "",
+        repaymentScheduleOptions,
+      ),
+    )
+    setAmortizationSchedule(
+      resolveOptionLabel(
+        mortgageData.amortizationSchedule ?? structure.amortizationSchedule ?? "",
+        amortizationScheduleOptions,
+      ),
+    )
+    setRepaymentFrequency(
+      resolveOptionLabel(
+        mortgageData.repaymentFrequency ?? structure.repaymentFrequency ?? "",
+        repaymentFrequencyOptions,
+      ),
+    )
+    setAcceptableNpa(
+      resolveOptionLabel(
+        mortgageData.acceptableNpa ?? structure.acceptableNPA ?? structure.acceptableNpa ?? "",
+        acceptableNpaOptions,
+      ),
+    )
+    setEquityRequirement(
+      resolveOptionLabel(
+        mortgageData.equityRequirement ?? structure.equityRequirement ?? "",
+        equityRequirementOptions,
+      ),
+    )
     setEquityFixedAmount(String(mortgageData.equityFixedAmount ?? structure.equityFixedAmount ?? ""))
     setEquityPercentage(String(mortgageData.equityPercentage ?? structure.equityPercentage ?? ""))
 
@@ -512,7 +574,19 @@ export default function ConfigureMortgageDrawer({
     )
     setEnableLateRepaymentCharges(asBool(mortgageData.enableLateRepaymentCharges ?? fees.enableLateRepaymentCharges))
     setPenalties(Array.isArray(mortgageData.penalties ?? fees.penalties) ? (mortgageData.penalties ?? fees.penalties) : [])
-  }, [isOpen, mortgageData])
+  }, [
+    isOpen,
+    mortgageData,
+    interestMethodOptions,
+    moratoriumTypeOptions,
+    moratoriumDurationOptions,
+    repaymentWorkflowOptions,
+    repaymentScheduleOptions,
+    amortizationScheduleOptions,
+    repaymentFrequencyOptions,
+    acceptableNpaOptions,
+    equityRequirementOptions,
+  ])
 
   useEffect(() => {
     if (!isOpen || !mortgageData) return

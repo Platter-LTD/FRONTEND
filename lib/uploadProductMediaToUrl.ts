@@ -77,9 +77,8 @@ function extractErrorMessage(data: unknown, fallback: string): string {
  * Uploads a file for product configuration via Next `POST /api/v1/products/upload-image` → Product MS,
  * then returns the URL for the configuration payload.
  *
- * Used by all configure flows: **loan**, **mortgage** (incl. property preview images, documents),
- * **savings**, **commodity**, **investment** (commodity drawer variant), and **other requirements**
- * document templates (`serializeOtherRequirementsForSubmit`).
+ * Used by image upload fields in configure flows: preview images and mortgage property images.
+ * PDF/template uploads use `uploadProductDocumentTemplateToUrl`.
  *
  * Multipart form-data contract:
  * - `file` (required, binary file)
