@@ -54,6 +54,8 @@ interface ProductConfigInputProps {
   disabled?: boolean
   /** Shown next to the label per merchant validation spec */
   requirement?: "required" | "optional"
+  /** Use a red * instead of “ (Required)” so labels stay on one line in tight grids. */
+  requirementMark?: "text" | "asterisk"
 }
 
 export function ProductConfigInput({
@@ -66,6 +68,7 @@ export function ProductConfigInput({
   formatThousands = false,
   disabled = false,
   requirement,
+  requirementMark = "text",
 }: ProductConfigInputProps) {
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (formatThousands) {
@@ -86,7 +89,16 @@ export function ProductConfigInput({
       {label.trim() ? (
         <label className="block text-sm font-medium text-gray-700">
           {label}
-          <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
+          {requirement === "required" && requirementMark === "asterisk" ? (
+            <>
+              <span className="ml-0.5 font-normal text-red-600" title="Required" aria-hidden="true">
+                *
+              </span>
+              <span className="sr-only"> required</span>
+            </>
+          ) : (
+            <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
+          )}
         </label>
       ) : null}
       <input
@@ -109,6 +121,7 @@ interface ProductConfigSelectProps {
   options: string[]
   onChange: (value: string) => void
   requirement?: "required" | "optional"
+  requirementMark?: "text" | "asterisk"
 }
 
 function normalizeOptionToken(input: string) {
@@ -128,6 +141,7 @@ export function ProductConfigSelect({
   options,
   onChange,
   requirement,
+  requirementMark = "text",
 }: ProductConfigSelectProps) {
   const resolvedValue = (() => {
     if (!value) return ""
@@ -142,7 +156,16 @@ export function ProductConfigSelect({
       {label.trim() ? (
         <label className="block text-sm font-medium text-gray-700">
           {label}
-          <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
+          {requirement === "required" && requirementMark === "asterisk" ? (
+            <>
+              <span className="ml-0.5 font-normal text-red-600" title="Required" aria-hidden="true">
+                *
+              </span>
+              <span className="sr-only"> required</span>
+            </>
+          ) : (
+            <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
+          )}
         </label>
       ) : null}
       <Select value={resolvedValue} onValueChange={onChange}>

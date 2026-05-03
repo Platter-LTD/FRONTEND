@@ -1531,6 +1531,7 @@ export default function ConfigureMortgageDrawer({
                     options={penaltyTypeOptions}
                     onChange={handlePenaltyTypeChange}
                     requirement="required"
+                    requirementMark="asterisk"
                   />
                   <ProductConfigInput
                     label="Value"
@@ -1540,6 +1541,7 @@ export default function ConfigureMortgageDrawer({
                     numericOnly
                     formatThousands={!isPercentType(penaltyType)}
                     requirement="required"
+                    requirementMark="asterisk"
                   />
                   <ProductConfigSelect
                     label="Trigger Duration"
@@ -1548,6 +1550,7 @@ export default function ConfigureMortgageDrawer({
                     options={triggerDurationOptions}
                     onChange={setPenaltyTriggerDuration}
                     requirement="required"
+                    requirementMark="asterisk"
                   />
                   <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
                     Add

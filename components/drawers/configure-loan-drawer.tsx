@@ -1328,6 +1328,7 @@ export default function ConfigureLoanDrawer({
               value={penaltyName}
               onChange={setPenaltyName}
               requirement="required"
+              requirementMark="asterisk"
             />
             <ProductConfigSelect
               label="Type"
@@ -1336,6 +1337,7 @@ export default function ConfigureLoanDrawer({
               options={penaltyTypeOptions}
               onChange={handlePenaltyTypeChange}
               requirement="required"
+              requirementMark="asterisk"
             />
             <ProductConfigInput
               label="Value"
@@ -1345,6 +1347,7 @@ export default function ConfigureLoanDrawer({
               numericOnly
               formatThousands={!isPercentType(penaltyType)}
               requirement="required"
+              requirementMark="asterisk"
             />
             <ProductConfigInput
               label="Trigger Duration"
@@ -1353,6 +1356,7 @@ export default function ConfigureLoanDrawer({
               onChange={setPenaltyTriggerDuration}
               numericOnly
               requirement="required"
+              requirementMark="asterisk"
             />
             <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
               Add
