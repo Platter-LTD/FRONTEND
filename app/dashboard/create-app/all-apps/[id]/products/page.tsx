@@ -466,19 +466,16 @@ export default function ProductsPage() {
         ? { name: row.name, description: row.description ?? "", productId: row.id, ...row }
         : { productId }
 
-      // Load full product payload/config for edit mode so the configure drawers can prefill fields.
+      // Load full Product MS document (about / structure / requirements / feesAndCharges) for edit mode.
+      // Do not merge getProductConfiguration() here — it returns a legacy "configuration view" shape that
+      // overwrites tab fields and breaks Configure* drawer prefills.
       try {
-        const [fullProduct, mappedConfig] = await Promise.all([
-          productApi.getProductById(productId),
-          productApi.getProductConfiguration(productId),
-        ])
-        dataStub = {
-          ...dataStub,
-          ...(fullProduct?.data ?? {}),
-          ...(mappedConfig?.success ? mappedConfig.data : {}),
+        const fullProduct = await productApi.getProductById(productId)
+        if (fullProduct?.data && typeof fullProduct.data === "object") {
+          dataStub = { ...dataStub, ...fullProduct.data }
         }
       } catch {
-        // Fall back to row data when detail/config fetch is unavailable.
+        // Fall back to row data when detail fetch is unavailable.
       }
 
       const type = productType.toLowerCase()

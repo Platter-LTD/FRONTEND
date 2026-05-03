@@ -16,6 +16,7 @@ import {
   ProductConfigTabs,
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
+import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import { validateAllSavingsSteps, validateSavingsStep } from "@/lib/productConfigureStepValidation"
 import {
   normalizeOtherRequirementRowFromApi,
@@ -63,15 +64,6 @@ interface WithdrawalPenaltyItem {
 }
 
 type OtherRequirementItem = OtherRequirementDraft
-
-function formatAmountWithCommas(raw: unknown): string {
-  if (raw === undefined || raw === null || raw === "") return ""
-  const numericValue = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "")
-  if (!numericValue) return ""
-  const parts = numericValue.split(".")
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-  return parts.join(".")
-}
 
 function previewLabelFromAssetUrl(url: string): string {
   const seg = url.split("/").pop() || ""
@@ -153,7 +145,7 @@ export default function ConfigureSavingsDrawer({
   const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
 
   const isPercentType = (value: string) => value.toLowerCase().includes("percent")
-  const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
+  const cleanNumeric = (value: string) => value.replace(/,/g, "").replace(/[^0-9.]/g, "")
   const normalizePercentInput = (raw: string) => {
     const numeric = cleanNumeric(raw)
     if (!numeric) return ""
@@ -162,7 +154,7 @@ export default function ConfigureSavingsDrawer({
   const normalizeTypedValue = (raw: string, type: string) => {
     const numeric = cleanNumeric(raw)
     if (!numeric) return ""
-    return isPercentType(type) ? `${numeric}%` : numeric
+    return isPercentType(type) ? `${numeric}%` : formatAmountDisplayFromUnknown(numeric)
   }
   const handleChargeFeeTypeChange = (nextType: string) => {
     setChargeFeeType(nextType)
@@ -299,12 +291,12 @@ export default function ConfigureSavingsDrawer({
     setSavingsType(String(savingsData.savingsType ?? structure.savingsType ?? ""))
     setWithdrawalFlexibility(String(savingsData.withdrawalFlexibility ?? structure.withdrawalFlexibility ?? ""))
     setMinSavingsAmount(
-      formatAmountWithCommas(
+      formatAmountDisplayFromUnknown(
         savingsData.minSavingsAmount ?? structure.minSavingsAmount ?? savingsAmount.min ?? "",
       ),
     )
     setMaxSavingsAmount(
-      formatAmountWithCommas(
+      formatAmountDisplayFromUnknown(
         savingsData.maxSavingsAmount ?? structure.maxSavingsAmount ?? savingsAmount.max ?? "",
       ),
     )
@@ -340,27 +332,17 @@ export default function ConfigureSavingsDrawer({
     )
   }, [isOpen, savingsData])
 
-  const formatWithCommas = (value: string) => {
-    const numericValue = value.replace(/[^0-9.]/g, "")
-    const parts = numericValue.split(".")
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-    return parts.join(".")
-  }
-
   const removeCommas = (value: string) => value.replace(/,/g, "")
-
-  const handleCurrencyChange = (value: string, setter: (val: string) => void) => {
-    const rawValue = removeCommas(value)
-    if (rawValue === "" || /^\d*\.?\d{0,2}$/.test(rawValue)) {
-      setter(formatWithCommas(rawValue))
-    }
-  }
 
   const addSavingsType = () => {
     if (!typeNameDraft.trim() || !typeDescDraft.trim()) return
     setSavingsTypes((prev) => [...prev, { name: typeNameDraft.trim(), description: typeDescDraft.trim() }])
     setTypeNameDraft("")
     setTypeDescDraft("")
+  }
+
+  const removeSavingsTypeRow = (index: number) => {
+    setSavingsTypes((prev) => prev.filter((_, i) => i !== index))
   }
 
   const removeCharge = (index: number) => {
@@ -603,6 +585,7 @@ export default function ConfigureSavingsDrawer({
             onTypeNameDraftChange={setTypeNameDraft}
             onTypeDescDraftChange={setTypeDescDraft}
             onAddType={addSavingsType}
+            onRemoveTypeRow={removeSavingsTypeRow}
             typeRows={savingsTypes}
             previewFile={previewImage}
             previewLabel={String(
@@ -676,14 +659,18 @@ export default function ConfigureSavingsDrawer({
                   label="Minimum"
                   placeholder="Min Amount"
                   value={minSavingsAmount}
-                  onChange={(v) => handleCurrencyChange(v, setMinSavingsAmount)}
+                  onChange={setMinSavingsAmount}
+                  numericOnly
+                  formatThousands
                   requirement="required"
                 />
                 <ProductConfigInput
                   label="Maximum"
                   placeholder="Max Amount"
                   value={maxSavingsAmount}
-                  onChange={(v) => handleCurrencyChange(v, setMaxSavingsAmount)}
+                  onChange={setMaxSavingsAmount}
+                  numericOnly
+                  formatThousands
                   requirement="required"
                 />
               </div>
@@ -771,6 +758,7 @@ export default function ConfigureSavingsDrawer({
                   value={chargeValue}
                   onChange={handleChargeValueChange}
                   numericOnly
+                  formatThousands={!isPercentType(chargeFeeType)}
                   requirement="required"
                 />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
@@ -836,6 +824,7 @@ export default function ConfigureSavingsDrawer({
                     value={penaltyValue}
                     onChange={handlePenaltyValueChange}
                     numericOnly
+                    formatThousands={!isPercentType(penaltyType)}
                     requirement="required"
                   />
                   <ProductConfigSelect

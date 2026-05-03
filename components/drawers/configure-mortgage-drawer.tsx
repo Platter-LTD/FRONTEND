@@ -30,6 +30,14 @@ import {
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
 import { validateAllMortgageSteps, validateMortgageStep } from "@/lib/productConfigureStepValidation"
+import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
+import {
+  isOtherSecuritySelected,
+  mergeSecurityRequirementDisplayOptions,
+  OTHER_SECURITY_CANONICAL_LABEL,
+  serializeSecurityRequirements,
+  splitStoredSecurityRequirements,
+} from "@/lib/securityRequirementOptions"
 
 interface ConfigureMortgageDrawerProps {
   isOpen: boolean
@@ -107,15 +115,6 @@ function asBool(value: unknown) {
   return value === true || value === "true" || value === 1 || value === "1"
 }
 
-function formatAmountWithCommas(raw: unknown): string {
-  if (raw === undefined || raw === null || raw === "") return ""
-  const numericValue = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "")
-  if (!numericValue) return ""
-  const parts = numericValue.split(".")
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-  return parts.join(".")
-}
-
 function previewLabelFromAssetUrl(url: string): string {
   const seg = url.split("/").pop() || ""
   try {
@@ -184,6 +183,11 @@ export default function ConfigureMortgageDrawer({
   const [triggerDurationOptions, setTriggerDurationOptions] = useState<string[]>(TRIGGER_DURATION_OPTIONS)
   const [repaymentWorkflowOptions, setRepaymentWorkflowOptions] = useState<string[]>([...DEFAULT_REPAYMENT_WORKFLOWS])
 
+  const mergedSecurityOptions = useMemo(
+    () => mergeSecurityRequirementDisplayOptions(securityOptions),
+    [securityOptions],
+  )
+
   const [name, setName] = useState(mortgageData?.name || "")
   const [tenure, setTenure] = useState("")
   const [description, setDescription] = useState(mortgageData?.description || "")
@@ -211,6 +215,7 @@ export default function ConfigureMortgageDrawer({
   const equityRequirementMode = useMemo(() => classifyEquityRequirementMode(equityRequirement), [equityRequirement])
 
   const [selectedSecurities, setSelectedSecurities] = useState<string[]>([])
+  const [securityOtherSpecification, setSecurityOtherSpecification] = useState("")
   const [documentName, setDocumentName] = useState("")
   const [documents, setDocuments] = useState<DocumentRequirementUpload[]>([])
   const [otherRequirementType, setOtherRequirementType] = useState("")
@@ -241,7 +246,7 @@ export default function ConfigureMortgageDrawer({
   const [stepErrors, setStepErrors] = useState<string[]>([])
 
   const isPercentType = (value: string) => value.toLowerCase().includes("percent")
-  const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
+  const cleanNumeric = (value: string) => value.replace(/,/g, "").replace(/[^0-9.]/g, "")
   const normalizePercentInput = (raw: string) => {
     const numeric = cleanNumeric(raw)
     if (!numeric) return ""
@@ -250,7 +255,7 @@ export default function ConfigureMortgageDrawer({
   const normalizeTypedValue = (raw: string, type: string) => {
     const numeric = cleanNumeric(raw)
     if (!numeric) return ""
-    return isPercentType(type) ? `${numeric}%` : numeric
+    return isPercentType(type) ? `${numeric}%` : formatAmountDisplayFromUnknown(numeric)
   }
   const handleChargeFeeTypeChange = (nextType: string) => {
     setChargeFeeType(nextType)
@@ -277,7 +282,7 @@ export default function ConfigureMortgageDrawer({
   }
 
   const handleEquityFixedAmountChange = (value: string) => {
-    setEquityFixedAmount(cleanNumeric(value))
+    setEquityFixedAmount(value)
   }
 
   const handleEquityPercentageChange = (value: string) => {
@@ -465,12 +470,12 @@ export default function ConfigureMortgageDrawer({
     )
     const loanAmount = (structure.loanAmount ?? {}) as Record<string, unknown>
     setMinLoanAmount(
-      formatAmountWithCommas(
+      formatAmountDisplayFromUnknown(
         mortgageData.minLoanAmount ?? structure.minLoanAmount ?? loanAmount.min ?? "",
       ),
     )
     setMaxLoanAmount(
-      formatAmountWithCommas(
+      formatAmountDisplayFromUnknown(
         mortgageData.maxLoanAmount ?? structure.maxLoanAmount ?? loanAmount.max ?? "",
       ),
     )
@@ -504,7 +509,9 @@ export default function ConfigureMortgageDrawer({
         equityRequirementOptions,
       ),
     )
-    setEquityFixedAmount(String(mortgageData.equityFixedAmount ?? structure.equityFixedAmount ?? ""))
+    setEquityFixedAmount(
+      formatAmountDisplayFromUnknown(mortgageData.equityFixedAmount ?? structure.equityFixedAmount ?? ""),
+    )
     setEquityPercentage(String(mortgageData.equityPercentage ?? structure.equityPercentage ?? ""))
 
     const docsRaw = mortgageData.documentsToDownload ?? requirements.documentsToDownload
@@ -535,7 +542,7 @@ export default function ConfigureMortgageDrawer({
             id: String(p.id ?? `prop-${idx}`),
             name: String(p.name ?? ""),
             type: String(p.propertyType ?? p.type ?? ""),
-            value: formatAmountWithCommas(p.value ?? ""),
+            value: formatAmountDisplayFromUnknown(p.value ?? ""),
             location: String(p.location ?? ""),
             description: String(p.propertyDescription ?? p.description ?? ""),
             facilities: [
@@ -592,10 +599,12 @@ export default function ConfigureMortgageDrawer({
     if (!isOpen || !mortgageData) return
     const requirements = (mortgageData.requirements ?? {}) as Record<string, any>
     const sec = requirements.security
+    const opts = mergeSecurityRequirementDisplayOptions(securityOptions)
+    setSecurityOtherSpecification("")
 
     if (sec && typeof sec === "object") {
       const picked: string[] = []
-      const opts = securityOptions
+      const secRec = sec as Record<string, unknown>
       if (asBool(sec.realEstateProperties)) {
         const m = opts.find((o) => /real\s*estate|propert(y|ies)/i.test(o))
         if (m) picked.push(m)
@@ -604,19 +613,30 @@ export default function ConfigureMortgageDrawer({
       if (asBool(sec.bankGuarantee)) {
         const m = opts.find((o) => /bank/i.test(o) && /guarantee/i.test(o))
         if (m) picked.push(m)
-        else if (!opts.length) picked.push("Bank Guarantee")
+        else picked.push("Bank Guarantee")
+      }
+      if (asBool(secRec.cheque)) {
+        const m = opts.find((o) => /^cheque$/i.test(o.trim()))
+        if (m) picked.push(m)
+        else picked.push("Cheque")
+      }
+      const otherSpecRaw = secRec.otherSpecification ?? secRec.otherSecurityDescription
+      const otherText = typeof otherSpecRaw === "string" ? otherSpecRaw.trim() : ""
+      if (asBool(secRec.other) || otherText) {
+        const m = opts.find((o) => /^other$/i.test(o.trim()))
+        picked.push(m ?? OTHER_SECURITY_CANONICAL_LABEL)
+        if (otherText) setSecurityOtherSpecification(otherText)
       }
       setSelectedSecurities(picked)
       return
     }
 
-    setSelectedSecurities(
-      Array.isArray(mortgageData.securityRequirements ?? requirements.securityRequirements)
-        ? (mortgageData.securityRequirements ?? requirements.securityRequirements).map((x: any) =>
-            String(x),
-          )
-        : [],
-    )
+    const rawArr = Array.isArray(mortgageData.securityRequirements ?? requirements.securityRequirements)
+      ? (mortgageData.securityRequirements ?? requirements.securityRequirements).map((x: unknown) => String(x))
+      : []
+    const { toggles, otherSpecification } = splitStoredSecurityRequirements(rawArr)
+    setSelectedSecurities(toggles)
+    setSecurityOtherSpecification(otherSpecification)
   }, [isOpen, mortgageData, securityOptions])
 
   useEffect(() => {
@@ -664,6 +684,9 @@ export default function ConfigureMortgageDrawer({
   )
 
   const toggleSecurity = (option: string, checked: boolean) => {
+    if (!checked && option.trim().toLowerCase() === OTHER_SECURITY_CANONICAL_LABEL.toLowerCase()) {
+      setSecurityOtherSpecification("")
+    }
     setSelectedSecurities((prev) => {
       if (checked) return prev.includes(option) ? prev : [...prev, option]
       return prev.filter((item) => item !== option)
@@ -893,6 +916,7 @@ export default function ConfigureMortgageDrawer({
       equityPercentage,
     },
     selectedSecurities,
+    securityOtherSpecification,
     documents,
     otherRequirements,
     charges,
@@ -1041,7 +1065,7 @@ export default function ConfigureMortgageDrawer({
           equityRequirement,
           equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
           equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
-          securityRequirements: selectedSecurities,
+          securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
           contractId,
@@ -1264,6 +1288,7 @@ export default function ConfigureMortgageDrawer({
                   value={equityFixedAmount}
                   onChange={handleEquityFixedAmountChange}
                   numericOnly
+                  formatThousands
                   requirement="required"
                 />
               ) : null}
@@ -1287,7 +1312,7 @@ export default function ConfigureMortgageDrawer({
                 Security Requirements <span className="font-normal text-gray-500">(Required)</span>
               </label>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {securityOptions.map((option) => (
+                {mergedSecurityOptions.map((option) => (
                   <ProductConfigToggle
                     key={option}
                     id={`mortgage-security-${option}`}
@@ -1297,6 +1322,15 @@ export default function ConfigureMortgageDrawer({
                   />
               ))}
             </div>
+            {isOtherSecuritySelected(selectedSecurities) ? (
+              <ProductConfigInput
+                label="Specify other security"
+                placeholder="Describe what “Other” means for this product"
+                value={securityOtherSpecification}
+                onChange={setSecurityOtherSpecification}
+                requirement="required"
+              />
+            ) : null}
           </div>
 
             <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
@@ -1423,6 +1457,7 @@ export default function ConfigureMortgageDrawer({
                 value={chargeValue}
                 onChange={handleChargeValueChange}
                 numericOnly
+                formatThousands={!isPercentType(chargeFeeType)}
                 requirement="required"
               />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
@@ -1503,6 +1538,7 @@ export default function ConfigureMortgageDrawer({
                     value={penaltyValue}
                     onChange={handlePenaltyValueChange}
                     numericOnly
+                    formatThousands={!isPercentType(penaltyType)}
                     requirement="required"
                   />
                   <ProductConfigSelect
@@ -1580,6 +1616,7 @@ export default function ConfigureMortgageDrawer({
                 value={propertyValue}
                 onChange={setPropertyValue}
                 numericOnly
+                formatThousands
                 requirement="required"
               />
             </div>

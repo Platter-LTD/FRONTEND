@@ -17,6 +17,7 @@ import {
   ProductConfigTabs,
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
+import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import { validateAllCommoditySteps, validateCommodityStep } from "@/lib/productConfigureStepValidation"
 import {
   normalizeOtherRequirementRowFromApi,
@@ -71,15 +72,6 @@ type OtherRequirementItem = OtherRequirementDraft
 
 function asBool(value: unknown) {
   return value === true || value === "true" || value === 1 || value === "1"
-}
-
-function formatAmountWithCommas(raw: unknown): string {
-  if (raw === undefined || raw === null || raw === "") return ""
-  const numericValue = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "")
-  if (!numericValue) return ""
-  const parts = numericValue.split(".")
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-  return parts.join(".")
 }
 
 function previewLabelFromAssetUrl(url: string): string {
@@ -159,7 +151,7 @@ export default function ConfigureCommodityDrawer({
   const [penalties, setPenalties] = useState<PenaltyItem[]>([])
 
   const isPercentType = (value: string) => value.toLowerCase().includes("percent")
-  const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
+  const cleanNumeric = (value: string) => value.replace(/,/g, "").replace(/[^0-9.]/g, "")
   const normalizePercentInput = (raw: string) => {
     const numeric = cleanNumeric(raw)
     if (!numeric) return ""
@@ -168,7 +160,7 @@ export default function ConfigureCommodityDrawer({
   const normalizeTypedValue = (raw: string, type: string) => {
     const numeric = cleanNumeric(raw)
     if (!numeric) return ""
-    return isPercentType(type) ? `${numeric}%` : numeric
+    return isPercentType(type) ? `${numeric}%` : formatAmountDisplayFromUnknown(numeric)
   }
   const handleChargeFeeTypeChange = (nextType: string) => {
     setChargeFeeType(nextType)
@@ -233,12 +225,12 @@ export default function ConfigureCommodityDrawer({
     if (isInvestment) {
       const invAmt = structure.investmentAmount as Record<string, unknown> | undefined
       if (invAmt && typeof invAmt === "object") {
-        setMinInvestmentAmount(formatAmountWithCommas(invAmt.min ?? ""))
-        setMaxAmount(formatAmountWithCommas(invAmt.max ?? ""))
+        setMinInvestmentAmount(formatAmountDisplayFromUnknown(invAmt.min ?? ""))
+        setMaxAmount(formatAmountDisplayFromUnknown(invAmt.max ?? ""))
       } else {
-        setMinInvestmentAmount(formatAmountWithCommas(commodityData?.minInvestmentAmount ?? ""))
+        setMinInvestmentAmount(formatAmountDisplayFromUnknown(commodityData?.minInvestmentAmount ?? ""))
         setMaxAmount(
-          formatAmountWithCommas(
+          formatAmountDisplayFromUnknown(
             commodityData?.maxInvestmentAmount ?? structure.maxInvestmentAmount ?? structure.maxAmount ?? "",
           ),
         )
@@ -246,10 +238,10 @@ export default function ConfigureCommodityDrawer({
       const u = structure.unitAmount
       if (u && typeof u === "object" && !Array.isArray(u)) {
         const uo = u as Record<string, unknown>
-        setUnitAmount(formatAmountWithCommas(uo.amount ?? ""))
+        setUnitAmount(formatAmountDisplayFromUnknown(uo.amount ?? ""))
         setMinQuantityPurchase(String(uo.minQuantity ?? structure.minQuantityPurchase ?? ""))
       } else {
-        setUnitAmount(formatAmountWithCommas(structure.minInvestmentAmount ?? commodityData?.unitAmount ?? ""))
+        setUnitAmount(formatAmountDisplayFromUnknown(structure.minInvestmentAmount ?? commodityData?.unitAmount ?? ""))
         setMinQuantityPurchase(String(commodityData?.minQuantityPurchase ?? structure.minQuantityPurchase ?? ""))
       }
       const roi = structure.returnsOnInvestment
@@ -297,9 +289,9 @@ export default function ConfigureCommodityDrawer({
       } else {
         setOfferYieldValue(String(commodityData?.offerYieldValue ?? structure?.offerYieldValue ?? ""))
       }
-      setUnitAmount(formatAmountWithCommas(structure.unitAmount ?? commodityData?.unitAmount ?? ""))
+      setUnitAmount(formatAmountDisplayFromUnknown(structure.unitAmount ?? commodityData?.unitAmount ?? ""))
       setMinQuantityPurchase(String(structure.minQuantityPurchase ?? commodityData?.minQuantityPurchase ?? ""))
-      setMaxAmount(formatAmountWithCommas(structure.maxAmount ?? commodityData?.maxAmount ?? ""))
+      setMaxAmount(formatAmountDisplayFromUnknown(structure.maxAmount ?? commodityData?.maxAmount ?? ""))
       setTermsAndConditions(
         String(
           structure?.commodityTermsAndCondition ??
@@ -351,7 +343,7 @@ export default function ConfigureCommodityDrawer({
       Array.isArray(incomingPriceRows)
         ? incomingPriceRows.map((r: any, i: number) => ({
             id: String(r?.id ?? `${Date.now()}-${i}`),
-            price: String(r?.price ?? ""),
+            price: formatAmountDisplayFromUnknown(r?.price ?? ""),
             date: String(r?.date ?? ""),
             source: String(r?.source ?? ""),
           }))
@@ -443,27 +435,17 @@ export default function ConfigureCommodityDrawer({
     if (!moratoriumEnabled) setMoratoriumDays("")
   }, [moratoriumEnabled])
 
-  const formatWithCommas = (value: string) => {
-    const numericValue = value.replace(/[^0-9.]/g, "")
-    const parts = numericValue.split(".")
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-    return parts.join(".")
-  }
-
   const removeCommas = (value: string) => value.replace(/,/g, "")
-
-  const handleCurrencyChange = (value: string, setter: (val: string) => void) => {
-    const raw = removeCommas(value)
-    if (raw === "" || /^\d*\.?\d{0,2}$/.test(raw)) {
-      setter(formatWithCommas(raw))
-    }
-  }
 
   const addTypeRow = () => {
     if (!typeNameDraft.trim() || !typeDescDraft.trim()) return
     setTypeRows((prev) => [...prev, { name: typeNameDraft.trim(), description: typeDescDraft.trim() }])
     setTypeNameDraft("")
     setTypeDescDraft("")
+  }
+
+  const removeTypeRowAt = (index: number) => {
+    setTypeRows((prev) => prev.filter((_, i) => i !== index))
   }
 
   const addCharge = () => {
@@ -604,7 +586,7 @@ export default function ConfigureCommodityDrawer({
     airSignSecretKey,
     airSignUid,
     charges,
-    priceRows: priceRows.map((r) => ({ price: r.price, date: r.date, source: r.source })),
+    priceRows: priceRows.map((r) => ({ price: removeCommas(r.price), date: r.date, source: r.source })),
   })
 
   const handleNext = async () => {
@@ -664,9 +646,9 @@ export default function ConfigureCommodityDrawer({
         chargeForForcefulWithdrawal: forcefulWithdrawal,
         penalties,
         otherRequirements: otherRequirementsPayload,
-        commodityPrices: !isInvestment ? priceRows : undefined,
-        unitPrices: isInvestment ? priceRows : undefined,
-        priceHistory: priceRows,
+        commodityPrices: !isInvestment ? priceRows.map((r) => ({ ...r, price: removeCommas(r.price) })) : undefined,
+        unitPrices: isInvestment ? priceRows.map((r) => ({ ...r, price: removeCommas(r.price) })) : undefined,
+        priceHistory: priceRows.map((r) => ({ ...r, price: removeCommas(r.price) })),
       }
 
       if (isInvestment) {
@@ -783,6 +765,7 @@ export default function ConfigureCommodityDrawer({
             onTypeNameDraftChange={setTypeNameDraft}
             onTypeDescDraftChange={setTypeDescDraft}
             onAddType={addTypeRow}
+            onRemoveTypeRow={removeTypeRowAt}
             typeRows={typeRows}
             previewFile={previewImage}
             previewLabel={String(
@@ -858,7 +841,9 @@ export default function ConfigureCommodityDrawer({
                   label="Unit Amount"
                   placeholder="e.g N10,000"
                   value={unitAmount}
-                  onChange={(v) => handleCurrencyChange(v, setUnitAmount)}
+                  onChange={setUnitAmount}
+                  numericOnly
+                  formatThousands
                   requirement="required"
                 />
               ) : null}
@@ -870,14 +855,18 @@ export default function ConfigureCommodityDrawer({
                   label="Minimum investment"
                   placeholder="e.g 50,000"
                   value={minInvestmentAmount}
-                  onChange={(v) => handleCurrencyChange(v, setMinInvestmentAmount)}
+                  onChange={setMinInvestmentAmount}
+                  numericOnly
+                  formatThousands
                   requirement="required"
                 />
                 <ProductConfigInput
                   label="Maximum investment"
                   placeholder="e.g 5,000,000"
                   value={maxAmount}
-                  onChange={(v) => handleCurrencyChange(v, setMaxAmount)}
+                  onChange={setMaxAmount}
+                  numericOnly
+                  formatThousands
                   requirement="required"
                 />
               </div>
@@ -890,7 +879,9 @@ export default function ConfigureCommodityDrawer({
                     label="Unit price (per unit)"
                     placeholder="e.g 1,000"
                     value={unitAmount}
-                    onChange={(v) => handleCurrencyChange(v, setUnitAmount)}
+                    onChange={setUnitAmount}
+                    numericOnly
+                    formatThousands
                     requirement="required"
                   />
                   <ProductConfigInput
@@ -916,7 +907,9 @@ export default function ConfigureCommodityDrawer({
                     label="Max Amount"
                     placeholder="Max Amount"
                     value={maxAmount}
-                    onChange={(v) => handleCurrencyChange(v, setMaxAmount)}
+                    onChange={setMaxAmount}
+                    numericOnly
+                    formatThousands
                     requirement="required"
                   />
                 </>
@@ -1029,6 +1022,7 @@ export default function ConfigureCommodityDrawer({
                 value={chargeValue}
                 onChange={handleChargeValueChange}
                 numericOnly
+                formatThousands={!isPercentType(chargeFeeType)}
                 requirement="required"
               />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
@@ -1091,6 +1085,7 @@ export default function ConfigureCommodityDrawer({
                     value={penaltyValue}
                     onChange={handlePenaltyValueChange}
                     numericOnly
+                    formatThousands={!isPercentType(penaltyType)}
                     requirement="optional"
                   />
                   <ProductConfigSelect
@@ -1147,6 +1142,7 @@ export default function ConfigureCommodityDrawer({
                 value={priceDraft}
                 onChange={setPriceDraft}
                 numericOnly
+                formatThousands
                 requirement="required"
               />
               <div className="space-y-2">

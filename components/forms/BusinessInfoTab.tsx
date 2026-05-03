@@ -261,6 +261,13 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
               onChange={(val) => handleInputChange('companyRegId', val)}
             />
 
+            <SimpleInput
+              placeholder="BVN (11 digits)"
+              value={formData.bvn}
+              onChange={(val) => handleInputChange('bvn', val.replace(/\D/g, '').slice(0, 11))}
+              accentColor="#9A813F"
+            />
+
             <FileUpload
               label="Upload Company Logo"
               description="PNG or JPG • Max. 5MB"

@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react"
-import { Upload } from "lucide-react"
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
+import { Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { ProductConfigInput, ProductConfigSelect } from "@/components/drawers/product-config-form-fields"
@@ -12,6 +12,26 @@ function requirementSuffix(requirement?: "required" | "optional") {
   if (requirement === "optional") return " (Optional)"
   return ""
 }
+
+/** Align with ProductConfigSelect preset matching so “6 months” vs “6 Months” still counts as preset. */
+function normalizeOptionToken(input: string) {
+  return input
+    .toLowerCase()
+    .replace(/->/g, " ")
+    .replace(/[()%]/g, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function matchesPresetDuration(value: string, presets: string[]) {
+  if (!value.trim()) return false
+  if (presets.includes(value)) return true
+  const t = normalizeOptionToken(value)
+  return presets.some((p) => normalizeOptionToken(p) === t)
+}
+
+const CUSTOM_TENURE_LABEL = "Custom"
 
 /** One row in the “add name + description” list (loan type, savings type, commodity type, etc.) */
 export interface ProductAboutTypeRow {
@@ -48,6 +68,8 @@ export interface ProductConfigAboutStepProps {
   onTypeDescDraftChange: (value: string) => void
   onAddType: () => void
   typeRows: ProductAboutTypeRow[]
+  /** Remove row at index (shows X on hover when set). */
+  onRemoveTypeRow?: (index: number) => void
   typeInputMode?: "add-list" | "select"
   typeSelectOptions?: string[]
   typeSelectPlaceholder?: string
@@ -108,6 +130,7 @@ export function ProductConfigAboutStep({
   onTypeDescDraftChange,
   onAddType,
   typeRows,
+  onRemoveTypeRow,
   typeInputMode = "add-list",
   typeSelectOptions = [],
   typeSelectPlaceholder = "Select type",
@@ -127,6 +150,52 @@ export function ProductConfigAboutStep({
 }: ProductConfigAboutStepProps) {
   const previewInputRef = useRef<HTMLInputElement>(null)
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+
+  /** True after user picks “Custom” or when loaded value is not a preset (e.g. saved custom tenure). */
+  const [customTenureActive, setCustomTenureActive] = useState(false)
+
+  const durationOptionsWithCustom = useMemo(() => {
+    const next = [...durationOptions]
+    const hasCustom = next.some((o) => o.trim().toLowerCase() === "custom")
+    if (!hasCustom) next.push(CUSTOM_TENURE_LABEL)
+    return next
+  }, [durationOptions])
+
+  const presetTenureOptions = useMemo(
+    () => durationOptionsWithCustom.filter((o) => o.trim().toLowerCase() !== "custom"),
+    [durationOptionsWithCustom],
+  )
+
+  useEffect(() => {
+    if (!durationValue.trim()) return
+    if (matchesPresetDuration(durationValue, presetTenureOptions)) {
+      setCustomTenureActive(false)
+    } else {
+      setCustomTenureActive(true)
+    }
+  }, [durationValue, presetTenureOptions])
+
+  const tenureSelectValue = useMemo(() => {
+    if (customTenureActive) return CUSTOM_TENURE_LABEL
+    if (!durationValue.trim()) return ""
+    if (matchesPresetDuration(durationValue, presetTenureOptions)) {
+      const exact = presetTenureOptions.find((p) => p === durationValue)
+      if (exact) return exact
+      const t = normalizeOptionToken(durationValue)
+      return presetTenureOptions.find((p) => normalizeOptionToken(p) === t) ?? durationValue
+    }
+    return ""
+  }, [customTenureActive, durationValue, presetTenureOptions])
+
+  const handleTenureSelectChange = (value: string) => {
+    if (value.trim().toLowerCase() === "custom") {
+      setCustomTenureActive(true)
+      onDurationChange("")
+      return
+    }
+    setCustomTenureActive(false)
+    onDurationChange(value)
+  }
 
   useEffect(() => {
     if (!previewFile) {
@@ -167,14 +236,25 @@ export function ProductConfigAboutStep({
           onChange={onNameChange}
           requirement={fieldRequirement}
         />
-        <ProductConfigSelect
-          label={durationLabel}
-          placeholder={durationPlaceholder}
-          value={durationValue}
-          options={durationOptions}
-          onChange={onDurationChange}
-          requirement={fieldRequirement}
-        />
+        <div className="min-w-0 space-y-2">
+          <ProductConfigSelect
+            label={durationLabel}
+            placeholder={durationPlaceholder}
+            value={tenureSelectValue}
+            options={durationOptionsWithCustom}
+            onChange={handleTenureSelectChange}
+            requirement={fieldRequirement}
+          />
+          {customTenureActive ? (
+            <ProductConfigInput
+              label="Custom tenure"
+              placeholder="e.g. 18 months, 90 days, 2 years"
+              value={durationValue}
+              onChange={onDurationChange}
+              requirement={fieldRequirement}
+            />
+          ) : null}
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -240,18 +320,38 @@ export function ProductConfigAboutStep({
                 typeListVariant === "stacked" ? (
                   <div
                     key={`${idPrefix}-type-${row.name}-${index}`}
-                    className="rounded-md bg-gray-100 px-3 py-2 text-sm"
+                    className="group relative rounded-md bg-gray-100 px-3 py-2 pr-10 text-sm"
                   >
                     <p className="font-medium text-gray-800">{row.name}</p>
                     <p className="text-xs text-gray-600">{row.description}</p>
+                    {onRemoveTypeRow ? (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveTypeRow(index)}
+                        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md text-gray-500 opacity-0 transition-opacity hover:bg-gray-200 hover:text-gray-900 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#9A813F]/50"
+                        aria-label={`Remove ${row.name?.trim() || "type"}`}
+                      >
+                        <X className="h-4 w-4 shrink-0" aria-hidden />
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
                   <div
                     key={`${idPrefix}-type-${row.name}-${index}`}
-                    className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2"
+                    className="group relative grid w-full grid-cols-1 gap-2 sm:grid-cols-2 sm:pr-10"
                   >
                     <div className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-800">{row.name}</div>
                     <div className="rounded-md bg-gray-100 px-3 py-2 text-xs text-gray-600 sm:text-sm">{row.description}</div>
+                    {onRemoveTypeRow ? (
+                      <button
+                        type="button"
+                        onClick={() => onRemoveTypeRow(index)}
+                        className="absolute right-0 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-gray-500 opacity-0 transition-opacity hover:bg-gray-200 hover:text-gray-900 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#9A813F]/50"
+                        aria-label={`Remove ${row.name?.trim() || "type"}`}
+                      >
+                        <X className="h-4 w-4 shrink-0" aria-hidden />
+                      </button>
+                    ) : null}
                   </div>
                 ),
               )}

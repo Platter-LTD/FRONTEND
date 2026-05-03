@@ -4,6 +4,7 @@ import type { ChangeEvent } from "react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
+import { formatThousandsFromDigits, sanitizeAmountDigits } from "@/lib/formatAmountInput"
 
 interface ProductConfigTabsProps {
   steps: string[]
@@ -48,6 +49,8 @@ interface ProductConfigInputProps {
   onChange: (value: string) => void
   type?: "text" | "number"
   numericOnly?: boolean
+  /** When set, formats integer part with commas (money / facility amounts). Implies digit sanitization. */
+  formatThousands?: boolean
   disabled?: boolean
   /** Shown next to the label per merchant validation spec */
   requirement?: "required" | "optional"
@@ -60,10 +63,16 @@ export function ProductConfigInput({
   onChange,
   type = "text",
   numericOnly = false,
+  formatThousands = false,
   disabled = false,
   requirement,
 }: ProductConfigInputProps) {
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
+    if (formatThousands) {
+      const digits = sanitizeAmountDigits(event.target.value)
+      onChange(formatThousandsFromDigits(digits))
+      return
+    }
     if (!numericOnly) {
       onChange(event.target.value)
       return
@@ -84,7 +93,7 @@ export function ProductConfigInput({
         type={type}
         value={value}
         onChange={handleChange}
-        inputMode={numericOnly ? "decimal" : undefined}
+        inputMode={numericOnly || formatThousands ? "decimal" : undefined}
         disabled={disabled}
         placeholder={placeholder}
         className="h-10 min-w-0 w-full max-w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
@@ -275,6 +284,7 @@ export function ProductConfigRepaymentWorkflowPanel({
               value={minAmount}
               onChange={onMinAmountChange}
               numericOnly
+              formatThousands
               requirement={amountFieldsRequirement}
             />
             <ProductConfigInput
@@ -283,6 +293,7 @@ export function ProductConfigRepaymentWorkflowPanel({
               value={maxAmount}
               onChange={onMaxAmountChange}
               numericOnly
+              formatThousands
               requirement={amountFieldsRequirement}
             />
           </div>

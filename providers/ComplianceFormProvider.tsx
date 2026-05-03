@@ -25,6 +25,8 @@ export interface MerchantBusinessSurveyState {
   businessName: string
   website: string
   companyRegId: string
+  /** Bank Verification Number (NG) — sent with business KYC submit */
+  bvn: string
 }
 
 export function createDefaultMerchantBusinessSurvey(): MerchantBusinessSurveyState {
@@ -38,6 +40,7 @@ export function createDefaultMerchantBusinessSurvey(): MerchantBusinessSurveySta
     businessName: "",
     website: WEBSITE_URL_PREFIX,
     companyRegId: "",
+    bvn: "",
   }
 }
 
@@ -103,6 +106,12 @@ export function ComplianceFormProvider({ children }: { children: ReactNode }) {
           businessName: String(businessInfo.companyName ?? prev.businessName ?? ""),
           website: String(businessInfo.website ?? prev.website ?? WEBSITE_URL_PREFIX),
           companyRegId: String(businessInfo.companyRegId ?? prev.companyRegId ?? ""),
+          bvn: String(
+            (businessInfo as { bvn?: string }).bvn ??
+              (businessInfo as { BVN?: string }).BVN ??
+              prev.bvn ??
+              "",
+          ),
         }))
 
         const mapped = owners.map((s: any) => ({

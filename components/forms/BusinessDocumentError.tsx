@@ -67,8 +67,9 @@ const BusinessDocumentWithError: React.FC<Props> = ({ missingIds = [] }) => {
       const payload = {
         businessInfo: {
           businessName: info.businessName,
-          businessType: info.businessType || "UNKNOWN",
+          businessType: info.businessType,
           registrationNumber: info.companyRegId,
+          bvn: (info.bvn || "").replace(/\D/g, "").slice(0, 11),
           industry: info.industry || "",
           address: {
             street: "",

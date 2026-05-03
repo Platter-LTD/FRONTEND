@@ -30,6 +30,14 @@ import {
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
 import { validateAllLoanSteps, validateLoanStep } from "@/lib/productConfigureStepValidation"
+import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
+import {
+  isOtherSecuritySelected,
+  mergeSecurityRequirementDisplayOptions,
+  OTHER_SECURITY_CANONICAL_LABEL,
+  serializeSecurityRequirements,
+  splitStoredSecurityRequirements,
+} from "@/lib/securityRequirementOptions"
 
 interface ConfigureLoanDrawerProps {
   isOpen: boolean
@@ -80,15 +88,6 @@ function asBool(value: unknown) {
   return value === true || value === "true" || value === 1 || value === "1"
 }
 
-function formatAmountWithCommas(raw: unknown): string {
-  if (raw === undefined || raw === null || raw === "") return ""
-  const numericValue = String(raw).replace(/,/g, "").replace(/[^0-9.]/g, "")
-  if (!numericValue) return ""
-  const parts = numericValue.split(".")
-  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-  return parts.join(".")
-}
-
 function previewLabelFromAssetUrl(url: string): string {
   const seg = url.split("/").pop() || ""
   try {
@@ -102,9 +101,11 @@ function normalizeOptionToken(raw: unknown): string {
   return String(raw ?? "")
     .trim()
     .toLowerCase()
+    .replace(/->/g, " ")
     .replace(/[%]/g, "")
     .replace(/[_-]+/g, " ")
     .replace(/\s+/g, " ")
+    .trim()
 }
 
 function resolveOptionLabel(raw: unknown, options: string[]): string {
@@ -127,6 +128,70 @@ function extractMoratoriumPrefill(raw: unknown): string {
     if (val != null) return String(val).trim()
   }
   return ""
+}
+
+/** API may return numeric interest; drawer state expects a %-suffixed display string when applicable. */
+function normalizeInterestRateHydrate(raw: unknown): string {
+  if (raw == null || raw === "") return ""
+  if (typeof raw === "number" && Number.isFinite(raw)) return `${raw}%`
+  const s = String(raw).trim()
+  if (!s) return ""
+  if (s.includes("%")) return s
+  const n = Number(s.replace(/%/g, ""))
+  if (!Number.isNaN(n)) return `${n}%`
+  return s
+}
+
+function pickRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>
+  return {}
+}
+
+/** Product MS may return tabs at root or nested under `configuration`. */
+function pickAboutFromLoan(loanData: Record<string, unknown>): Record<string, unknown> {
+  const direct = pickRecord(loanData.about)
+  if (Object.keys(direct).length) return direct
+  const cfg = pickRecord(loanData.configuration)
+  return pickRecord(cfg.about)
+}
+
+function pickStructureFromLoan(loanData: Record<string, unknown>): Record<string, unknown> {
+  const direct = pickRecord(loanData.structure)
+  if (Object.keys(direct).length) return direct
+  const cfg = pickRecord(loanData.configuration)
+  return pickRecord(cfg.structure)
+}
+
+function pickRequirementsFromLoan(loanData: Record<string, unknown>): Record<string, unknown> {
+  const direct = pickRecord(loanData.requirements)
+  if (Object.keys(direct).length) return direct
+  const cfg = pickRecord(loanData.configuration)
+  return pickRecord(cfg.requirements)
+}
+
+function pickFeesAndChargesFromLoan(loanData: Record<string, unknown>): Record<string, unknown> {
+  const direct = pickRecord(loanData.feesAndCharges)
+  if (Object.keys(direct).length) return direct
+  const cfg = pickRecord(loanData.configuration)
+  return pickRecord(cfg.feesAndCharges)
+}
+
+/** Stored enum / snake_case → UI workflow label used by `ProductConfigRepaymentWorkflowPanel`. */
+function canonicalRepaymentWorkflowFromApi(raw: unknown): string {
+  const k = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/_+/g, "_")
+  const map: Record<string, string> = {
+    principal_interest_charges: DEFAULT_REPAYMENT_WORKFLOWS[0],
+    principal_then_interest_then_charges: DEFAULT_REPAYMENT_WORKFLOWS[0],
+    charges_principal_interest: DEFAULT_REPAYMENT_WORKFLOWS[1],
+    charges_then_principal_then_interest: DEFAULT_REPAYMENT_WORKFLOWS[1],
+    interest_charges_principal: DEFAULT_REPAYMENT_WORKFLOWS[2],
+    interest_then_charges_then_principal: DEFAULT_REPAYMENT_WORKFLOWS[2],
+  }
+  return map[k] ?? String(raw ?? "").trim()
 }
 
 export default function ConfigureLoanDrawer({
@@ -183,6 +248,7 @@ export default function ConfigureLoanDrawer({
   const equityRequirementMode = useMemo(() => classifyEquityRequirementMode(equityRequirement), [equityRequirement])
 
   const [selectedSecurities, setSelectedSecurities] = useState<string[]>([])
+  const [securityOtherSpecification, setSecurityOtherSpecification] = useState("")
   const [documentName, setDocumentName] = useState("")
   const [documents, setDocuments] = useState<DocumentRequirementUpload[]>([])
   const [otherRequirementType, setOtherRequirementType] = useState("")
@@ -207,8 +273,13 @@ export default function ConfigureLoanDrawer({
   const [penalties, setPenalties] = useState<PenaltyItem[]>([])
   const [stepErrors, setStepErrors] = useState<string[]>([])
 
+  const mergedSecurityOptions = useMemo(
+    () => mergeSecurityRequirementDisplayOptions(securityOptions),
+    [securityOptions],
+  )
+
   const isPercentType = (value: string) => value.toLowerCase().includes("percent")
-  const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
+  const cleanNumeric = (value: string) => value.replace(/,/g, "").replace(/[^0-9.]/g, "")
   const normalizePercentInput = (raw: string) => {
     const numeric = cleanNumeric(raw)
     if (!numeric) return ""
@@ -244,7 +315,7 @@ export default function ConfigureLoanDrawer({
   }
 
   const handleEquityFixedAmountChange = (value: string) => {
-    setEquityFixedAmount(cleanNumeric(value))
+    setEquityFixedAmount(value)
   }
 
   const handleEquityPercentageChange = (value: string) => {
@@ -344,10 +415,11 @@ export default function ConfigureLoanDrawer({
     } else {
       loanHydratedKeyRef.current = "__noid__"
     }
-    const about = (loanData.about ?? {}) as Record<string, any>
-    const structure = (loanData.structure ?? {}) as Record<string, any>
-    const requirements = (loanData.requirements ?? {}) as Record<string, any>
-    const fees = (loanData.feesAndCharges ?? {}) as Record<string, any>
+    const loan = loanData as Record<string, unknown>
+    const about = pickAboutFromLoan(loan) as Record<string, any>
+    const structure = pickStructureFromLoan(loan) as Record<string, any>
+    const requirements = pickRequirementsFromLoan(loan) as Record<string, any>
+    const fees = pickFeesAndChargesFromLoan(loan) as Record<string, any>
 
     setName(String(loanData.name ?? ""))
     setTenure(String(loanData.tenure ?? about.tenure ?? ""))
@@ -355,16 +427,28 @@ export default function ConfigureLoanDrawer({
       String(about.previewAssetUrl ?? loanData.previewAssetUrl ?? loanData.previewImage?.url ?? ""),
     )
     setDescription(String(loanData.description ?? ""))
-    setLoanTypes(
-      Array.isArray(loanData.loanTypes ?? about.loanTypes)
-        ? (loanData.loanTypes ?? about.loanTypes).map((t: any) => ({
-            name: String(t?.name ?? ""),
-            description: String(t?.description ?? ""),
-          }))
-        : [],
-    )
+    const loanTypesHydrated: LoanTypeItem[] = Array.isArray(loanData.loanTypes ?? about.loanTypes)
+      ? (loanData.loanTypes ?? about.loanTypes).map((t: any) => ({
+          name: String(t?.name ?? "").trim(),
+          description: String(t?.description ?? "").trim(),
+        }))
+      : []
+    setLoanTypes(loanTypesHydrated)
+    if (loanTypesHydrated.length >= 1) {
+      setLoanTypeName(loanTypesHydrated[0].name)
+      setLoanTypeDescription(loanTypesHydrated[0].description)
+    } else {
+      setLoanTypeName("")
+      setLoanTypeDescription("")
+    }
 
-    setInterestRate(String(loanData.interestRate ?? structure.interestRate ?? ""))
+    setInterestRate(
+      normalizeInterestRateHydrate(
+        (loanData.interestRate as unknown) ??
+          (structure.interestRate as unknown) ??
+          (about as Record<string, unknown>).interestRate,
+      ),
+    )
     setInterestMethod(String(loanData.interestMethod ?? structure.interestMethod ?? ""))
     const allowMoratoriumValue = asBool(loanData.allowMoratorium ?? structure.allowMoratorium)
     const morStr = extractMoratoriumPrefill(
@@ -387,24 +471,31 @@ export default function ConfigureLoanDrawer({
       setMoratoriumDurationOf(String(loanData.moratoriumDurationOf ?? structure.moratoriumDurationOf ?? ""))
     }
     setMoratoriumType(String(loanData.moratoriumType ?? structure.moratoriumType ?? ""))
-    setRepaymentWorkflow(String(loanData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0]))
+    const rwStored = loanData.repaymentWorkflow ?? structure.repaymentWorkflow
+    const rwCanonical = rwStored ? canonicalRepaymentWorkflowFromApi(rwStored) : DEFAULT_REPAYMENT_WORKFLOWS[0]
+    setRepaymentWorkflow(
+      repaymentWorkflowOptions.length
+        ? resolveOptionLabel(rwCanonical, repaymentWorkflowOptions) ||
+            resolveOptionLabel(rwStored, repaymentWorkflowOptions) ||
+            rwCanonical
+        : rwCanonical,
+    )
     const loanAmount = (structure.loanAmount ?? {}) as Record<string, unknown>
     setMinLoanAmount(
-      formatAmountWithCommas(loanData.minLoanAmount ?? structure.minLoanAmount ?? loanAmount.min ?? ""),
+      formatAmountDisplayFromUnknown(loanData.minLoanAmount ?? structure.minLoanAmount ?? loanAmount.min ?? ""),
     )
     setMaxLoanAmount(
-      formatAmountWithCommas(loanData.maxLoanAmount ?? structure.maxLoanAmount ?? loanAmount.max ?? ""),
+      formatAmountDisplayFromUnknown(loanData.maxLoanAmount ?? structure.maxLoanAmount ?? loanAmount.max ?? ""),
     )
     setRepaymentSchedule(String(loanData.repaymentSchedule ?? structure.repaymentSchedule ?? ""))
-    setAmortizationSchedule(
-      String(
-        loanData.amortizationSchedule ??
-          loanData.amortization ??
-          structure.amortizationSchedule ??
-          structure.amortization ??
-          "",
-      ),
-    )
+    const amortRaw =
+      loanData.amortizationSchedule ??
+      loanData.amortization ??
+      structure.amortizationSchedule ??
+      structure.amortization ??
+      structure.amortizationType ??
+      ""
+    setAmortizationSchedule(String(amortRaw ?? ""))
     setRepaymentFrequency(String(loanData.repaymentFrequency ?? structure.repaymentFrequency ?? ""))
     setAcceptableNpa(
       String(loanData.acceptableNpa ?? structure.acceptableNPA ?? structure.acceptableNpa ?? ""),
@@ -415,7 +506,9 @@ export default function ConfigureLoanDrawer({
         equityRequirementOptions,
       ),
     )
-    setEquityFixedAmount(String(loanData.equityFixedAmount ?? structure.equityFixedAmount ?? ""))
+    setEquityFixedAmount(
+      formatAmountDisplayFromUnknown(loanData.equityFixedAmount ?? structure.equityFixedAmount ?? ""),
+    )
     setEquityPercentage(String(loanData.equityPercentage ?? structure.equityPercentage ?? ""))
 
     const docsRaw = loanData.documentsToDownload ?? requirements.documentsToDownload
@@ -442,9 +535,17 @@ export default function ConfigureLoanDrawer({
     setOtherRequirements(
       Array.isArray(otherReqRaw) ? otherReqRaw.map((row: unknown) => normalizeOtherRequirementRowFromApi(row)) : [],
     )
+    const feesList = loanData.charges ?? fees.charges ?? fees.fees
     setCharges(
-      Array.isArray(loanData.charges ?? fees.charges ?? fees.fees)
-        ? (loanData.charges ?? fees.charges ?? fees.fees)
+      Array.isArray(feesList)
+        ? feesList.map((c: unknown) => {
+            const r = c as Record<string, unknown>
+            return {
+              name: String(r?.name ?? "").trim(),
+              feeType: String(r?.feeType ?? r?.type ?? "").trim(),
+              value: String(r?.value ?? "").trim(),
+            }
+          })
         : [],
     )
     setChargePaymentMode(
@@ -482,12 +583,14 @@ export default function ConfigureLoanDrawer({
 
   useEffect(() => {
     if (!isOpen || !loanData) return
-    const requirements = (loanData.requirements ?? {}) as Record<string, any>
+    const requirements = pickRequirementsFromLoan(loanData as Record<string, unknown>) as Record<string, any>
     const sec = requirements.security
+    const opts = mergeSecurityRequirementDisplayOptions(securityOptions)
+    setSecurityOtherSpecification("")
 
     if (sec && typeof sec === "object") {
       const picked: string[] = []
-      const opts = securityOptions
+      const secRec = sec as Record<string, unknown>
       if (asBool(sec.guarantor)) {
         const m = opts.find((o) => /guarantor/i.test(o))
         if (m) picked.push(m)
@@ -502,21 +605,39 @@ export default function ConfigureLoanDrawer({
         const m = opts.find((o) => /no security|no collateral|none/i.test(o))
         if (m) picked.push(m)
       }
-      if (picked.length) setSelectedSecurities(picked)
+      if (asBool(secRec.cheque)) {
+        const m = opts.find((o) => /^cheque$/i.test(o.trim()))
+        if (m) picked.push(m)
+        else picked.push("Cheque")
+      }
+      if (asBool(secRec.bankGuarantee)) {
+        const m = opts.find((o) => /bank/i.test(o) && /guarantee/i.test(o))
+        if (m) picked.push(m)
+        else picked.push("Bank Guarantee")
+      }
+      const otherSpecRaw = secRec.otherSpecification ?? secRec.otherSecurityDescription
+      const otherText = typeof otherSpecRaw === "string" ? otherSpecRaw.trim() : ""
+      if (asBool(secRec.other) || otherText) {
+        const m = opts.find((o) => /^other$/i.test(o.trim()))
+        picked.push(m ?? OTHER_SECURITY_CANONICAL_LABEL)
+        if (otherText) setSecurityOtherSpecification(otherText)
+      }
+      setSelectedSecurities(picked)
       return
     }
 
-    setSelectedSecurities(
-      Array.isArray(loanData.securityRequirements ?? requirements.securityRequirements)
-        ? (loanData.securityRequirements ?? requirements.securityRequirements).map((x: any) => String(x))
-        : [],
-    )
+    const rawArr = Array.isArray(loanData.securityRequirements ?? requirements.securityRequirements)
+      ? (loanData.securityRequirements ?? requirements.securityRequirements).map((x: unknown) => String(x))
+      : []
+    const { toggles, otherSpecification } = splitStoredSecurityRequirements(rawArr)
+    setSelectedSecurities(toggles)
+    setSecurityOtherSpecification(otherSpecification)
   }, [isOpen, loanData, securityOptions])
 
   // When options arrive after hydration, remap enum-like stored values to displayed labels.
   useEffect(() => {
     if (!isOpen || !loanData) return
-    const structure = (loanData.structure ?? {}) as Record<string, unknown>
+    const structure = pickStructureFromLoan(loanData as Record<string, unknown>)
     const eqRaw = loanData.equityRequirement ?? structure.equityRequirement ?? ""
     if (eqRaw) {
       setEquityRequirement((prev) => {
@@ -533,7 +654,59 @@ export default function ConfigureLoanDrawer({
     if (resolvedMor) {
       setMoratoriumSelectDuration((prev) => (prev ? resolveOptionLabel(prev, moratoriumDurationOptions) : resolvedMor))
     }
-  }, [isOpen, loanData, equityRequirementOptions, moratoriumDurationOptions])
+
+    const imRaw = loanData.interestMethod ?? structure.interestMethod
+    if (imRaw && interestMethodOptions.length) {
+      setInterestMethod((prev) => resolveOptionLabel(imRaw, interestMethodOptions) || prev)
+    }
+    const morTypeRaw = loanData.moratoriumType ?? structure.moratoriumType
+    if (morTypeRaw && moratoriumTypeOptions.length) {
+      setMoratoriumType((prev) => resolveOptionLabel(morTypeRaw, moratoriumTypeOptions) || prev)
+    }
+    const rwRaw = loanData.repaymentWorkflow ?? structure.repaymentWorkflow
+    if (rwRaw && repaymentWorkflowOptions.length) {
+      const canonical = canonicalRepaymentWorkflowFromApi(rwRaw)
+      setRepaymentWorkflow((prev) =>
+        resolveOptionLabel(canonical, repaymentWorkflowOptions) ||
+          resolveOptionLabel(rwRaw, repaymentWorkflowOptions) ||
+          canonical ||
+          prev,
+      )
+    }
+    const rsRaw = loanData.repaymentSchedule ?? structure.repaymentSchedule
+    if (rsRaw && repaymentScheduleOptions.length) {
+      setRepaymentSchedule((prev) => resolveOptionLabel(rsRaw, repaymentScheduleOptions) || prev)
+    }
+    const amRaw =
+      loanData.amortizationSchedule ??
+      loanData.amortization ??
+      structure.amortizationSchedule ??
+      structure.amortization ??
+      structure.amortizationType
+    if (amRaw && amortizationScheduleOptions.length) {
+      setAmortizationSchedule((prev) => resolveOptionLabel(amRaw, amortizationScheduleOptions) || prev)
+    }
+    const rfRaw = loanData.repaymentFrequency ?? structure.repaymentFrequency
+    if (rfRaw && repaymentFrequencyOptions.length) {
+      setRepaymentFrequency((prev) => resolveOptionLabel(rfRaw, repaymentFrequencyOptions) || prev)
+    }
+    const npaRaw = loanData.acceptableNpa ?? structure.acceptableNPA ?? structure.acceptableNpa
+    if (npaRaw && acceptableNpaOptions.length) {
+      setAcceptableNpa((prev) => resolveOptionLabel(npaRaw, acceptableNpaOptions) || prev)
+    }
+  }, [
+    isOpen,
+    loanData,
+    equityRequirementOptions,
+    moratoriumDurationOptions,
+    interestMethodOptions,
+    moratoriumTypeOptions,
+    repaymentWorkflowOptions,
+    repaymentScheduleOptions,
+    amortizationScheduleOptions,
+    repaymentFrequencyOptions,
+    acceptableNpaOptions,
+  ])
 
   const addLoanType = () => {
     if (!loanTypeName.trim() || !loanTypeDescription.trim()) return
@@ -542,7 +715,14 @@ export default function ConfigureLoanDrawer({
     setLoanTypeDescription("")
   }
 
+  const removeLoanType = (index: number) => {
+    setLoanTypes((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const toggleSecurity = (option: string, checked: boolean) => {
+    if (!checked && option.trim().toLowerCase() === OTHER_SECURITY_CANONICAL_LABEL.toLowerCase()) {
+      setSecurityOtherSpecification("")
+    }
     setSelectedSecurities((prev) => {
       if (checked) return prev.includes(option) ? prev : [...prev, option]
       return prev.filter((item) => item !== option)
@@ -672,6 +852,7 @@ export default function ConfigureLoanDrawer({
       equityPercentage,
     },
     selectedSecurities,
+    securityOtherSpecification,
     documents,
     otherRequirements,
     charges,
@@ -746,7 +927,7 @@ export default function ConfigureLoanDrawer({
           equityRequirement,
           equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
           equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
-          securityRequirements: selectedSecurities,
+          securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
           charges,
@@ -810,6 +991,7 @@ export default function ConfigureLoanDrawer({
           onTypeNameDraftChange={setLoanTypeName}
           onTypeDescDraftChange={setLoanTypeDescription}
           onAddType={addLoanType}
+          onRemoveTypeRow={removeLoanType}
           typeRows={loanTypes}
           previewFile={previewImage}
           previewLabel={String(
@@ -824,7 +1006,7 @@ export default function ConfigureLoanDrawer({
               ? ""
               : String(
                   existingPreviewAssetUrl ||
-                    (loanData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ||
+                    (loanData ? pickAboutFromLoan(loanData as Record<string, unknown>).previewAssetUrl : "") ||
                     loanData?.previewImage?.url ||
                     loanData?.previewImageUrl ||
                     "",
@@ -954,6 +1136,7 @@ export default function ConfigureLoanDrawer({
                 value={equityFixedAmount}
                 onChange={handleEquityFixedAmountChange}
                 numericOnly
+                formatThousands
                 requirement="required"
               />
             ) : null}
@@ -977,7 +1160,7 @@ export default function ConfigureLoanDrawer({
               Security Requirements <span className="font-normal text-gray-500">(Required)</span>
             </label>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {securityOptions.map((option) => (
+              {mergedSecurityOptions.map((option) => (
                 <ProductConfigToggle
                   key={option}
                   id={`security-${option}`}
@@ -987,6 +1170,15 @@ export default function ConfigureLoanDrawer({
                 />
               ))}
             </div>
+            {isOtherSecuritySelected(selectedSecurities) ? (
+              <ProductConfigInput
+                label="Specify other security"
+                placeholder="Describe what “Other” means for this product"
+                value={securityOtherSpecification}
+                onChange={setSecurityOtherSpecification}
+                requirement="required"
+              />
+            ) : null}
           </div>
 
           <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
@@ -1076,7 +1268,14 @@ export default function ConfigureLoanDrawer({
               onChange={handleChargeFeeTypeChange}
               requirement="required"
             />
-            <ProductConfigInput label="Value" placeholder="Enter Value" value={chargeValue} onChange={handleChargeValueChange} numericOnly />
+            <ProductConfigInput
+              label="Value"
+              placeholder="Enter Value"
+              value={chargeValue}
+              onChange={handleChargeValueChange}
+              numericOnly
+              formatThousands={!isPercentType(chargeFeeType)}
+            />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
               Add
             </Button>
@@ -1144,6 +1343,7 @@ export default function ConfigureLoanDrawer({
               value={penaltyValue}
               onChange={handlePenaltyValueChange}
               numericOnly
+              formatThousands={!isPercentType(penaltyType)}
               requirement="required"
             />
             <ProductConfigInput

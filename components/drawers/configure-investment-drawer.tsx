@@ -15,6 +15,7 @@ import {
   ProductConfigTabs,
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
+import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import { validateAllInvestmentSteps, validateInvestmentStep } from "@/lib/productConfigureStepValidation"
 
 interface ConfigureInvestmentDrawerProps {
@@ -105,7 +106,7 @@ export default function ConfigureInvestmentDrawer({
   const [withdrawalPenalties, setWithdrawalPenalties] = useState<WithdrawalPenaltyItem[]>([])
 
   const isPercentType = (value: string) => value.toLowerCase().includes("percent")
-  const cleanNumeric = (value: string) => value.replace(/[^0-9.]/g, "")
+  const cleanNumeric = (value: string) => value.replace(/,/g, "").replace(/[^0-9.]/g, "")
   const normalizePercentInput = (raw: string) => {
     const numeric = cleanNumeric(raw)
     if (!numeric) return ""
@@ -114,7 +115,7 @@ export default function ConfigureInvestmentDrawer({
   const normalizeTypedValue = (raw: string, type: string) => {
     const numeric = cleanNumeric(raw)
     if (!numeric) return ""
-    return isPercentType(type) ? `${numeric}%` : numeric
+    return isPercentType(type) ? `${numeric}%` : formatAmountDisplayFromUnknown(numeric)
   }
   const handleChargeFeeTypeChange = (nextType: string) => {
     setChargeFeeType(nextType)
@@ -194,27 +195,17 @@ export default function ConfigureInvestmentDrawer({
     setStepErrors([])
   }, [step])
 
-  const formatWithCommas = (value: string) => {
-    const numericValue = value.replace(/[^0-9.]/g, "")
-    const parts = numericValue.split(".")
-    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-    return parts.join(".")
-  }
-
   const removeCommas = (value: string) => value.replace(/,/g, "")
-
-  const handleCurrencyChange = (value: string, setter: (val: string) => void) => {
-    const rawValue = removeCommas(value)
-    if (rawValue === "" || /^\d*\.?\d{0,2}$/.test(rawValue)) {
-      setter(formatWithCommas(rawValue))
-    }
-  }
 
   const addInvestmentTypeRow = () => {
     if (!typeNameDraft.trim() || !typeDescDraft.trim()) return
     setInvestmentTypes((prev) => [...prev, { name: typeNameDraft.trim(), description: typeDescDraft.trim() }])
     setTypeNameDraft("")
     setTypeDescDraft("")
+  }
+
+  const removeInvestmentTypeRow = (index: number) => {
+    setInvestmentTypes((prev) => prev.filter((_, i) => i !== index))
   }
 
   const removeCharge = (index: number) => setCharges((prev) => prev.filter((_, i) => i !== index))
@@ -396,6 +387,7 @@ export default function ConfigureInvestmentDrawer({
             onTypeNameDraftChange={setTypeNameDraft}
             onTypeDescDraftChange={setTypeDescDraft}
             onAddType={addInvestmentTypeRow}
+            onRemoveTypeRow={removeInvestmentTypeRow}
             typeRows={investmentTypes}
             previewFile={previewImage}
             onPreviewFileChange={setPreviewImage}
@@ -453,14 +445,18 @@ export default function ConfigureInvestmentDrawer({
                   label="Minimum"
                   placeholder="Min Amount"
                   value={minAmount}
-                  onChange={(v) => handleCurrencyChange(v, setMinAmount)}
+                  onChange={setMinAmount}
+                  numericOnly
+                  formatThousands
                   requirement="required"
                 />
                 <ProductConfigInput
                   label="Maximum"
                   placeholder="Max Amount"
                   value={maxAmount}
-                  onChange={(v) => handleCurrencyChange(v, setMaxAmount)}
+                  onChange={setMaxAmount}
+                  numericOnly
+                  formatThousands
                   requirement="required"
                 />
               </div>
@@ -516,7 +512,9 @@ export default function ConfigureInvestmentDrawer({
                   label="Unit Amount"
                   placeholder="Amount"
                   value={unitAmount}
-                  onChange={(v) => handleCurrencyChange(v, setUnitAmount)}
+                  onChange={setUnitAmount}
+                  numericOnly
+                  formatThousands
                   requirement="required"
                 />
                 <ProductConfigInput
@@ -555,6 +553,7 @@ export default function ConfigureInvestmentDrawer({
                   value={chargeValue}
                   onChange={handleChargeValueChange}
                   numericOnly
+                  formatThousands={!isPercentType(chargeFeeType)}
                   requirement="required"
                 />
               <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
@@ -620,6 +619,7 @@ export default function ConfigureInvestmentDrawer({
                     value={penaltyValue}
                     onChange={handlePenaltyValueChange}
                     numericOnly
+                    formatThousands={!isPercentType(penaltyType)}
                     requirement="optional"
                   />
                   <ProductConfigSelect

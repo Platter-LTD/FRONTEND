@@ -249,6 +249,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
           countryOfIncorporation: info.country || 'NG',
           website: info.website || 'https://example.com',
           companyRegId: info.companyRegId,
+          bvn: (info.bvn || "").replace(/\D/g, "").slice(0, 11),
           companyLogoUrl: "https://via.placeholder.com/1",
         },
         businessSurvey: {
