@@ -25,7 +25,6 @@ export const CreateShareholderDrawer: React.FC = () => {
     fullName: "",
     email: "",
     phoneNumber: "",
-    bvn: "",
     bankAccount: "",
   })
   const [uboFile, setUboFile] = React.useState<File | null>(null)
@@ -95,8 +94,8 @@ export const CreateShareholderDrawer: React.FC = () => {
       toast.error("Please provide full name and email")
       return
     }
-    if (!formData.bvn || !formData.bankAccount) {
-      toast.error("BVN and Bank Account are required")
+    if (!formData.bankAccount) {
+      toast.error("Bank Account is required")
       return
     }
     if (!uboFile || !bankFile) {
@@ -150,7 +149,6 @@ export const CreateShareholderDrawer: React.FC = () => {
         fullName: formData.fullName.trim(),
         email: formData.email.trim() || undefined,
         phoneNumber: formData.phoneNumber.trim() || undefined,
-        bvn: formData.bvn.trim() || undefined,
         bankAccount: formData.bankAccount.trim() || undefined,
         ownershipPercentage: 100,
         bankStatement,
@@ -331,15 +329,7 @@ export const CreateShareholderDrawer: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col gap-6 min-w-0">
-                  <div className="border rounded-lg p-5 bg-white shadow-sm">
-                    <input
-                      type="text"
-                      placeholder="BVN"
-                      value={formData.bvn}
-                      onChange={(e) => handleChange("bvn", e.target.value)}
-                      className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-                    />
-                  </div>
+                  {/* BVN field intentionally disabled for current compliance flow */}
 
                   <div className="border rounded-lg p-5 bg-white shadow-sm">
                     <input
