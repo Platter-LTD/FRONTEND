@@ -1,45 +1,43 @@
 import { NextRequest, NextResponse } from "next/server"
-
+import { merchantRoleHeadersFromAuthorization } from "@/lib/server/merchantRoleHeaders"
 import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+
 export const dynamic = "force-dynamic"
 
-const BASE_URL = (getPlataApiBaseUrl()).replace(/\/+$/, "")
+const BASE_URL = getPlataApiBaseUrl().replace(/\/+$/, "")
 
-// GET /api/v1/products/applications/:applicationId
+function getAuthHeader(request: NextRequest): string | null {
+  const cookieAccessToken = request.cookies.get("accessToken")?.value
+  return (
+    request.headers.get("authorization") ||
+    request.headers.get("Authorization") ||
+    (cookieAccessToken ? `Bearer ${cookieAccessToken}` : null)
+  )
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ applicationId: string }> },
 ) {
   try {
     const { applicationId } = await params
-    const authHeader = request.headers.get("authorization")
+    const authHeader = getAuthHeader(request)
+    const target = `${BASE_URL}/api/v1/products/applications/${encodeURIComponent(applicationId)}`
 
-    if (!authHeader) {
-      return NextResponse.json({ success: false, error: "Authorization required" }, { status: 401 })
-    }
-
-    const response = await fetch(`${BASE_URL}/api/v1/products/applications/${encodeURIComponent(applicationId)}`, {
+    const response = await fetch(target, {
       headers: {
         "Content-Type": "application/json",
-        Authorization: authHeader,
+        ...(authHeader ? { Authorization: authHeader, ...merchantRoleHeadersFromAuthorization(authHeader) } : {}),
       },
+      cache: "no-store",
     })
 
     const data = await response.json().catch(() => ({}))
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { success: false, error: data.error || data.message || "Failed to fetch product application" },
-        { status: response.status || 502 },
-      )
-    }
-
-    return NextResponse.json(data)
+    return NextResponse.json(data, { status: response.status })
   } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, error: (error as Error)?.message || "Failed to fetch product application" },
+      { success: false, error: (error as Error)?.message || "Failed to load application" },
       { status: 500 },
     )
   }
 }
-

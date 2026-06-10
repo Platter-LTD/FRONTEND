@@ -8,7 +8,7 @@ import { IoMdCube } from "react-icons/io"
 import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { FaWallet } from "react-icons/fa"
-import { GitBranch, ChevronDown, ChevronUp, ShieldCheck } from "lucide-react"
+import { GitBranch, ChevronDown, ChevronUp, FileText, ShieldCheck } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
@@ -77,6 +77,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
 
   const [isWalletsOpen, setIsWalletsOpen] = useState(false)
   const [isProductsOpen, setIsProductsOpen] = useState(false)
+  const [isApplicationsOpen, setIsApplicationsOpen] = useState(false)
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
@@ -140,11 +141,13 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
     if (!appId) {
       setIsWalletsOpen(false)
       setIsProductsOpen(false)
+      setIsApplicationsOpen(false)
       setIsWorkflowOpen(false)
       return
     }
     setIsWalletsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/wallets`))
     setIsProductsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/products`))
+    setIsApplicationsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/applications`))
     setIsWorkflowOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/operation-workflow`))
   }, [pathname, appId])
 
@@ -185,6 +188,15 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
           ],
         },
         {
+          icon: <FileText size={20} />,
+          label: "Applications",
+          href: `/dashboard/create-app/all-apps/${appId}/applications`,
+          subItems: [
+            { label: "All Applications", href: `/dashboard/create-app/all-apps/${appId}/applications` },
+            { label: "Pending Review", href: `/dashboard/create-app/all-apps/${appId}/applications/pending` },
+          ],
+        },
+        {
           icon: <GitBranch size={20} />,
           label: "Operation Workflow",
           href: `/dashboard/create-app/all-apps/${appId}/operation-workflow`,
@@ -219,17 +231,21 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
                   ? isWalletsOpen
                   : item.label === "Products"
                     ? isProductsOpen
-                    : item.label === "Operation Workflow"
-                      ? isWorkflowOpen
-                      : false
+                    : item.label === "Applications"
+                      ? isApplicationsOpen
+                      : item.label === "Operation Workflow"
+                        ? isWorkflowOpen
+                        : false
               const setIsOpen =
                 item.label === "Wallets"
                   ? setIsWalletsOpen
                   : item.label === "Products"
                     ? setIsProductsOpen
-                    : item.label === "Operation Workflow"
-                      ? setIsWorkflowOpen
-                      : () => {}
+                    : item.label === "Applications"
+                      ? setIsApplicationsOpen
+                      : item.label === "Operation Workflow"
+                        ? setIsWorkflowOpen
+                        : () => {}
 
               return (
                 <li key={index}>

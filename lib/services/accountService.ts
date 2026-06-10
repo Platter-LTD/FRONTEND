@@ -124,6 +124,35 @@ export interface ProductApplication {
   updatedAt: string;
 }
 
+export type LoanWorkflowStatus = 'requested' | 'under_review' | 'approved' | 'declined' | 'blacklisted';
+
+export interface LoanWorkflowApplication {
+  id: string;
+  appId?: string;
+  merchantId: string;
+  merchantName?: string;
+  offeringMerchantId?: string;
+  offeringMerchantName?: string;
+  userId: string;
+  productType: 'LOAN' | 'MORTGAGE' | string;
+  globalProductId?: string;
+  globalProductReferenceNumber?: string;
+  localApplicationId?: string;
+  merchantProductId?: string;
+  status?: string;
+  loanWorkflowStatus?: LoanWorkflowStatus;
+  loanWorkflowCallbackUrl?: string;
+  loanDisbursement?: Record<string, any> | null;
+  submittedAt?: string;
+  signedAt?: string | null;
+  contractSnapshot?: Record<string, any>;
+  payoutSplit?: Record<string, any>;
+  snapshotVersion?: number;
+  snapshotHash?: string;
+  submittedRequirements?: Array<Record<string, any>>;
+  createdAt: string;
+}
+
 export interface PricingInfo {
   productId: string;
   basePrice: number;
@@ -711,12 +740,15 @@ export const applicationApi = {
   /**
    * Approve an application (Admin only)
    */
-  async approve(id: string, notes?: string): Promise<ApiResponse<ProductApplication>> {
+  async approve(id: string, approvedAmount?: number): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
-      const response = await fetch(`${ACCOUNT_API_BASE}/api/v1/applications/${id}/approve`, {
-        method: 'POST',
+      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+        method: 'PATCH',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ notes }),
+        body: JSON.stringify({
+          loanWorkflowStatus: 'approved',
+          ...(approvedAmount != null ? { approvedAmount } : {}),
+        }),
       });
 
       const result = await response.json();
@@ -741,12 +773,12 @@ export const applicationApi = {
   /**
    * Reject an application (Admin only)
    */
-  async reject(id: string, reason?: string): Promise<ApiResponse<ProductApplication>> {
+  async reject(id: string, _reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
-      const response = await fetch(`${ACCOUNT_API_BASE}/api/v1/applications/${id}/reject`, {
-        method: 'POST',
+      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+        method: 'PATCH',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({ loanWorkflowStatus: 'declined' }),
       });
 
       const result = await response.json();
@@ -768,6 +800,93 @@ export const applicationApi = {
     }
   },
 
+  async getLoanWorkflowApplications(params?: {
+    loanWorkflowStatus?: LoanWorkflowStatus;
+    limit?: number;
+    skip?: number;
+  }): Promise<ApiResponse<LoanWorkflowApplication[]>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.loanWorkflowStatus) queryParams.set('loanWorkflowStatus', params.loanWorkflowStatus);
+      if (params?.limit) queryParams.set('limit', String(params.limit));
+      if (params?.skip) queryParams.set('skip', String(params.skip));
+
+      const response = await fetch(
+        `/api/v1/products/applications/me/loan-workflow${queryParams.toString() ? `?${queryParams}` : ''}`,
+        { headers: getAuthHeaders() },
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error || result.message || 'Failed to load workflow applications',
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error('Get loan workflow applications error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to load workflow applications',
+      };
+    }
+  },
+
+  async getWorkflowApplication(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    try {
+      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}`, {
+        headers: getAuthHeaders(),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error || result.message || 'Failed to load application',
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error('Get workflow application error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to load application',
+      };
+    }
+  },
+
+  async updateLoanWorkflowStatus(
+    id: string,
+    body: { loanWorkflowStatus: LoanWorkflowStatus; approvedAmount?: number },
+  ): Promise<ApiResponse<LoanWorkflowApplication>> {
+    try {
+      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error || result.message || 'Failed to update workflow status',
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error('Update loan workflow status error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to update workflow status',
+      };
+    }
+  },
+
   /**
    * Get all applications (Admin only)
    */
@@ -776,6 +895,7 @@ export const applicationApi = {
     limit?: number;
     status?: string;
     type?: string;
+    appId?: string;
   }): Promise<ApiResponse<ProductApplication[]>> {
     try {
       const queryParams = new URLSearchParams();
@@ -783,8 +903,9 @@ export const applicationApi = {
       if (params?.limit) queryParams.append('limit', params.limit.toString());
       if (params?.status) queryParams.append('status', params.status);
       if (params?.type) queryParams.append('type', params.type);
+      if (params?.appId) queryParams.append('appId', params.appId);
 
-      const url = `${ACCOUNT_API_BASE}/api/v1/applications/${queryParams.toString() ? `?${queryParams}` : ''}`;
+      const url = `/api/v1/applications${queryParams.toString() ? `?${queryParams}` : ''}`;
       const response = await fetch(url, {
         headers: getAuthHeaders(),
       });
@@ -811,9 +932,11 @@ export const applicationApi = {
   /**
    * Get pending applications (Admin only)
    */
-  async getPending(): Promise<ApiResponse<ProductApplication[]>> {
+  async getPending(params?: { appId?: string }): Promise<ApiResponse<ProductApplication[]>> {
     try {
-      const response = await fetch(`${ACCOUNT_API_BASE}/api/v1/applications/pending`, {
+      const queryParams = new URLSearchParams();
+      if (params?.appId) queryParams.append('appId', params.appId);
+      const response = await fetch(`/api/v1/applications/pending${queryParams.toString() ? `?${queryParams}` : ''}`, {
         headers: getAuthHeaders(),
       });
 
