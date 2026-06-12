@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { merchantRoleHeadersFromAuthorization } from "@/lib/server/merchantRoleHeaders"
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import { plataUpstreamAxios } from "@/lib/server/plataUpstreamAxios"
 
 export const dynamic = "force-dynamic"
-
-const BASE_URL = getPlataApiBaseUrl().replace(/\/+$/, "")
 
 function getAuthHeader(request: NextRequest): string | null {
   const cookieAccessToken = request.cookies.get("accessToken")?.value
@@ -24,20 +22,17 @@ export async function GET(request: NextRequest) {
 
     const incomingMerchantId = request.headers.get("x-merchant-id") || request.headers.get("x-user-merchant-id") || undefined
     const queryString = request.nextUrl.searchParams.toString()
-    const target = `${BASE_URL}/api/v1/products/applications/me/loan-workflow${queryString ? `?${queryString}` : ""}`
+    const target = `/api/v1/products/applications/me/loan-workflow${queryString ? `?${queryString}` : ""}`
 
-    const response = await fetch(target, {
+    const response = await plataUpstreamAxios.get(target, {
       headers: {
-        "Content-Type": "application/json",
         Authorization: authHeader,
         ...merchantRoleHeadersFromAuthorization(authHeader),
         ...(incomingMerchantId ? { "x-merchant-id": incomingMerchantId, "x-user-merchant-id": incomingMerchantId } : {}),
       },
-      cache: "no-store",
     })
 
-    const data = await response.json().catch(() => ({}))
-    return NextResponse.json(data, { status: response.status })
+    return NextResponse.json(response.data, { status: response.status })
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: (error as Error)?.message || "Failed to fetch loan workflow" },

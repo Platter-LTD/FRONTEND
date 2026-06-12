@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { merchantRoleHeadersFromAuthorization } from "@/lib/server/merchantRoleHeaders"
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import { plataUpstreamAxios } from "@/lib/server/plataUpstreamAxios"
 
 export const dynamic = "force-dynamic"
-
-const BASE_URL = getPlataApiBaseUrl().replace(/\/+$/, "")
 
 function getAuthHeader(request: NextRequest): string | null {
   const cookieAccessToken = request.cookies.get("accessToken")?.value
@@ -22,18 +20,15 @@ export async function GET(
   try {
     const { applicationId } = await params
     const authHeader = getAuthHeader(request)
-    const target = `${BASE_URL}/api/v1/products/applications/${encodeURIComponent(applicationId)}`
+    const target = `/api/v1/products/applications/${encodeURIComponent(applicationId)}`
 
-    const response = await fetch(target, {
+    const response = await plataUpstreamAxios.get(target, {
       headers: {
-        "Content-Type": "application/json",
         ...(authHeader ? { Authorization: authHeader, ...merchantRoleHeadersFromAuthorization(authHeader) } : {}),
       },
-      cache: "no-store",
     })
 
-    const data = await response.json().catch(() => ({}))
-    return NextResponse.json(data, { status: response.status })
+    return NextResponse.json(response.data, { status: response.status })
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: (error as Error)?.message || "Failed to load application" },

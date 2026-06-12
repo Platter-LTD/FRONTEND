@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { merchantRoleHeadersFromAuthorization } from "@/lib/server/merchantRoleHeaders"
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import { plataUpstreamAxios } from "@/lib/server/plataUpstreamAxios"
 
 export const dynamic = "force-dynamic"
-
-const BASE_URL = getPlataApiBaseUrl().replace(/\/+$/, "")
 
 function getAuthHeader(request: NextRequest): string | null {
   const cookieAccessToken = request.cookies.get("accessToken")?.value
@@ -28,21 +26,17 @@ export async function PATCH(
 
     const incomingMerchantId = request.headers.get("x-merchant-id") || request.headers.get("x-user-merchant-id") || undefined
     const body = await request.json().catch(() => ({}))
-    const target = `${BASE_URL}/api/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow`
+    const target = `/api/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow`
 
-    const response = await fetch(target, {
-      method: "PATCH",
+    const response = await plataUpstreamAxios.patch(target, body, {
       headers: {
-        "Content-Type": "application/json",
         Authorization: authHeader,
         ...merchantRoleHeadersFromAuthorization(authHeader),
         ...(incomingMerchantId ? { "x-merchant-id": incomingMerchantId, "x-user-merchant-id": incomingMerchantId } : {}),
       },
-      body: JSON.stringify(body),
     })
 
-    const data = await response.json().catch(() => ({}))
-    return NextResponse.json(data, { status: response.status })
+    return NextResponse.json(response.data, { status: response.status })
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: (error as Error)?.message || "Failed to update loan workflow status" },
