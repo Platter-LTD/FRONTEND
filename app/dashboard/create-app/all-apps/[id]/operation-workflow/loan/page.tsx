@@ -36,8 +36,32 @@ export default function LoanWorkflowPage() {
     let cancelled = false
     setLoading(true)
     setError(null)
-    productApi
-      .getLoanWorkflow({ loanWorkflowStatus: activeTab, limit: 100 })
+    const load =
+      activeTab === "under_review"
+        ? Promise.all([
+            productApi.getLoanWorkflow({ loanWorkflowStatus: "requested", limit: 100 }),
+            productApi.getLoanWorkflow({ loanWorkflowStatus: "under_review", limit: 100 }),
+          ]).then(([requested, underReview]) => {
+            const requestedRows = Array.isArray((requested as { data?: unknown }).data)
+              ? ((requested as { data: unknown[] }).data)
+              : []
+            const underReviewRows = Array.isArray((underReview as { data?: unknown }).data)
+              ? ((underReview as { data: unknown[] }).data)
+              : []
+            return {
+              data: Array.from(
+                new Map(
+                  [...requestedRows, ...underReviewRows].map((row) => {
+                    const record = row as Record<string, unknown>
+                    return [String(record.id ?? record.applicationId ?? JSON.stringify(record)), row]
+                  }),
+                ).values(),
+              ),
+            }
+          })
+        : productApi.getLoanWorkflow({ loanWorkflowStatus: activeTab, limit: 100 })
+
+    load
       .then((res) => {
         if (cancelled) return
         const raw = (res as { data?: unknown }).data
