@@ -800,6 +800,10 @@ export const applicationApi = {
     }
   },
 
+  async blacklist(id: string, _reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    return this.updateLoanWorkflowStatus(id, { loanWorkflowStatus: 'blacklisted' });
+  },
+
   async getLoanWorkflowApplications(params?: {
     loanWorkflowStatus?: LoanWorkflowStatus;
     limit?: number;

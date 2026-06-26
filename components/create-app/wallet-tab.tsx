@@ -7,9 +7,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { getAccessToken } from "@/lib/cookieAuth"
 import { getMerchantIdFromAccessToken } from "@/lib/merchantIdFromToken"
 import { merchantWalletMainBalance } from "@/lib/services/walletService"
+import {
+  formatPlataWalletBalanceParts,
+  plataWalletCurrencyPrefix,
+  plataWalletDisplayCurrency,
+} from "@/lib/walletDisplay"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { fetchAppMerchantWalletsThunk, fetchTreasuryTransactionsThunk } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
+import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
+import { WithdrawWalletDialog } from "@/components/wallets/withdraw-wallet-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type AppRow = { id: string; name?: string; alias?: string }
@@ -24,6 +31,8 @@ export function WalletTab() {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [fundOpen, setFundOpen] = useState(false)
+  const [withdrawOpen, setWithdrawOpen] = useState(false)
 
   const loadApps = useCallback(async () => {
     setAppsLoading(true)
@@ -74,6 +83,7 @@ export function WalletTab() {
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
   const treasury = inScope ? walletState.treasury : null
+  const kyc = inScope ? walletState.kyc : null
   const txs = inScope ? walletState.treasuryTransactions : []
   const walletsLoading = inScope && walletState.walletsLoading
   const txsLoading = inScope && walletState.treasuryTxLoading
@@ -81,10 +91,10 @@ export function WalletTab() {
   const txsError = inScope ? walletState.treasuryTxError : null
 
   const mainBal = merchantWalletMainBalance(treasury)
-  const formatted = mainBal.toFixed(2).split(".")
-  const dollars = Number(formatted[0]).toLocaleString()
-  const cents = formatted[1] || "00"
-  const currency = treasury?.currency || "NGN"
+  const settlementBal = merchantWalletMainBalance(kyc)
+  const balance = formatPlataWalletBalanceParts(mainBal)
+  const currency = plataWalletDisplayCurrency(treasury?.currency)
+  const currencyPrefix = plataWalletCurrencyPrefix()
 
   if (!merchantId) {
     return (
@@ -143,9 +153,9 @@ export function WalletTab() {
       )}
 
       <div className="relative mb-8 overflow-hidden rounded-lg bg-black p-8">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <p className="mb-2 text-sm text-white/70">Treasury — main balance</p>
+            <p className="mb-2 text-sm text-gray-400">Treasury — main balance</p>
             {walletsLoading ? (
               <div className="flex items-baseline gap-1">
                 <Skeleton className="h-12 w-32 bg-gray-600" />
@@ -156,10 +166,10 @@ export function WalletTab() {
                 {showBalance ? (
                   <>
                     <span className="text-5xl font-semibold text-white">
-                      {currency === "NGN" ? "NGN " : ""}
-                      {dollars}
+                      {currencyPrefix}
+                      {balance.major}
                     </span>
-                    <span className="text-2xl text-white">.{cents}</span>
+                    <span className="text-2xl text-white">.{balance.minor}</span>
                   </>
                 ) : (
                   <span className="text-5xl font-semibold text-white">••••</span>
@@ -173,12 +183,24 @@ export function WalletTab() {
               <button
                 type="button"
                 onClick={() => setShowBalance(!showBalance)}
-                className="text-white/50 transition-colors hover:text-white/70"
+                className="text-gray-400 transition-colors hover:text-white"
               >
                 {showBalance ? <FiEyeOff size={24} /> : <FiEye size={24} />}
               </button>
             )}
-            <Button className="bg-[#9A813F] px-8 text-white hover:bg-[#8A7335]" disabled={walletsLoading}>
+            <Button
+              className="bg-[#9A813F] px-6 font-semibold text-white hover:bg-[#7A642F]"
+              disabled={walletsLoading || !kyc}
+              onClick={() => setFundOpen(true)}
+            >
+              Fund
+            </Button>
+            <Button
+              variant="outline"
+              className="border-[#9A813F] px-6 font-semibold text-[#9A813F] hover:bg-[#9A813F]/10"
+              disabled={walletsLoading || !kyc || settlementBal <= 0}
+              onClick={() => setWithdrawOpen(true)}
+            >
               Withdraw
             </Button>
           </div>
@@ -191,6 +213,36 @@ export function WalletTab() {
         currency={currency}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
+      />
+
+      <FundWalletDrawer
+        open={fundOpen}
+        onOpenChange={setFundOpen}
+        currency={currency}
+        virtualNuban={{
+          accountNumber: kyc?.virtualNuban?.accountNumber,
+          bankName: kyc?.virtualNuban?.bankName,
+          bankCode: kyc?.virtualNuban?.bankCode,
+          accountHolder: kyc?.name || "Settlement wallet",
+          provisionStatus: kyc?.virtualNuban?.provisionStatus,
+        }}
+        onRefreshBalance={() => {
+          if (!merchantId || !appId) return
+          void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
+          void dispatch(fetchTreasuryTransactionsThunk({ merchantId, appId }))
+        }}
+      />
+      <WithdrawWalletDialog
+        open={withdrawOpen}
+        onOpenChange={setWithdrawOpen}
+        mode="merchant-settlement"
+        maxAmount={settlementBal}
+        currency={currency}
+        appId={appId ?? undefined}
+        onSuccess={() => {
+          if (!merchantId || !appId) return
+          void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
+        }}
       />
     </>
   )

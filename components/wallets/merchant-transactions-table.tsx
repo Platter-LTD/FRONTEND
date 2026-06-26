@@ -4,6 +4,7 @@ import { Search } from "lucide-react"
 import { IoIosCopy } from "react-icons/io"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Transaction } from "@/lib/services/walletService"
+import { formatPlataWalletAmount } from "@/lib/walletDisplay"
 
 function formatWhen(iso: string | undefined) {
   if (!iso) return "—"
@@ -35,8 +36,6 @@ export function MerchantTransactionsTable({
   onSearchChange: (v: string) => void
   emptyMessage?: string
 }) {
-  const sym = currency === "NGN" ? "NGN " : ""
-
   const filtered = transactions.filter((tx) => {
     const q = searchTerm.toLowerCase().trim()
     if (!q) return true
@@ -104,12 +103,11 @@ export function MerchantTransactionsTable({
               {filtered.map((tx) => {
                 const ref = tx.referenceId || tx.id
                 const amt = Math.abs(tx.amount)
-                const signed = tx.type === "DEBIT" ? -amt : amt
                 return (
                   <tr key={tx.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 text-sm text-gray-900">
-                      {sym}
-                      {signed.toFixed(2)}
+                      {tx.type === "DEBIT" ? "-" : ""}
+                      {formatPlataWalletAmount(amt)}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">{tx.type}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">{tx.status}</td>

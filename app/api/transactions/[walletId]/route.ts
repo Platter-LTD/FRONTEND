@@ -34,56 +34,27 @@ function forwardHeaders(req: NextRequest): Record<string, string> {
   return out
 }
 
-async function proxyWallet(req: NextRequest, pathSegments: string[]) {
+async function proxyTransactions(req: NextRequest, walletId: string) {
   const base = getApiUpstreamBase()
-  const tail = pathSegments.join("/")
-  const url = `${base}/api/v1/wallets/${tail}${req.nextUrl.search || ""}`
+  const url = `${base}/api/v1/transactions/${encodeURIComponent(walletId)}${req.nextUrl.search || ""}`
   const method = req.method.toUpperCase()
   const headers = forwardHeaders(req)
 
-  let data: ArrayBuffer | undefined
-  if (method !== "GET" && method !== "HEAD") {
-    data = await req.arrayBuffer()
-  }
-
   try {
-    const reqCfg: {
-      url: string
-      method: string
-      headers: Record<string, string>
-      data?: Buffer
-    } = { url, method, headers }
-    if (method !== "GET" && method !== "HEAD" && data && data.byteLength > 0) {
-      reqCfg.data = Buffer.from(data)
-    }
-    const resp = await http.request<ArrayBuffer>(reqCfg)
-
+    const resp = await http.request<ArrayBuffer>({ url, method, headers })
     const contentType = resp.headers["content-type"] || "application/json"
     const ct = Array.isArray(contentType) ? contentType[0] : contentType
-    return new NextResponse(resp.data, {
-      status: resp.status,
-      headers: { "Content-Type": ct },
-    })
+    return new NextResponse(resp.data, { status: resp.status, headers: { "Content-Type": ct } })
   } catch (err) {
-    console.error("[api/wallets proxy]", url, err)
+    console.error("[api/transactions proxy]", url, err)
     return NextResponse.json(
-      { success: false, error: "Wallet service unreachable", message: err instanceof Error ? err.message : "fetch failed" },
+      { success: false, error: "Transaction service unreachable" },
       { status: 502 },
     )
   }
 }
 
-export async function GET(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
-  const { path } = await ctx.params
-  return proxyWallet(req, path || [])
-}
-
-export async function POST(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
-  const { path } = await ctx.params
-  return proxyWallet(req, path || [])
-}
-
-export async function PUT(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
-  const { path } = await ctx.params
-  return proxyWallet(req, path || [])
+export async function GET(req: NextRequest, ctx: { params: Promise<{ walletId: string }> }) {
+  const { walletId } = await ctx.params
+  return proxyTransactions(req, walletId)
 }

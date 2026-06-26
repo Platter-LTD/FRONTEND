@@ -7,6 +7,11 @@ import { FiEyeOff, FiEye } from "react-icons/fi"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getMerchantIdFromAccessToken } from "@/lib/merchantIdFromToken"
 import { merchantWalletMainBalance } from "@/lib/services/walletService"
+import {
+  formatPlataWalletBalanceParts,
+  plataWalletCurrencyPrefix,
+  plataWalletDisplayCurrency,
+} from "@/lib/walletDisplay"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import {
   fetchAppMerchantWalletsThunk,
@@ -43,15 +48,10 @@ export default function RepaymentWalletPage() {
   const walletsError = inScope ? walletState.walletsError : null
   const txsError = inScope ? walletState.operationTxError : null
 
-  const formatBalance = (balance: number) => {
-    const formatted = balance.toFixed(2)
-    const [dollars, cents] = formatted.split(".")
-    return { dollars: Number(dollars).toLocaleString(), cents }
-  }
-
   const mainBal = merchantWalletMainBalance(operation)
-  const balance = formatBalance(mainBal)
-  const currency = operation?.currency || "NGN"
+  const balance = formatPlataWalletBalanceParts(mainBal)
+  const currency = plataWalletDisplayCurrency(operation?.currency)
+  const currencyPrefix = plataWalletCurrencyPrefix()
 
   const bannerError = useMemo(() => {
     if (!merchantId) return "No merchant ID found. Please sign in again."
@@ -82,13 +82,10 @@ export default function RepaymentWalletPage() {
                 {showBalance ? (
                   <>
                     <span className="text-white text-5xl font-semibold">
-                      {currency === "NGN" ? "NGN " : ""}
-                      {balance.dollars}
+                      {currencyPrefix}
+                      {balance.major}
                     </span>
-                    <span className="text-white text-2xl">.{balance.cents}</span>
-                    {currency !== "NGN" && (
-                      <span className="text-white/70 text-lg ml-2">{currency}</span>
-                    )}
+                    <span className="text-white text-2xl">.{balance.minor}</span>
                   </>
                 ) : (
                   <span className="text-white text-5xl font-semibold">••••</span>

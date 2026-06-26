@@ -1,11 +1,16 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { FiEyeOff, FiEye } from "react-icons/fi"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getMerchantIdFromAccessToken } from "@/lib/merchantIdFromToken"
+import {
+  formatPlataWalletBalanceParts,
+  plataWalletCurrencyPrefix,
+  plataWalletDisplayCurrency,
+} from "@/lib/walletDisplay"
 import { merchantWalletMainBalance } from "@/lib/services/walletService"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import {
@@ -13,6 +18,8 @@ import {
   fetchKycTransactionsThunk,
 } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
+import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
+import { WithdrawWalletDialog } from "@/components/wallets/withdraw-wallet-dialog"
 
 export default function KycWalletPage() {
   const params = useParams()
@@ -23,16 +30,22 @@ export default function KycWalletPage() {
   const [merchantId, setMerchantId] = useState<string | null>(null)
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [fundOpen, setFundOpen] = useState(false)
+  const [withdrawOpen, setWithdrawOpen] = useState(false)
 
   useEffect(() => {
     setMerchantId(getMerchantIdFromAccessToken())
   }, [])
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (!merchantId || !appId) return
     void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
     void dispatch(fetchKycTransactionsThunk({ merchantId, appId }))
   }, [dispatch, merchantId, appId])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
 
@@ -43,15 +56,10 @@ export default function KycWalletPage() {
   const walletsError = inScope ? walletState.walletsError : null
   const txsError = inScope ? walletState.kycTxError : null
 
-  const formatBalance = (balance: number) => {
-    const formatted = balance.toFixed(2)
-    const [dollars, cents] = formatted.split(".")
-    return { dollars: Number(dollars).toLocaleString(), cents }
-  }
-
   const mainBal = merchantWalletMainBalance(kyc)
-  const balance = formatBalance(mainBal)
-  const currency = kyc?.currency || "NGN"
+  const balance = formatPlataWalletBalanceParts(mainBal)
+  const currency = plataWalletDisplayCurrency(kyc?.currency)
+  const currencyPrefix = plataWalletCurrencyPrefix()
 
   const bannerError = useMemo(() => {
     if (!merchantId) return "No merchant ID found. Please sign in again."
@@ -68,10 +76,10 @@ export default function KycWalletPage() {
         </div>
       )}
 
-      <div className="bg-black rounded-lg p-8 mb-8 relative overflow-hidden">
-        <div className="flex items-start justify-between">
+      <div className="relative mb-8 overflow-hidden rounded-lg bg-black p-8">
+        <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <p className="text-gray-400 text-sm mb-2">KYC wallet — main balance</p>
+            <p className="text-gray-400 text-sm mb-2">Settlement wallet — main balance</p>
             {walletsLoading ? (
               <div className="flex items-baseline gap-1">
                 <Skeleton className="h-12 w-32 bg-gray-600" />
@@ -82,13 +90,10 @@ export default function KycWalletPage() {
                 {showBalance ? (
                   <>
                     <span className="text-white text-5xl font-semibold">
-                      {currency === "NGN" ? "NGN " : ""}
-                      {balance.dollars}
+                      {currencyPrefix}
+                      {balance.major}
                     </span>
-                    <span className="text-white text-2xl">.{balance.cents}</span>
-                    {currency !== "NGN" && (
-                      <span className="text-white/70 text-lg ml-2">{currency}</span>
-                    )}
+                    <span className="text-white text-2xl">.{balance.minor}</span>
                   </>
                 ) : (
                   <span className="text-white text-5xl font-semibold">••••</span>
@@ -106,7 +111,19 @@ export default function KycWalletPage() {
                 {showBalance ? <FiEyeOff size={24} /> : <FiEye size={24} />}
               </button>
             )}
-            <Button className="bg-[#8B7355] hover:bg-[#7A6449] text-white" disabled={walletsLoading}>
+            <Button
+              className="bg-[#9A813F] text-white hover:bg-[#7A642F] font-semibold"
+              disabled={walletsLoading || !kyc}
+              onClick={() => setFundOpen(true)}
+            >
+              Fund
+            </Button>
+            <Button
+              variant="outline"
+              className="border-[#9A813F] bg-transparent text-[#9A813F] hover:bg-[#9A813F]/10 font-semibold"
+              disabled={walletsLoading || !kyc || mainBal <= 0}
+              onClick={() => setWithdrawOpen(true)}
+            >
               Withdraw
             </Button>
           </div>
@@ -119,6 +136,29 @@ export default function KycWalletPage() {
         currency={currency}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
+      />
+
+      <FundWalletDrawer
+        open={fundOpen}
+        onOpenChange={setFundOpen}
+        currency={currency}
+        virtualNuban={{
+          accountNumber: kyc?.virtualNuban?.accountNumber,
+          bankName: kyc?.virtualNuban?.bankName,
+          bankCode: kyc?.virtualNuban?.bankCode,
+          accountHolder: kyc?.name || "Settlement wallet",
+          provisionStatus: kyc?.virtualNuban?.provisionStatus,
+        }}
+        onRefreshBalance={refresh}
+      />
+      <WithdrawWalletDialog
+        open={withdrawOpen}
+        onOpenChange={setWithdrawOpen}
+        mode="merchant-settlement"
+        maxAmount={mainBal}
+        currency={currency}
+        appId={appId}
+        onSuccess={refresh}
       />
     </div>
   )
