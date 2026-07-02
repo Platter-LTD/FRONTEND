@@ -24,6 +24,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { applicationApi, type LoanWorkflowStatus } from "@/lib/services/accountService"
+import { MortgageWorkflowDetailSheet } from "@/components/workflow/MortgageWorkflowDetailSheet"
+import { isSessionExpiredError } from "@/lib/plataAuthFetch"
 
 const PLATA_ACCENT_DARK = "#9A813F"
 
@@ -129,6 +131,7 @@ export function WorkflowTable({
     | { kind: "reject" | "blacklist"; row: PlataWorkflowRow; reason: string }
     | null
   >(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
 
   const requestFallback = productType === "LOAN" ? "Loan Application" : "Mortgage Application"
 
@@ -163,7 +166,13 @@ export function WorkflowTable({
             loanWorkflowStatus: activeTab,
             limit: 100,
           })
-          if (!res.success) throw new Error(res.error || "Failed to load")
+          if (!res.success) {
+            const err = res.error || "Failed to load"
+            if (isSessionExpiredError(401, err)) {
+              throw new Error("Your session has expired. Please sign in again.")
+            }
+            throw new Error(err)
+          }
           list = extractList(res)
         }
 
@@ -174,9 +183,10 @@ export function WorkflowTable({
         setRows(mapped)
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load"
-        setError(msg)
+        const sessionExpired = isSessionExpiredError(0, msg)
+        setError(sessionExpired ? "Your session has expired. Please sign in again." : msg)
         setRows([])
-        if (silent) toast.error(msg)
+        if (silent) toast.error(sessionExpired ? "Session expired — please sign in again." : msg)
       } finally {
         if (!silent) setLoading(false)
         else setRefreshing(false)
@@ -306,7 +316,15 @@ export function WorkflowTable({
                   const canBlacklist = row.status !== "blacklisted"
 
                   return (
-                    <tr key={row.id} className="hover:bg-gray-50">
+                    <tr
+                      key={row.id}
+                      className={`hover:bg-gray-50 ${productType === "MORTGAGE" ? "cursor-pointer" : ""}`}
+                      onClick={
+                        productType === "MORTGAGE"
+                          ? () => setDetailId(row.id)
+                          : undefined
+                      }
+                    >
                       <td className="px-6 py-4 text-sm text-gray-900">{row.requestLabel}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{row.name}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{row.ref}</td>
@@ -316,7 +334,7 @@ export function WorkflowTable({
                           {row.status.replaceAll("_", " ")}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button
@@ -411,6 +429,15 @@ export function WorkflowTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {productType === "MORTGAGE" ? (
+        <MortgageWorkflowDetailSheet
+          applicationId={detailId}
+          open={detailId !== null}
+          onOpenChange={(open) => !open && setDetailId(null)}
+          onUpdated={() => void fetchRows(true)}
+        />
+      ) : null}
     </div>
   )
 }

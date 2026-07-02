@@ -1,5 +1,6 @@
 import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 import { getAccessToken } from '@/lib/cookieAuth';
+import { plataAuthFetch } from "@/lib/plataAuthFetch";
 
 /** Plata account / product API origin — `NEXT_PUBLIC_API_URL` from `.env`. */
 const ACCOUNT_API_BASE = getPlataApiBaseUrl();
@@ -742,7 +743,7 @@ export const applicationApi = {
    */
   async approve(id: string, approvedAmount?: number): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
-      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -773,12 +774,15 @@ export const applicationApi = {
   /**
    * Reject an application (Admin only)
    */
-  async reject(id: string, _reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+  async reject(id: string, reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
-      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ loanWorkflowStatus: 'declined' }),
+        body: JSON.stringify({
+          loanWorkflowStatus: 'declined',
+          ...(reason?.trim() ? { rejectionReason: reason.trim() } : {}),
+        }),
       });
 
       const result = await response.json();
@@ -815,16 +819,17 @@ export const applicationApi = {
       if (params?.limit) queryParams.set('limit', String(params.limit));
       if (params?.skip) queryParams.set('skip', String(params.skip));
 
-      const response = await fetch(
+      const response = await plataAuthFetch(
         `/api/v1/products/applications/me/loan-workflow${queryParams.toString() ? `?${queryParams}` : ''}`,
         { headers: getAuthHeaders() },
       );
       const result = await response.json();
 
       if (!response.ok) {
+        const err = result.error || result.message || 'Failed to load workflow applications'
         return {
           success: false,
-          error: result.error || result.message || 'Failed to load workflow applications',
+          error: response.status === 401 ? 'Your session has expired. Please sign in again.' : err,
         };
       }
 
@@ -862,12 +867,58 @@ export const applicationApi = {
     }
   },
 
+  async updateMortgageWorkflowProgress(
+    id: string,
+    progressPatch: Record<string, unknown>,
+  ): Promise<ApiResponse<LoanWorkflowApplication>> {
+    try {
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          loanDisbursement: {
+            mortgageWorkflow: progressPatch,
+          },
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error || result.message || 'Failed to update mortgage workflow',
+        };
+      }
+      return result;
+    } catch (error: any) {
+      console.error('Update mortgage workflow progress error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to update mortgage workflow',
+      };
+    }
+  },
+
+  async confirmMortgageDownPayment(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    const now = new Date().toISOString();
+    return this.updateMortgageWorkflowProgress(id, {
+      downPaymentConfirmedAt: now,
+      contractIssuedAt: now,
+    });
+  },
+
+  async triggerMortgageDisbursement(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    const now = new Date().toISOString();
+    return this.updateMortgageWorkflowProgress(id, {
+      disbursedAt: now,
+    });
+  },
+
   async updateLoanWorkflowStatus(
     id: string,
     body: { loanWorkflowStatus: LoanWorkflowStatus; approvedAmount?: number },
   ): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
-      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify(body),
