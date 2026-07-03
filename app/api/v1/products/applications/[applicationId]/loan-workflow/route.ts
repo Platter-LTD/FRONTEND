@@ -1,11 +1,9 @@
 import { NextRequest } from "next/server"
 
 import { proxyLoanWorkflowRequest } from "@/lib/server/proxyLoanWorkflow"
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import { getProductApiBaseUrl } from "@/lib/plataApiBaseUrl"
 
 export const dynamic = "force-dynamic"
-
-const BASE_URL = getPlataApiBaseUrl().replace(/\/+$/, "")
 
 export async function PATCH(
   request: NextRequest,
@@ -14,7 +12,8 @@ export async function PATCH(
   try {
     const { applicationId } = await params
     const body = await request.json().catch(() => ({}))
-    const target = `${BASE_URL}/api/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow`
+    const base = getProductApiBaseUrl().replace(/\/+$/, "")
+    const target = `${base}/api/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow`
     return proxyLoanWorkflowRequest(request, target, "PATCH", body)
   } catch (error: unknown) {
     return Response.json(

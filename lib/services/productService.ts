@@ -15,10 +15,10 @@
 
 import { productApi } from './product-api';
 import { getAccessToken } from '@/lib/cookieAuth';
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import { getProductApiBaseUrl } from "@/lib/plataApiBaseUrl"
 
 // Use the same base URL as the auth/account service (`NEXT_PUBLIC_API_URL`)
-const PRODUCT_SERVICE_URL = getPlataApiBaseUrl();
+const PRODUCT_SERVICE_URL = getProductApiBaseUrl();
 
 // ============================================================================
 // Types & Interfaces

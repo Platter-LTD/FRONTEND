@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { merchantRoleHeadersFromAuthorization } from "@/lib/server/merchantRoleHeaders"
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import { getProductApiBaseUrl } from "@/lib/plataApiBaseUrl"
 
 export const dynamic = "force-dynamic"
-
-const BASE_URL = getPlataApiBaseUrl().replace(/\/+$/, "")
 
 function getAuthHeader(request: NextRequest): string | null {
   const cookieAccessToken = request.cookies.get("accessToken")?.value
@@ -22,7 +20,8 @@ export async function GET(
   try {
     const { applicationId } = await params
     const authHeader = getAuthHeader(request)
-    const target = `${BASE_URL}/api/v1/products/applications/${encodeURIComponent(applicationId)}`
+    const base = getProductApiBaseUrl().replace(/\/+$/, "")
+    const target = `${base}/api/v1/products/applications/${encodeURIComponent(applicationId)}`
 
     const response = await fetch(target, {
       headers: {

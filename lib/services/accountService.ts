@@ -1,6 +1,7 @@
 import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 import { getAccessToken } from '@/lib/cookieAuth';
 import { plataAuthFetch } from "@/lib/plataAuthFetch";
+import type { SpringApplicantProfileResponse } from "@/lib/springApplicantProfile";
 
 /** Plata account / product API origin — `NEXT_PUBLIC_API_URL` from `.env`. */
 const ACCOUNT_API_BASE = getPlataApiBaseUrl();
@@ -147,6 +148,7 @@ export interface LoanWorkflowApplication {
   loanWorkflowStatus?: LoanWorkflowStatus;
   loanWorkflowCallbackUrl?: string;
   loanDisbursement?: Record<string, any> | null;
+  postApprovalFulfillment?: Record<string, any> | null;
   submittedAt?: string;
   signedAt?: string | null;
   contractSnapshot?: Record<string, any>;
@@ -870,6 +872,57 @@ export const applicationApi = {
     }
   },
 
+  async getSpringApplicantProfile(
+    id: string,
+  ): Promise<ApiResponse<SpringApplicantProfileResponse>> {
+    const maxAttempts = 3
+    const retryDelayMs = 1500
+    let lastError = 'Failed to load applicant profile'
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await plataAuthFetch(
+          `/api/v1/products/applications/${encodeURIComponent(id)}/spring-applicant-profile`,
+          { headers: getAuthHeaders() },
+        )
+        const result = await response.json()
+
+        if (!response.ok) {
+          lastError = result.error || result.message || lastError
+          if (/timeout/i.test(lastError) && attempt < maxAttempts - 1) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+            continue
+          }
+          return { success: false, error: lastError }
+        }
+
+        const data = (result.data ?? result) as SpringApplicantProfileResponse
+        const profileError = data.springApplicantProfileError
+        const hasProfile = Boolean(data.springApplicantProfile)
+
+        if (!hasProfile && profileError && /timeout/i.test(String(profileError)) && attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+          continue
+        }
+
+        return {
+          success: result.success !== false,
+          data,
+        }
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error.message : lastError
+        if (/timeout/i.test(lastError) && attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+          continue
+        }
+        console.error('Get Spring applicant profile error:', error)
+        return { success: false, error: lastError }
+      }
+    }
+
+    return { success: false, error: lastError }
+  },
+
   async updateMortgageWorkflowProgress(
     id: string,
     progressPatch: Record<string, unknown>,
@@ -902,6 +955,9 @@ export const applicationApi = {
   },
 
   async confirmMortgageDownPayment(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    const { pendingApprovedMortgageApi } = await import('@/lib/pendingApprovedMortgageApi');
+    const res = await pendingApprovedMortgageApi.confirmDownPayment(id);
+    if (res.success) return res;
     const now = new Date().toISOString();
     return this.updateMortgageWorkflowProgress(id, {
       downPaymentConfirmedAt: now,
@@ -917,6 +973,9 @@ export const applicationApi = {
   },
 
   async triggerMortgageDisbursement(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    const { pendingApprovedMortgageApi } = await import('@/lib/pendingApprovedMortgageApi');
+    const res = await pendingApprovedMortgageApi.disburse(id);
+    if (res.success) return res;
     const now = new Date().toISOString();
     return this.updateMortgageWorkflowProgress(id, {
       disbursedAt: now,

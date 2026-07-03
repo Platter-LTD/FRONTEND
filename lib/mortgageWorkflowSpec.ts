@@ -3,6 +3,11 @@
  * @see Mortgage Workflow Specification — Plata Product Creator Flow
  */
 
+import {
+  extractPostApprovalFulfillment,
+  type PostApprovalMortgageStatus,
+} from "@/lib/postApprovalMortgage"
+
 export type PlataMortgageStepId =
   | "application_submission"
   | "review_approval"
@@ -139,10 +144,44 @@ function isApprovedWorkflowStatus(status: string): boolean {
   return s === "approved" || s === "offer_sent" || s === "completed" || s === "active"
 }
 
+function stepFromPostApprovalStatus(status: PostApprovalMortgageStatus): PlataMortgageStepId {
+  switch (status) {
+    case "offer_pending":
+      return "offer_letter"
+    case "offer_accepted":
+    case "appointment_scheduled":
+      return "inspection_booking"
+    case "inspection_in_progress":
+      return "inspection_outcome"
+    case "down_payment_pending":
+    case "down_payment_paid":
+      return "down_payment"
+    case "down_payment_confirmed":
+      return "contract_issued"
+    case "contract_issued":
+      return "contract_signed"
+    case "contract_signed":
+    case "disbursed":
+      return "loan_disbursement"
+    case "offer_declined":
+    case "inspection_declined":
+      return "review_approval"
+    default:
+      return "application_submission"
+  }
+}
+
 export function resolvePlataMortgageStep(
   loanWorkflowStatus: string | undefined,
   progress: MortgageWorkflowProgress,
+  raw?: Record<string, unknown>,
 ): PlataMortgageStepId {
+  const paf = raw ? extractPostApprovalFulfillment(raw) : null
+  if (paf?.status) {
+    if (paf.status === "disbursed") return "loan_disbursement"
+    return stepFromPostApprovalStatus(paf.status)
+  }
+
   const status = String(loanWorkflowStatus || "requested").toLowerCase()
 
   if (isTerminalWorkflowStatus(status)) return "review_approval"
@@ -162,6 +201,7 @@ export function resolvePlataMortgageStep(
 export function buildPlataMortgageThread(
   loanWorkflowStatus: string | undefined,
   progress: MortgageWorkflowProgress,
+  raw?: Record<string, unknown>,
 ): MortgageThreadItem[] {
   const status = String(loanWorkflowStatus || "requested").toLowerCase()
   if (isTerminalWorkflowStatus(status)) {
@@ -175,7 +215,7 @@ export function buildPlataMortgageThread(
     return PLATA_MORTGAGE_STEPS.map((step) => ({ ...step, status: "done" as const }))
   }
 
-  const current = resolvePlataMortgageStep(loanWorkflowStatus, progress)
+  const current = resolvePlataMortgageStep(loanWorkflowStatus, progress, raw)
   const currentIndex = PLATA_MORTGAGE_STEPS.findIndex((s) => s.id === current)
 
   return PLATA_MORTGAGE_STEPS.map((step, index) => ({
@@ -186,10 +226,15 @@ export function buildPlataMortgageThread(
 
 export function plataMortgageActionForStep(
   step: PlataMortgageStepId,
+  raw?: Record<string, unknown>,
 ): "approve_offer" | "approve_contract" | "approve_disbursement" | "confirm_payment" | null {
+  const paf = raw ? extractPostApprovalFulfillment(raw) : null
+  if (paf?.status === "down_payment_paid" && step === "down_payment") return "confirm_payment"
+  if (paf?.status === "contract_signed" && step === "loan_disbursement") return "approve_disbursement"
+
   if (step === "review_approval" || step === "application_submission") return "approve_offer"
-  if (step === "contract_signed") return "approve_contract"
-  if (step === "loan_disbursement") return "approve_disbursement"
-  if (step === "down_payment") return "confirm_payment"
+  if (step === "contract_signed" && !paf?.status) return "approve_contract"
+  if (step === "loan_disbursement" && !paf?.status) return "approve_disbursement"
+  if (step === "down_payment" && !paf?.status) return "confirm_payment"
   return null
 }

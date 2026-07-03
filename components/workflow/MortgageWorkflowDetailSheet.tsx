@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Check, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { MortgageWorkflowDetailSkeleton } from "@/components/ui/app-loading-skeleton"
 import {
   Sheet,
   SheetContent,
@@ -14,7 +14,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { applicationApi } from "@/lib/services/accountService"
-import { resolveApplicationCustomerName } from "@/lib/applicationCustomer"
+import { pendingApprovedMortgageApi } from "@/lib/pendingApprovedMortgageApi"
+import { extractPostApprovalFulfillment } from "@/lib/postApprovalMortgage"
 import {
   buildPlataMortgageThread,
   extractMortgageProgress,
@@ -23,6 +24,8 @@ import {
   type MortgageThreadItem,
   type PlataMortgageStepId,
 } from "@/lib/mortgageWorkflowSpec"
+import type { SpringApplicantProfileResponse } from "@/lib/springApplicantProfile"
+import { SpringApplicantReviewPanel } from "@/components/workflow/SpringApplicantReviewPanel"
 import { cn } from "@/lib/utils"
 
 const PLATA_ACCENT = "#9A813F"
@@ -35,11 +38,6 @@ type MortgageWorkflowDetailSheetProps = {
 }
 
 type StepActionKind = "approve_offer" | "approve_contract" | "approve_disbursement" | "confirm_payment"
-
-function formatRef(ref: string) {
-  if (ref.length <= 20) return ref
-  return `${ref.slice(0, 10)}…${ref.slice(-6)}`
-}
 
 function ThreadRow({
   item,
@@ -124,19 +122,57 @@ export function MortgageWorkflowDetailSheet({
   const [loading, setLoading] = useState(false)
   const [busyAction, setBusyAction] = useState<StepActionKind | null>(null)
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
+  const [profilePayload, setProfilePayload] = useState<SpringApplicantProfileResponse | null>(null)
+  const [profileError, setProfileError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!applicationId) return
     setLoading(true)
+    setProfileError(null)
     try {
-      const res = await applicationApi.getWorkflowApplication(applicationId)
-      if (!res.success) throw new Error(res.error || "Failed to load application")
-      const application = res.data
-      if (!application) throw new Error("Failed to load application")
-      setDetail(application as unknown as Record<string, unknown>)
+      const [appRes, profileRes] = await Promise.all([
+        applicationApi.getWorkflowApplication(applicationId),
+        applicationApi.getSpringApplicantProfile(applicationId),
+      ])
+
+      if (profileRes.success && profileRes.data) {
+        setProfilePayload(profileRes.data)
+        const plataFromProfile = profileRes.data.application
+        if (plataFromProfile && typeof plataFromProfile === "object") {
+          setDetail(plataFromProfile as Record<string, unknown>)
+        } else if (appRes.success && appRes.data) {
+          setDetail(appRes.data as unknown as Record<string, unknown>)
+        } else {
+          setDetail(null)
+        }
+      } else if (profileRes.data) {
+        setProfilePayload(profileRes.data)
+        setProfileError(profileRes.error || profileRes.data.springApplicantProfileError || null)
+        const plataFromProfile = profileRes.data.application
+        if (plataFromProfile && typeof plataFromProfile === "object") {
+          setDetail(plataFromProfile as Record<string, unknown>)
+        } else if (appRes.success && appRes.data) {
+          setDetail(appRes.data as unknown as Record<string, unknown>)
+        } else {
+          setDetail(null)
+        }
+      } else {
+        setProfilePayload(null)
+        setProfileError(profileRes.error || null)
+        if (appRes.success && appRes.data) {
+          setDetail(appRes.data as unknown as Record<string, unknown>)
+        } else {
+          throw new Error(appRes.error || profileRes.error || "Failed to load application")
+        }
+      }
+
+      if (!appRes.success && profileRes.success) {
+        console.warn("[MortgageWorkflow] application detail GET failed; using profile envelope", appRes.error)
+      }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to load application")
       setDetail(null)
+      setProfilePayload(null)
     } finally {
       setLoading(false)
     }
@@ -146,10 +182,17 @@ export function MortgageWorkflowDetailSheet({
     if (open && applicationId) void load()
   }, [open, applicationId, load])
 
-  const loanWorkflowStatus = String(detail?.loanWorkflowStatus ?? "requested")
+  const loanWorkflowStatus = String(
+    detail?.loanWorkflowStatus ??
+      profilePayload?.application?.loanWorkflowStatus ??
+      profilePayload?.springApplicantProfile?.application?.loanWorkflowStatus ??
+      "requested",
+  )
   const progress = detail ? extractMortgageProgress(detail) : {}
-  const currentStep = resolvePlataMortgageStep(loanWorkflowStatus, progress)
-  const thread = buildPlataMortgageThread(loanWorkflowStatus, progress)
+  const postApproval = detail ? extractPostApprovalFulfillment(detail) : null
+  const pafStatus = postApproval?.status
+  const currentStep = resolvePlataMortgageStep(loanWorkflowStatus, progress, detail ?? undefined)
+  const thread = buildPlataMortgageThread(loanWorkflowStatus, progress, detail ?? undefined)
   const currentThreadItem = thread.find((t) => t.id === currentStep)
 
   const statusLower = loanWorkflowStatus.toLowerCase()
@@ -160,21 +203,15 @@ export function MortgageWorkflowDetailSheet({
     ["requested", "under_review"].includes(statusLower) &&
     !progress.offerAcceptedAt
 
-  const canApproveContract =
+  const canConfirmPayment =
     !isTerminal &&
-    Boolean(progress.contractSignedAt) &&
-    !progress.contractApprovedAt &&
-    !progress.disbursedAt
+    (pafStatus === "down_payment_paid" ||
+      (Boolean(progress.downPaymentMadeAt) && !progress.downPaymentConfirmedAt))
 
   const canApproveDisbursement =
     !isTerminal &&
-    Boolean(progress.contractApprovedAt) &&
-    !progress.disbursedAt
-
-  const canConfirmPayment =
-    !isTerminal &&
-    Boolean(progress.downPaymentMadeAt) &&
-    !progress.downPaymentConfirmedAt
+    (pafStatus === "contract_signed" ||
+      (Boolean(progress.contractApprovedAt) && !progress.disbursedAt))
 
   const completedCount = useMemo(
     () => thread.filter((t) => t.status === "done").length,
@@ -203,29 +240,26 @@ export function MortgageWorkflowDetailSheet({
       return res
     })
 
-  const handleApproveContract = () =>
-    void runAction("approve_contract", async () => {
-      const res = await applicationApi.approveMortgageContract(applicationId!)
-      if (res.success) toast.success("Contract approved")
-      return res
-    })
-
   const handleApproveDisbursement = () =>
     void runAction("approve_disbursement", async () => {
-      const res = await applicationApi.triggerMortgageDisbursement(applicationId!)
-      if (res.success) toast.success("Loan disbursement approved")
+      const res = pafStatus
+        ? await pendingApprovedMortgageApi.disburse(applicationId!)
+        : await applicationApi.triggerMortgageDisbursement(applicationId!)
+      if (res.success) toast.success("Loan disbursement triggered")
       return res
     })
 
   const handleConfirmPayment = () =>
     void runAction("confirm_payment", async () => {
-      const res = await applicationApi.confirmMortgageDownPayment(applicationId!)
+      const res = pafStatus
+        ? await pendingApprovedMortgageApi.confirmDownPayment(applicationId!)
+        : await applicationApi.confirmMortgageDownPayment(applicationId!)
       if (res.success) toast.success("Down payment confirmed — contract issued")
       return res
     })
 
   const renderStepAction = (stepId: PlataMortgageStepId) => {
-    const actionKind = plataMortgageActionForStep(stepId)
+    const actionKind = plataMortgageActionForStep(stepId, detail ?? undefined)
     if (!actionKind || !stepIdsForAction(actionKind as StepActionKind).includes(stepId)) return null
 
     if (actionKind === "approve_offer" && canApproveOffer && stepId === currentStep) {
@@ -239,21 +273,6 @@ export function MortgageWorkflowDetailSheet({
         >
           {busyAction === "approve_offer" ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
           Approve Offer
-        </Button>
-      )
-    }
-
-    if (actionKind === "approve_contract" && canApproveContract && stepId === "contract_signed") {
-      return (
-        <Button
-          size="sm"
-          disabled={busyAction !== null}
-          onClick={handleApproveContract}
-          className="h-8 text-white hover:opacity-90"
-          style={{ backgroundColor: PLATA_ACCENT }}
-        >
-          {busyAction === "approve_contract" ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-          Approve Contract
         </Button>
       )
     }
@@ -291,17 +310,16 @@ export function MortgageWorkflowDetailSheet({
     }
 
     if (actionKind === "approve_offer" && stepId === "application_submission" && isTerminal) return null
-    if (actionKind === "approve_contract" && stepId === "contract_signed" && progress.contractApprovedAt) {
-      return <p className="text-xs font-medium text-green-700">Contract approved</p>
-    }
-    if (actionKind === "approve_disbursement" && stepId === "loan_disbursement" && progress.disbursedAt) {
+    if (actionKind === "approve_disbursement" && stepId === "loan_disbursement" && (progress.disbursedAt || pafStatus === "disbursed")) {
       return (
         <p className="text-xs font-medium text-green-700">
-          Disbursed{" "}
-          {new Date(progress.disbursedAt).toLocaleString("en-US", {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}
+          Disbursed
+          {progress.disbursedAt
+            ? ` ${new Date(progress.disbursedAt).toLocaleString("en-US", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}`
+            : ""}
         </p>
       )
     }
@@ -310,94 +328,48 @@ export function MortgageWorkflowDetailSheet({
       return <p className="text-xs text-gray-500">Offer already approved</p>
     }
 
-    if (actionKind === "approve_contract" && progress.contractSignedAt && !canApproveContract && !progress.contractApprovedAt) {
-      return null
-    }
-
-    if (actionKind === "approve_contract" && !progress.contractSignedAt) {
-      return <p className="text-xs text-gray-500">Waiting for applicant to sign contract</p>
-    }
-
-    if (actionKind === "approve_disbursement" && !canApproveDisbursement && !progress.disbursedAt) {
-      return <p className="text-xs text-gray-500">Approve contract before disbursement</p>
+    if (actionKind === "approve_disbursement" && !canApproveDisbursement && !progress.disbursedAt && pafStatus !== "disbursed") {
+      return (
+        <p className="text-xs text-gray-500">
+          {pafStatus === "contract_issued" || pafStatus === "down_payment_confirmed"
+            ? "Waiting for applicant to sign contract"
+            : "Waiting for signed contract before disbursement"}
+        </p>
+      )
     }
 
     return null
   }
 
-  const name = detail
-    ? resolveApplicationCustomerName({
-        customerName: typeof detail.customerName === "string" ? detail.customerName : undefined,
-        userName: typeof detail.userName === "string" ? detail.userName : undefined,
-        fullName: typeof detail.fullName === "string" ? detail.fullName : undefined,
-        userId: typeof detail.userId === "string" ? detail.userId : undefined,
-        contractSnapshot:
-          detail.contractSnapshot && typeof detail.contractSnapshot === "object"
-            ? (detail.contractSnapshot as Record<string, unknown>)
-            : undefined,
-      })
-    : "Applicant"
-  const ref = String(detail?.reference ?? detail?.id ?? applicationId ?? "—")
-
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <SheetHeader className="shrink-0 space-y-1 border-b border-gray-100 px-6 py-5 text-left">
           <SheetTitle className="text-lg">Mortgage application</SheetTitle>
           <SheetDescription className="text-sm leading-relaxed">
-            Product Creator flow — use the actions on each step when required.
+            Review applicant details below, then use workflow actions when required.
           </SheetDescription>
         </SheetHeader>
 
         {loading ? (
-          <div className="flex flex-1 items-center justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+          <div className="flex-1 overflow-y-auto">
+            <MortgageWorkflowDetailSkeleton />
           </div>
-        ) : detail ? (
+        ) : detail || profilePayload ? (
           <div className="flex flex-1 flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto">
               <div className="space-y-5 px-6 py-5">
-                <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                  <div className="border-b border-gray-100 bg-gray-50/80 px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                      Applicant
-                    </p>
+                {profileError && !profilePayload ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Applicant profile could not be loaded: {profileError}
                   </div>
-                  <div className="grid gap-4 p-4 sm:grid-cols-2">
-                    <div>
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
-                        Name
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-gray-900">{name}</p>
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
-                        Workflow status
-                      </p>
-                      <Badge className="mt-1 bg-[#F5F0E8] text-[#8B7355] hover:bg-[#F5F0E8]">
-                        {loanWorkflowStatus.replaceAll("_", " ")}
-                      </Badge>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
-                        Reference
-                      </p>
-                      <p className="mt-1 break-all font-mono text-xs text-gray-700" title={ref}>
-                        {formatRef(ref)}
-                      </p>
-                    </div>
-                    {currentThreadItem ? (
-                      <div className="sm:col-span-2 rounded-lg border border-[#E8DFCF] bg-[#FFFBF5] px-3 py-2.5">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-[#8B7355]">
-                          Current step
-                        </p>
-                        <p className="mt-0.5 text-sm font-medium text-gray-900">
-                          {currentThreadItem.title}
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                </section>
+                ) : null}
+
+                <SpringApplicantReviewPanel
+                  payload={profilePayload}
+                  loanWorkflowStatus={loanWorkflowStatus}
+                  currentStepTitle={currentThreadItem?.title}
+                />
 
                 <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                   <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/80 px-4 py-3">

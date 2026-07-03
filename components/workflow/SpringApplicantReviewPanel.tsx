@@ -1,0 +1,400 @@
+"use client"
+
+import type { ReactNode } from "react"
+import { AlertTriangle, CheckCircle2, ExternalLink, FileText, User } from "lucide-react"
+
+import { Badge } from "@/components/ui/badge"
+import {
+  collectApplicantUploadedDocuments,
+  collectNonDocumentRequirements,
+  flattenPersonalInfo,
+  formatProfileCurrency,
+  formatProfileDate,
+  mortgageSelectionFromSnapshot,
+  parseRequirementSubmission,
+  requirementSubmissionLabel,
+  springApplicantDisplayName,
+  type SpringApplicantProfileResponse,
+} from "@/lib/springApplicantProfile"
+import { applicationCustomerInitials } from "@/lib/applicationCustomer"
+import { cn } from "@/lib/utils"
+
+function FieldGrid({ rows }: { rows: { label: string; value: string }[] }) {
+  if (!rows.length) return <p className="text-sm text-gray-500">No details available.</p>
+  return (
+    <dl className="grid gap-3 sm:grid-cols-2">
+      {rows.map((row) => (
+        <div key={row.label}>
+          <dt className="text-[11px] font-medium uppercase tracking-wide text-gray-400">{row.label}</dt>
+          <dd className="mt-0.5 break-words text-sm text-gray-900">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+function Section({
+  title,
+  children,
+  className,
+}: {
+  title: string
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <section className={cn("overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm", className)}>
+      <div className="border-b border-gray-100 bg-gray-50/80 px-4 py-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{title}</p>
+      </div>
+      <div className="p-4">{children}</div>
+    </section>
+  )
+}
+
+function boolLabel(v: boolean | undefined): string {
+  if (v === true) return "Yes"
+  if (v === false) return "No"
+  return "—"
+}
+
+type SpringApplicantReviewPanelProps = {
+  payload: SpringApplicantProfileResponse | null
+  loanWorkflowStatus?: string
+  currentStepTitle?: string
+}
+
+export function SpringApplicantReviewPanel({
+  payload,
+  loanWorkflowStatus,
+  currentStepTitle,
+}: SpringApplicantReviewPanelProps) {
+  if (!payload) return null
+
+  if (payload.springApplicantProfileSkipped) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p className="font-medium">Spring applicant profile not available</p>
+        <p className="mt-1 text-xs text-amber-800">
+          This application is not linked to a Spring storefront (no local application id), or Spring integration
+          is not configured.
+        </p>
+        {payload.springApplicantProfileError ? (
+          <p className="mt-2 text-xs text-amber-700">{payload.springApplicantProfileError}</p>
+        ) : null}
+      </div>
+    )
+  }
+
+  if (payload.springApplicantProfileError && !payload.springApplicantProfile) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+        <p className="font-medium">Could not load Spring applicant profile</p>
+        <p className="mt-1 text-xs">{payload.springApplicantProfileError}</p>
+      </div>
+    )
+  }
+
+  const profile = payload.springApplicantProfile
+  if (!profile) return null
+
+  const auth = profile.auth
+  const kyc = profile.kyc
+  const app = profile.application
+  const displayName = springApplicantDisplayName(auth, app)
+  const initials = applicationCustomerInitials(displayName)
+  const mortgageSel = mortgageSelectionFromSnapshot(app?.contractSnapshot)
+  const personalRows = flattenPersonalInfo(kyc?.personalInfo)
+  const partialErrors = profile.partialErrors ?? []
+
+  const identityRows = [
+    { label: "Email", value: auth?.email || app?.email || "—" },
+    { label: "Phone", value: auth?.phone || "—" },
+    { label: "User ID", value: auth?.userId || profile.userId || "—" },
+    { label: "Country", value: auth?.country || "—" },
+    { label: "Account status", value: auth?.status || "—" },
+    { label: "Email verified", value: boolLabel(auth?.emailVerified) },
+    { label: "Phone verified", value: boolLabel(auth?.phoneVerified) },
+    { label: "Last login", value: formatProfileDate(auth?.lastLoginAt) },
+  ].filter((r) => r.value !== "—" || ["Email", "Phone", "User ID"].includes(r.label))
+
+  const workflowStatusLabel =
+    loanWorkflowStatus?.replaceAll("_", " ") ||
+    app?.loanWorkflowStatus?.replaceAll("_", " ") ||
+    "—"
+
+  const applicationRows = [
+    { label: "Product", value: app?.productName || "—" },
+    { label: "Product type", value: app?.productType || "—" },
+    { label: "Requested amount", value: formatProfileCurrency(app?.amount, app?.currency) },
+    { label: "Application status", value: app?.status || "—" },
+    { label: "Submitted", value: formatProfileDate(app?.createdAt) },
+    { label: "Last updated", value: formatProfileDate(app?.updatedAt) },
+    { label: "Spring local ID", value: profile.localApplicationId || "—" },
+  ]
+
+  const requirements = collectNonDocumentRequirements(payload)
+  const uploadedDocuments = collectApplicantUploadedDocuments(payload)
+  const guarantors = Array.isArray(app?.guarantors) ? app.guarantors : []
+  const kycDocs = Array.isArray(kyc?.documents) ? kyc.documents : []
+
+  return (
+    <div className="space-y-4">
+      {partialErrors.length > 0 ? (
+        <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <p className="font-medium">Some profile sections are incomplete</p>
+            <p className="mt-0.5 text-amber-800">{partialErrors.join(", ").replaceAll("_", " ")}</p>
+          </div>
+        </div>
+      ) : null}
+
+      <Section title="Applicant identity">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#8B7355] text-sm font-bold text-white">
+            {auth?.profilePictureUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={auth.profilePictureUrl} alt="" className="h-full w-full rounded-full object-cover" />
+            ) : (
+              initials
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-base font-semibold text-gray-900">{displayName}</p>
+              {auth?.kycCompleted || kyc?.completed ? (
+                <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+                  <CheckCircle2 className="mr-1 h-3 w-3" />
+                  KYC {kyc?.status || auth?.kycStatus || "verified"}
+                </Badge>
+              ) : auth?.kycStatus || kyc?.status ? (
+                <Badge variant="outline" className="border-amber-300 text-amber-800">
+                  KYC {kyc?.status || auth?.kycStatus}
+                </Badge>
+              ) : null}
+            </div>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Profile fetched {formatProfileDate(profile.fetchedAt)}
+            </p>
+          </div>
+        </div>
+        <FieldGrid rows={identityRows} />
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Workflow status</p>
+            <Badge className="mt-1 bg-[#F5F0E8] text-[#8B7355] hover:bg-[#F5F0E8]">{workflowStatusLabel}</Badge>
+          </div>
+          {currentStepTitle ? (
+            <div className="rounded-lg border border-[#E8DFCF] bg-[#FFFBF5] px-3 py-2.5 sm:col-span-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-[#8B7355]">Current step</p>
+              <p className="mt-0.5 text-sm font-medium text-gray-900">{currentStepTitle}</p>
+            </div>
+          ) : null}
+        </div>
+      </Section>
+
+      {kyc ? (
+        <Section title="KYC & personal information">
+          <FieldGrid
+            rows={[
+              { label: "KYC status", value: kyc.status || "—" },
+              { label: "KYC completed", value: boolLabel(kyc.completed) },
+              { label: "Completed at", value: formatProfileDate(kyc.completedAt) },
+              ...personalRows,
+            ].filter((r) => r.value !== "—")}
+          />
+          {kycDocs.length > 0 ? (
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-gray-400">KYC documents</p>
+              <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+                {kycDocs.map((doc, i) => {
+                  const url =
+                    typeof (doc as Record<string, unknown>).url === "string"
+                      ? String((doc as Record<string, unknown>).url)
+                      : typeof (doc as Record<string, unknown>).fileUrl === "string"
+                        ? String((doc as Record<string, unknown>).fileUrl)
+                        : ""
+                  return (
+                    <li key={`${doc.type}-${i}`} className="flex items-center justify-between gap-2 px-3 py-2.5 text-sm">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <FileText className="h-4 w-4 shrink-0 text-gray-400" />
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-gray-900">
+                            {doc.fileName || doc.type || "Document"}
+                          </p>
+                          <p className="text-xs text-gray-500">{doc.type?.replaceAll("_", " ") || "—"}</p>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        {doc.status ? (
+                          <Badge variant="outline" className="text-[10px]">
+                            {doc.status}
+                          </Badge>
+                        ) : null}
+                        {url ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-[#8B7355] hover:underline"
+                          >
+                            View <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : null}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ) : null}
+        </Section>
+      ) : null}
+
+      <Section title="Uploaded documents">
+        {uploadedDocuments.length > 0 ? (
+          <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+            {uploadedDocuments.map((doc) => (
+              <li key={doc.id} className="flex items-center justify-between gap-3 px-3 py-3 text-sm">
+                <div className="flex min-w-0 items-center gap-2">
+                  <FileText className="h-4 w-4 shrink-0 text-gray-400" />
+                  <div className="min-w-0">
+                    <p className="font-medium text-gray-900">{doc.label}</p>
+                    <p className="truncate text-xs text-gray-500">{doc.fileName}</p>
+                    {doc.fileType ? <p className="text-[10px] text-gray-400">{doc.fileType}</p> : null}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {doc.status ? (
+                    <Badge variant="outline" className="text-[10px]">
+                      {doc.status}
+                    </Badge>
+                  ) : null}
+                  {doc.url ? (
+                    <a
+                      href={doc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-md border border-[#E8DFCF] bg-[#FFFBF5] px-2.5 py-1 text-xs font-medium text-[#8B7355] hover:bg-[#F5F0E8]"
+                    >
+                      View file <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ) : (
+                    <span className="text-xs text-gray-400">No URL</span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm leading-relaxed text-gray-500">
+            No file uploads were returned for this application. 
+          </p>
+        )}
+      </Section>
+
+      {app ? (
+        <Section title="Application submission">
+          <FieldGrid rows={applicationRows} />
+          {mortgageSel ? (
+            <div className="mt-4 rounded-lg border border-[#E8DFCF] bg-[#FFFBF5] p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#8B7355]">Mortgage selection</p>
+              <FieldGrid
+                rows={[
+                  { label: "Property", value: String(mortgageSel.propertyName || "—") },
+                  { label: "Quantity", value: String(mortgageSel.quantity ?? "—") },
+                  {
+                    label: "Unit price",
+                    value: formatProfileCurrency(mortgageSel.unitPrice, app.currency),
+                  },
+                  { label: "Total", value: formatProfileCurrency(mortgageSel.total, app.currency) },
+                ]}
+              />
+            </div>
+          ) : null}
+        </Section>
+      ) : null}
+
+      {requirements.length > 0 ? (
+        <Section title="Other requirements">
+          <ul className="divide-y divide-gray-100">
+            {requirements.map((req, i) => {
+              const r = req as Record<string, unknown>
+              const label = requirementSubmissionLabel(r)
+              const parsed = parseRequirementSubmission(r)
+              return (
+                <li key={`${label}-${i}`} className="py-3 first:pt-0 last:pb-0">
+                  <p className="text-xs font-medium text-gray-500">{label}</p>
+                  {parsed.kind === "fields" ? (
+                    <div className="mt-2">
+                      <FieldGrid rows={parsed.fields} />
+                    </div>
+                  ) : parsed.kind === "file" ? (
+                    <div className="mt-1">
+                      <p className="text-sm text-gray-900">{parsed.fileName}</p>
+                      {parsed.url ? (
+                        <a
+                          href={parsed.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-1 inline-flex items-center gap-1 text-xs text-[#8B7355] hover:underline"
+                        >
+                          View file <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <p className="mt-0.5 break-words text-sm text-gray-900">{parsed.text}</p>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </Section>
+      ) : null}
+
+      {guarantors.length > 0 ? (
+        <Section title="Guarantors">
+          <ul className="space-y-3">
+            {guarantors.map((g, i) => {
+              const row = g as Record<string, unknown>
+              const name =
+                [row.firstName, row.lastName].filter((x) => typeof x === "string").join(" ").trim() ||
+                String(row.name || row.fullName || `Guarantor ${i + 1}`)
+              const kycUrl = typeof row.kycUrl === "string" ? row.kycUrl : typeof row.kycLink === "string" ? row.kycLink : ""
+              return (
+                <li key={`${name}-${i}`} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+                  <div className="flex items-start gap-2">
+                    <User className="mt-0.5 h-4 w-4 text-gray-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-gray-900">{name}</p>
+                      <p className="text-xs text-gray-500">
+                        {[row.email, row.phone].filter((x) => typeof x === "string" && x).join(" · ") || "—"}
+                      </p>
+                      {row.status ? (
+                        <Badge variant="outline" className="mt-2 text-[10px]">
+                          {String(row.status)}
+                        </Badge>
+                      ) : null}
+                      {kycUrl ? (
+                        <a
+                          href={kycUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center gap-1 text-xs text-[#8B7355] hover:underline"
+                        >
+                          KYC link <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : null}
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </Section>
+      ) : null}
+    </div>
+  )
+}
