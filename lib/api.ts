@@ -5,6 +5,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios"
 import { getAccessToken } from "@/lib/cookieAuth"
+import { handleSessionExpired } from "@/lib/plataAuthFetch"
 
 // Use relative URL so requests go through our own Next.js API proxy
 export interface ApiRequestConfig extends AxiosRequestConfig {
@@ -84,6 +85,7 @@ api.interceptors.response.use(
         return api(originalRequest)
       }
       delete api.defaults.headers.common.Authorization
+      await handleSessionExpired()
     }
     return Promise.reject(error)
   },

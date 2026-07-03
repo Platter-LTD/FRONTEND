@@ -67,14 +67,31 @@ function walletV1WalletsBase(): string {
 
 const DEFAULT_WALLET_CURRENCY = 'NGN';
 
+function coerceWalletAmount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 /** Main spendable balance per wallet-ms docs (mainBalance with legacy balance fallback). */
 export function merchantWalletMainBalance(w: MerchantWallet | null | undefined): number {
   if (!w) return 0;
-  const main = w.mainBalance;
-  if (typeof main === 'number' && !Number.isNaN(main)) return main;
-  const leg = w.balance;
-  if (typeof leg === 'number' && !Number.isNaN(leg)) return leg;
+  const main = coerceWalletAmount(w.mainBalance);
+  if (main != null) return main;
+  const leg = coerceWalletAmount(w.balance);
+  if (leg != null) return leg;
   return 0;
+}
+
+/** Ledger balance when returned separately from mainBalance. */
+export function merchantWalletLedgerBalance(w: MerchantWallet | null | undefined): number {
+  if (!w) return 0;
+  const ledger = coerceWalletAmount(w.ledgerBalance);
+  if (ledger != null) return ledger;
+  return merchantWalletMainBalance(w);
 }
 
 // Types

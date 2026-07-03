@@ -171,11 +171,11 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
         {
           icon: <FaWallet size={20} />,
           label: "Wallets",
-          href: `/dashboard/create-app/all-apps/${appId}/wallets`,
+          href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury`,
           subItems: [
             { label: "Treasury wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury` },
-            { label: "Repayment wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/repayment` },
-            { label: "KYC wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/kyc` },
+            { label: "Billing wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/repayment` },
+            { label: "Settlement wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/kyc` },
           ],
         },
         {

@@ -24,8 +24,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { applicationApi, type LoanWorkflowStatus } from "@/lib/services/accountService"
+import { resolveApplicationCustomerName } from "@/lib/applicationCustomer"
 import { MortgageWorkflowDetailSheet } from "@/components/workflow/MortgageWorkflowDetailSheet"
-import { isSessionExpiredError } from "@/lib/plataAuthFetch"
+import { handleSessionExpired, isSessionExpiredError } from "@/lib/plataAuthFetch"
 
 const PLATA_ACCENT_DARK = "#9A813F"
 
@@ -95,7 +96,16 @@ function mapRecord(
   return {
     id,
     requestLabel: String(x.productName ?? x.globalProductName ?? x.reference ?? requestFallback),
-    name: String(x.userName ?? x.fullName ?? x.customerName ?? x.userId ?? "Unknown"),
+    name: resolveApplicationCustomerName({
+      customerName: typeof x.customerName === "string" ? x.customerName : undefined,
+      userName: typeof x.userName === "string" ? x.userName : undefined,
+      fullName: typeof x.fullName === "string" ? x.fullName : undefined,
+      userId: typeof x.userId === "string" ? x.userId : undefined,
+      contractSnapshot:
+        x.contractSnapshot && typeof x.contractSnapshot === "object"
+          ? (x.contractSnapshot as Record<string, unknown>)
+          : undefined,
+    }),
     ref: String(x.reference ?? x.applicationReference ?? id),
     date: String(x.createdAt ?? x.applicationDate ?? "—"),
     status: String(x.loanWorkflowStatus ?? "requested") as LoanWorkflowStatus,
@@ -169,7 +179,7 @@ export function WorkflowTable({
           if (!res.success) {
             const err = res.error || "Failed to load"
             if (isSessionExpiredError(401, err)) {
-              throw new Error("Your session has expired. Please sign in again.")
+              await handleSessionExpired()
             }
             throw new Error(err)
           }
@@ -183,10 +193,13 @@ export function WorkflowTable({
         setRows(mapped)
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load"
-        const sessionExpired = isSessionExpiredError(0, msg)
-        setError(sessionExpired ? "Your session has expired. Please sign in again." : msg)
+        if (isSessionExpiredError(0, msg)) {
+          await handleSessionExpired()
+          return
+        }
+        setError(msg)
         setRows([])
-        if (silent) toast.error(sessionExpired ? "Session expired — please sign in again." : msg)
+        if (silent) toast.error(msg)
       } finally {
         if (!silent) setLoading(false)
         else setRefreshing(false)

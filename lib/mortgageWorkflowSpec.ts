@@ -23,6 +23,7 @@ export type MortgageWorkflowProgress = {
   downPaymentConfirmedAt?: string
   contractIssuedAt?: string
   contractSignedAt?: string
+  contractApprovedAt?: string
   disbursedAt?: string
 }
 
@@ -123,6 +124,7 @@ export function extractMortgageProgress(raw: Record<string, unknown>): MortgageW
     ),
     contractIssuedAt: pickString(nested.contractIssuedAt, snapshot.contractIssuedAt),
     contractSignedAt: pickString(nested.contractSignedAt, snapshot.contractSignedAt, raw.signedAt),
+    contractApprovedAt: pickString(nested.contractApprovedAt, snapshot.contractApprovedAt),
     disbursedAt: pickString(nested.disbursedAt, disbursement.disbursedAt, snapshot.disbursedAt),
   }
 }
@@ -145,8 +147,8 @@ export function resolvePlataMortgageStep(
 
   if (isTerminalWorkflowStatus(status)) return "review_approval"
   if (progress.disbursedAt) return "loan_disbursement"
-  if (progress.contractSignedAt) return "loan_disbursement"
-  if (progress.contractIssuedAt) return "contract_signed"
+  if (progress.contractApprovedAt) return "loan_disbursement"
+  if (progress.contractSignedAt) return "contract_signed"
   if (progress.downPaymentConfirmedAt) return "contract_issued"
   if (progress.downPaymentMadeAt) return "down_payment"
   if (progress.inspectionCompletedAt || progress.inspectionDeclined) return "inspection_outcome"
@@ -182,9 +184,12 @@ export function buildPlataMortgageThread(
   }))
 }
 
-export function plataMortgageActionForStep(step: PlataMortgageStepId): "approve" | "confirm_payment" | "disburse" | null {
-  if (step === "review_approval") return "approve"
+export function plataMortgageActionForStep(
+  step: PlataMortgageStepId,
+): "approve_offer" | "approve_contract" | "approve_disbursement" | "confirm_payment" | null {
+  if (step === "review_approval" || step === "application_submission") return "approve_offer"
+  if (step === "contract_signed") return "approve_contract"
+  if (step === "loan_disbursement") return "approve_disbursement"
   if (step === "down_payment") return "confirm_payment"
-  if (step === "loan_disbursement") return "disburse"
   return null
 }

@@ -1,10 +1,11 @@
 /**
  * Client-side fetch that on 401 attempts silent refresh (via /api/auth/refresh) then retries once.
  * Follows convention: do not log user out on first 401; try refresh then retry.
- * Does not force redirects when refresh fails; caller decides UI behavior.
+ * When refresh fails (or retry is still 401), clears session and redirects to /signin.
  */
 
 import { getAccessToken } from '@/lib/cookieAuth';
+import { handleSessionExpired } from '@/lib/plataAuthFetch';
 
 export type FetchWithAuthOptions = RequestInit & {
   /** Skip adding Authorization header (e.g. for public endpoints) */
@@ -62,6 +63,9 @@ export async function fetchWithAuth(
     if (newToken) {
       headers.set('Authorization', `Bearer ${newToken}`);
       res = await fetch(input, { ...init, headers, credentials: init.credentials ?? 'include' });
+    }
+    if (res.status === 401) {
+      await handleSessionExpired();
     }
   }
 

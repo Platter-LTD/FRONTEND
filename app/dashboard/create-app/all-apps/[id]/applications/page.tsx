@@ -20,6 +20,10 @@ import {
   type LoanWorkflowStatus,
 } from "@/lib/services/accountService"
 import { toast } from "sonner"
+import {
+  applicationCustomerInitials,
+  resolveApplicationCustomerName,
+} from "@/lib/applicationCustomer"
 
 function workflowStatus(application: LoanWorkflowApplication): LoanWorkflowStatus {
   return application.loanWorkflowStatus ?? "requested"
@@ -35,16 +39,16 @@ function getProductName(application: LoanWorkflowApplication) {
 }
 
 function getApplicant(application: LoanWorkflowApplication) {
-  const label = application.userId ? `User ${application.userId.slice(0, 8)}` : "Unknown customer"
+  const label = resolveApplicationCustomerName(application)
   return {
     label,
-    subtitle: application.offeringMerchantName || application.offeringMerchantId || application.userId || "No customer id",
-    initials: label
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "U",
+    subtitle:
+      application.offeringMerchantName ||
+      application.merchantName ||
+      application.offeringMerchantId ||
+      application.userId ||
+      "No merchant",
+    initials: applicationCustomerInitials(label),
   }
 }
 
@@ -124,6 +128,7 @@ export default function PlataApplicationsPage() {
       const searchable = [
         application.id,
         application.userId,
+        application.customerName,
         application.productType,
         application.globalProductReferenceNumber,
         application.localApplicationId,

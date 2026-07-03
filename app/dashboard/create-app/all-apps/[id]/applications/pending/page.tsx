@@ -10,6 +10,7 @@ import {
   type LoanWorkflowApplication,
   type LoanWorkflowStatus,
 } from "@/lib/services/accountService"
+import { resolveApplicationCustomerName } from "@/lib/applicationCustomer"
 import { toast } from "sonner"
 
 function workflowStatus(application: LoanWorkflowApplication): LoanWorkflowStatus {
@@ -189,6 +190,9 @@ export default function PlataPendingApplicationsPage() {
                     </div>
                     <div>
                       <h3 className="mb-1 font-semibold text-gray-900">{getProductName(application)}</h3>
+                      <p className="mb-1 text-sm font-medium text-gray-800">
+                        {resolveApplicationCustomerName(application)}
+                      </p>
                       <p className="mb-2 text-sm text-gray-500">
                         Reference: <span className="font-mono">{application.id.slice(0, 8).toUpperCase()}</span>
                       </p>

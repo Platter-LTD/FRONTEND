@@ -135,6 +135,9 @@ export interface LoanWorkflowApplication {
   offeringMerchantId?: string;
   offeringMerchantName?: string;
   userId: string;
+  customerName?: string;
+  userName?: string;
+  fullName?: string;
   productType: 'LOAN' | 'MORTGAGE' | string;
   globalProductId?: string;
   globalProductReferenceNumber?: string;
@@ -903,6 +906,13 @@ export const applicationApi = {
     return this.updateMortgageWorkflowProgress(id, {
       downPaymentConfirmedAt: now,
       contractIssuedAt: now,
+    });
+  },
+
+  async approveMortgageContract(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    const now = new Date().toISOString();
+    return this.updateMortgageWorkflowProgress(id, {
+      contractApprovedAt: now,
     });
   },
 

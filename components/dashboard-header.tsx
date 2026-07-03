@@ -141,8 +141,11 @@ export const DashboardHeader: React.FC = () => {
     : { id: "", name: "No app selected" }
 
   const handleAppSwitch = (appId: string) => {
-    const currentPath =
+    let currentPath =
       pathname?.split("/dashboard/create-app/all-apps/")[1]?.split("/").slice(1).join("/") || "wallets/treasury"
+    if (!currentPath || currentPath === "wallets") {
+      currentPath = "wallets/treasury"
+    }
     router.push(`/dashboard/create-app/all-apps/${appId}/${currentPath}`)
   }
 
