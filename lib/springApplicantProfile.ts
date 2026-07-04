@@ -172,11 +172,17 @@ export type RequirementSubmissionDisplay =
 
 /** Render requirement answers — `type: "json"` means structured fields in `value`, not the display label. */
 export function parseRequirementSubmission(r: Record<string, unknown>): RequirementSubmissionDisplay {
-  const submissionType = String(r.type ?? "").toLowerCase()
+  const submissionType = String(r.type ?? r.contentType ?? "").toLowerCase()
   const fileName = pickStr(r, "fileName", "documentName", "name")
-  const url = pickStr(r, "url", "documentUrl", "fileUrl", "downloadUrl")
+  const url = submissionDocumentUrl(r)
 
-  if (submissionType === "document" || url || (fileName && !r.value)) {
+  if (
+    submissionType === "document" ||
+    submissionType === "document_template" ||
+    submissionType === "document_upload" ||
+    url ||
+    (fileName && !r.value)
+  ) {
     if (fileName || url) {
       return { kind: "file", fileName: fileName || "Uploaded document", url: url || undefined }
     }
@@ -216,20 +222,54 @@ export function parseRequirementSubmission(r: Record<string, unknown>): Requirem
   return { kind: "text", text: "—" }
 }
 
+export type PlataSubmittedRequirement = {
+  requirementType?: string
+  contentType?: string
+  templateFileUrl?: string
+  submittedFileUrl?: string
+  fileName?: string
+  fileType?: string
+  fileSize?: number
+  documentsToDownloadIndex?: number
+  otherRequirementIndex?: number
+}
+
 export type ApplicantUploadedDocument = {
   id: string
   label: string
   fileName: string
   url?: string
+  templateUrl?: string
   fileType?: string
+  fileSize?: number
+  contentType?: string
   status?: string
   source: "requirement" | "kyc" | "plata"
+}
+
+export function formatFileSize(bytes: unknown): string {
+  const n = typeof bytes === "number" ? bytes : typeof bytes === "string" ? Number(bytes) : NaN
+  if (!Number.isFinite(n) || n <= 0) return ""
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function submissionDocumentUrl(r: Record<string, unknown>): string {
+  return pickStr(
+    r,
+    "submittedFileUrl",
+    "fileUrl",
+    "url",
+    "documentUrl",
+    "downloadUrl",
+  )
 }
 
 function submissionKey(r: Record<string, unknown>): string {
   return [
     pickStr(r, "requirementId", "requirementType", "label", "type"),
-    pickStr(r, "fileUrl", "url", "documentUrl"),
+    submissionDocumentUrl(r),
     pickStr(r, "fileName"),
   ]
     .filter(Boolean)
@@ -285,9 +325,66 @@ export function collectRequirementSubmissions(payload: SpringApplicantProfileRes
 }
 
 export function isDocumentRequirementSubmission(r: Record<string, unknown>): boolean {
-  const t = String(r.type ?? "").toLowerCase()
-  if (t === "document" || t === "file" || t === "upload") return true
-  return Boolean(pickStr(r, "fileUrl", "url", "documentUrl"))
+  const t = String(r.type ?? r.contentType ?? "").toLowerCase()
+  if (
+    t === "document" ||
+    t === "file" ||
+    t === "upload" ||
+    t === "document_template" ||
+    t === "document_upload"
+  ) {
+    return true
+  }
+  return Boolean(submissionDocumentUrl(r))
+}
+
+/** Normalize spring-applicant-profile envelope with full Plata application detail (submittedRequirements, guarantorKyc). */
+export function mergeProfilePayloadWithPlataApplication(
+  payload: SpringApplicantProfileResponse,
+  plataApplication?: Record<string, unknown> | null,
+): SpringApplicantProfileResponse {
+  if (!plataApplication || typeof plataApplication !== "object") return payload
+
+  const existingApp =
+    payload.application && typeof payload.application === "object"
+      ? (payload.application as Record<string, unknown>)
+      : {}
+
+  return {
+    ...payload,
+    application: {
+      ...existingApp,
+      ...plataApplication,
+      submittedRequirements:
+        plataApplication.submittedRequirements ?? existingApp.submittedRequirements,
+      guarantorKyc: plataApplication.guarantorKyc ?? existingApp.guarantorKyc,
+      contractSnapshot: plataApplication.contractSnapshot ?? existingApp.contractSnapshot,
+    },
+  }
+}
+
+export function collectGuarantors(payload: SpringApplicantProfileResponse): Record<string, unknown>[] {
+  const plataApp =
+    payload.application && typeof payload.application === "object"
+      ? (payload.application as Record<string, unknown>)
+      : undefined
+
+  const fromPlataKyc = plataApp?.guarantorKyc
+  if (Array.isArray(fromPlataKyc) && fromPlataKyc.length) {
+    return fromPlataKyc as Record<string, unknown>[]
+  }
+
+  const fromProfile = payload.springApplicantProfile?.application?.guarantors
+  if (Array.isArray(fromProfile) && fromProfile.length) {
+    return fromProfile as Record<string, unknown>[]
+  }
+
+  const fromPlataGuarantors = plataApp?.guarantors
+  if (Array.isArray(fromPlataGuarantors) && fromPlataGuarantors.length) {
+    return fromPlataGuarantors as Record<string, unknown>[]
+  }
+
+  return []
 }
 
 export function collectApplicantUploadedDocuments(
@@ -305,14 +402,24 @@ export function collectApplicantUploadedDocuments(
 
   for (const r of collectRequirementSubmissions(payload)) {
     if (!isDocumentRequirementSubmission(r)) continue
-    const url = pickStr(r, "fileUrl", "url", "documentUrl", "downloadUrl")
+    const url = submissionDocumentUrl(r)
     const fileName = pickStr(r, "fileName", "documentName", "name") || "Uploaded document"
+    const fileSizeRaw = r.fileSize
+    const fileSize =
+      typeof fileSizeRaw === "number"
+        ? fileSizeRaw
+        : typeof fileSizeRaw === "string"
+          ? Number(fileSizeRaw)
+          : undefined
     pushDoc({
       id: submissionKey(r) || fileName,
       label: requirementSubmissionLabel(r),
       fileName,
       url: url || undefined,
+      templateUrl: pickStr(r, "templateFileUrl") || undefined,
       fileType: pickStr(r, "fileType", "mimeType") || undefined,
+      fileSize: Number.isFinite(fileSize) ? fileSize : undefined,
+      contentType: pickStr(r, "contentType") || undefined,
       status: pickStr(r, "status") || undefined,
       source: "requirement",
     })

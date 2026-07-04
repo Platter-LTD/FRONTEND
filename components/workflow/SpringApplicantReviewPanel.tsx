@@ -6,10 +6,13 @@ import { AlertTriangle, CheckCircle2, ExternalLink, FileText, User } from "lucid
 import { Badge } from "@/components/ui/badge"
 import {
   collectApplicantUploadedDocuments,
+  collectGuarantors,
   collectNonDocumentRequirements,
+  formatFileSize,
   flattenPersonalInfo,
   formatProfileCurrency,
   formatProfileDate,
+  mergeProfilePayloadWithPlataApplication,
   mortgageSelectionFromSnapshot,
   parseRequirementSubmission,
   requirementSubmissionLabel,
@@ -60,57 +63,84 @@ function boolLabel(v: boolean | undefined): string {
 
 type SpringApplicantReviewPanelProps = {
   payload: SpringApplicantProfileResponse | null
+  plataApplication?: Record<string, unknown> | null
   loanWorkflowStatus?: string
   currentStepTitle?: string
 }
 
+function contentTypeLabel(contentType?: string): string {
+  if (!contentType) return ""
+  if (contentType === "document_template") return "Template form"
+  if (contentType === "document_upload") return "Upload"
+  return contentType.replaceAll("_", " ")
+}
+
 export function SpringApplicantReviewPanel({
   payload,
+  plataApplication,
   loanWorkflowStatus,
   currentStepTitle,
 }: SpringApplicantReviewPanelProps) {
-  if (!payload) return null
+  if (!payload && !plataApplication) return null
 
-  if (payload.springApplicantProfileSkipped) {
-    return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <p className="font-medium">Spring applicant profile not available</p>
-        <p className="mt-1 text-xs text-amber-800">
-          This application is not linked to a Spring storefront (no local application id), or Spring integration
-          is not configured.
-        </p>
-        {payload.springApplicantProfileError ? (
-          <p className="mt-2 text-xs text-amber-700">{payload.springApplicantProfileError}</p>
-        ) : null}
-      </div>
-    )
+  const basePayload: SpringApplicantProfileResponse = payload ?? {
+    application: plataApplication ?? undefined,
+  }
+  const mergedPayload = mergeProfilePayloadWithPlataApplication(basePayload, plataApplication)
+  const plataApp =
+    mergedPayload.application && typeof mergedPayload.application === "object"
+      ? (mergedPayload.application as Record<string, unknown>)
+      : null
+  const hasPlataDocuments =
+    Array.isArray(plataApp?.submittedRequirements) && plataApp.submittedRequirements.length > 0
+
+  if (basePayload.springApplicantProfileSkipped) {
+    if (!hasPlataDocuments) {
+      return (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-medium">Spring applicant profile not available</p>
+          <p className="mt-1 text-xs text-amber-800">
+            This application is not linked to a Spring storefront (no local application id), or Spring
+            integration is not configured.
+          </p>
+          {basePayload.springApplicantProfileError ? (
+            <p className="mt-2 text-xs text-amber-700">{basePayload.springApplicantProfileError}</p>
+          ) : null}
+        </div>
+      )
+    }
   }
 
-  if (payload.springApplicantProfileError && !payload.springApplicantProfile) {
+  if (basePayload.springApplicantProfileError && !basePayload.springApplicantProfile && !hasPlataDocuments) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
         <p className="font-medium">Could not load Spring applicant profile</p>
-        <p className="mt-1 text-xs">{payload.springApplicantProfileError}</p>
+        <p className="mt-1 text-xs">{basePayload.springApplicantProfileError}</p>
       </div>
     )
   }
 
-  const profile = payload.springApplicantProfile
-  if (!profile) return null
+  const profile = basePayload.springApplicantProfile
+  if (!profile && !hasPlataDocuments) return null
 
-  const auth = profile.auth
-  const kyc = profile.kyc
-  const app = profile.application
-  const displayName = springApplicantDisplayName(auth, app)
+  const auth = profile?.auth
+  const kyc = profile?.kyc
+  const app = profile?.application
+  const displayName =
+    springApplicantDisplayName(auth, app) ||
+    String(plataApp?.customerName || plataApp?.applicantName || "Applicant")
   const initials = applicationCustomerInitials(displayName)
-  const mortgageSel = mortgageSelectionFromSnapshot(app?.contractSnapshot)
+  const snapshot =
+    (app?.contractSnapshot as Record<string, unknown> | undefined) ||
+    (plataApp?.contractSnapshot as Record<string, unknown> | undefined)
+  const mortgageSel = mortgageSelectionFromSnapshot(snapshot)
   const personalRows = flattenPersonalInfo(kyc?.personalInfo)
-  const partialErrors = profile.partialErrors ?? []
+  const partialErrors = profile?.partialErrors ?? []
 
   const identityRows = [
-    { label: "Email", value: auth?.email || app?.email || "—" },
-    { label: "Phone", value: auth?.phone || "—" },
-    { label: "User ID", value: auth?.userId || profile.userId || "—" },
+    { label: "Email", value: auth?.email || app?.email || String(plataApp?.email || "—") },
+    { label: "Phone", value: auth?.phone || String(plataApp?.phone || "—") },
+    { label: "User ID", value: auth?.userId || profile?.userId || String(plataApp?.userId || "—") },
     { label: "Country", value: auth?.country || "—" },
     { label: "Account status", value: auth?.status || "—" },
     { label: "Email verified", value: boolLabel(auth?.emailVerified) },
@@ -123,19 +153,33 @@ export function SpringApplicantReviewPanel({
     app?.loanWorkflowStatus?.replaceAll("_", " ") ||
     "—"
 
+  const plataSnapshot =
+    plataApp?.contractSnapshot && typeof plataApp.contractSnapshot === "object"
+      ? (plataApp.contractSnapshot as Record<string, unknown>)
+      : undefined
+
   const applicationRows = [
-    { label: "Product", value: app?.productName || "—" },
-    { label: "Product type", value: app?.productType || "—" },
-    { label: "Requested amount", value: formatProfileCurrency(app?.amount, app?.currency) },
-    { label: "Application status", value: app?.status || "—" },
-    { label: "Submitted", value: formatProfileDate(app?.createdAt) },
+    { label: "Product", value: app?.productName || String(plataApp?.productName || "—") },
+    { label: "Product type", value: app?.productType || String(plataApp?.productType || "—") },
+    {
+      label: "Requested amount",
+      value: formatProfileCurrency(
+        app?.amount ?? plataSnapshot?.principal ?? plataSnapshot?.requestedAmount ?? plataSnapshot?.amount,
+        app?.currency || String(plataSnapshot?.currency || "NGN"),
+      ),
+    },
+    { label: "Application status", value: app?.status || String(plataApp?.status || "—") },
+    {
+      label: "Submitted",
+      value: formatProfileDate(app?.createdAt || plataApp?.submittedAt || plataApp?.createdAt),
+    },
     { label: "Last updated", value: formatProfileDate(app?.updatedAt) },
-    { label: "Spring local ID", value: profile.localApplicationId || "—" },
+    { label: "Spring local ID", value: profile?.localApplicationId || String(plataApp?.localApplicationId || "—") },
   ]
 
-  const requirements = collectNonDocumentRequirements(payload)
-  const uploadedDocuments = collectApplicantUploadedDocuments(payload)
-  const guarantors = Array.isArray(app?.guarantors) ? app.guarantors : []
+  const requirements = collectNonDocumentRequirements(mergedPayload)
+  const uploadedDocuments = collectApplicantUploadedDocuments(mergedPayload)
+  const guarantors = collectGuarantors(mergedPayload)
   const kycDocs = Array.isArray(kyc?.documents) ? kyc.documents : []
 
   return (
@@ -175,7 +219,11 @@ export function SpringApplicantReviewPanel({
               ) : null}
             </div>
             <p className="mt-0.5 text-xs text-gray-500">
-              Profile fetched {formatProfileDate(profile.fetchedAt)}
+              {profile?.fetchedAt
+                ? `Profile fetched ${formatProfileDate(profile.fetchedAt)}`
+                : plataApp?.submittedAt
+                  ? `Submitted ${formatProfileDate(plataApp.submittedAt)}`
+                  : null}
             </p>
           </div>
         </div>
@@ -252,49 +300,75 @@ export function SpringApplicantReviewPanel({
         </Section>
       ) : null}
 
-      <Section title="Uploaded documents">
+      <Section title="Submitted requirements">
         {uploadedDocuments.length > 0 ? (
           <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
-            {uploadedDocuments.map((doc) => (
-              <li key={doc.id} className="flex items-center justify-between gap-3 px-3 py-3 text-sm">
-                <div className="flex min-w-0 items-center gap-2">
-                  <FileText className="h-4 w-4 shrink-0 text-gray-400" />
-                  <div className="min-w-0">
-                    <p className="font-medium text-gray-900">{doc.label}</p>
-                    <p className="truncate text-xs text-gray-500">{doc.fileName}</p>
-                    {doc.fileType ? <p className="text-[10px] text-gray-400">{doc.fileType}</p> : null}
+            {uploadedDocuments.map((doc) => {
+              const sizeLabel = doc.fileSize ? formatFileSize(doc.fileSize) : ""
+              const typeLabel = contentTypeLabel(doc.contentType)
+              return (
+                <li key={doc.id} className="flex items-center justify-between gap-3 px-3 py-3 text-sm">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <FileText className="h-4 w-4 shrink-0 text-gray-400" />
+                    <div className="min-w-0">
+                      <p className="font-medium text-gray-900">{doc.label}</p>
+                      <p className="truncate text-xs text-gray-500">{doc.fileName}</p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                        {typeLabel ? (
+                          <Badge variant="outline" className="text-[10px]">
+                            {typeLabel}
+                          </Badge>
+                        ) : null}
+                        {doc.fileType ? (
+                          <span className="text-[10px] text-gray-400">{doc.fileType}</span>
+                        ) : null}
+                        {sizeLabel ? <span className="text-[10px] text-gray-400">{sizeLabel}</span> : null}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {doc.status ? (
-                    <Badge variant="outline" className="text-[10px]">
-                      {doc.status}
-                    </Badge>
-                  ) : null}
-                  {doc.url ? (
-                    <a
-                      href={doc.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-md border border-[#E8DFCF] bg-[#FFFBF5] px-2.5 py-1 text-xs font-medium text-[#8B7355] hover:bg-[#F5F0E8]"
-                    >
-                      View file <ExternalLink className="h-3 w-3" />
-                    </a>
-                  ) : (
-                    <span className="text-xs text-gray-400">No URL</span>
-                  )}
-                </div>
-              </li>
-            ))}
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
+                    {doc.status ? (
+                      <Badge variant="outline" className="text-[10px]">
+                        {doc.status}
+                      </Badge>
+                    ) : null}
+                    <div className="flex items-center gap-2">
+                      {doc.templateUrl ? (
+                        <a
+                          href={doc.templateUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-gray-600 hover:underline"
+                        >
+                          Template <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : null}
+                      {doc.url ? (
+                        <a
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-md border border-[#E8DFCF] bg-[#FFFBF5] px-2.5 py-1 text-xs font-medium text-[#8B7355] hover:bg-[#F5F0E8]"
+                        >
+                          View submission <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <span className="text-xs text-gray-400">No file</span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         ) : (
           <p className="text-sm leading-relaxed text-gray-500">
-            No file uploads were returned for this application. 
+            No submitted requirement documents were returned for this application.
           </p>
         )}
       </Section>
 
-      {app ? (
+      {app || plataApp ? (
         <Section title="Application submission">
           <FieldGrid rows={applicationRows} />
           {mortgageSel ? (
@@ -362,16 +436,24 @@ export function SpringApplicantReviewPanel({
               const name =
                 [row.firstName, row.lastName].filter((x) => typeof x === "string").join(" ").trim() ||
                 String(row.name || row.fullName || `Guarantor ${i + 1}`)
-              const kycUrl = typeof row.kycUrl === "string" ? row.kycUrl : typeof row.kycLink === "string" ? row.kycLink : ""
+              const kycUrl =
+                typeof row.verificationUrl === "string"
+                  ? row.verificationUrl
+                  : typeof row.kycUrl === "string"
+                    ? row.kycUrl
+                    : typeof row.kycLink === "string"
+                      ? row.kycLink
+                      : ""
+              const meta = [row.email, row.phone, row.occupation, row.relationship]
+                .filter((x) => typeof x === "string" && x && x !== "Not specified")
+                .join(" · ")
               return (
                 <li key={`${name}-${i}`} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
                   <div className="flex items-start gap-2">
                     <User className="mt-0.5 h-4 w-4 text-gray-400" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-gray-900">{name}</p>
-                      <p className="text-xs text-gray-500">
-                        {[row.email, row.phone].filter((x) => typeof x === "string" && x).join(" · ") || "—"}
-                      </p>
+                      <p className="text-xs text-gray-500">{meta || "—"}</p>
                       {row.status ? (
                         <Badge variant="outline" className="mt-2 text-[10px]">
                           {String(row.status)}
@@ -384,7 +466,7 @@ export function SpringApplicantReviewPanel({
                           rel="noopener noreferrer"
                           className="mt-2 inline-flex items-center gap-1 text-xs text-[#8B7355] hover:underline"
                         >
-                          KYC link <ExternalLink className="h-3 w-3" />
+                          Verification link <ExternalLink className="h-3 w-3" />
                         </a>
                       ) : null}
                     </div>

@@ -367,6 +367,7 @@ export function MortgageWorkflowDetailSheet({
 
                 <SpringApplicantReviewPanel
                   payload={profilePayload}
+                  plataApplication={detail}
                   loanWorkflowStatus={loanWorkflowStatus}
                   currentStepTitle={currentThreadItem?.title}
                 />
