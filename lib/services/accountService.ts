@@ -141,6 +141,7 @@ export interface LoanWorkflowApplication {
   fullName?: string;
   productType: 'LOAN' | 'MORTGAGE' | string;
   globalProductId?: string;
+  productName?: string;
   globalProductReferenceNumber?: string;
   localApplicationId?: string;
   merchantProductId?: string;
@@ -813,19 +814,20 @@ export const applicationApi = {
     return this.updateLoanWorkflowStatus(id, { loanWorkflowStatus: 'blacklisted' });
   },
 
-  async getLoanWorkflowApplications(params?: {
+  async getLoanWorkflowApplications(params: {
+    appId: string;
     loanWorkflowStatus?: LoanWorkflowStatus;
     limit?: number;
     skip?: number;
   }): Promise<ApiResponse<LoanWorkflowApplication[]>> {
     try {
       const queryParams = new URLSearchParams();
-      if (params?.loanWorkflowStatus) queryParams.set('loanWorkflowStatus', params.loanWorkflowStatus);
-      if (params?.limit) queryParams.set('limit', String(params.limit));
-      if (params?.skip) queryParams.set('skip', String(params.skip));
+      if (params.loanWorkflowStatus) queryParams.set('loanWorkflowStatus', params.loanWorkflowStatus);
+      if (params.limit) queryParams.set('limit', String(params.limit));
+      if (params.skip) queryParams.set('skip', String(params.skip));
 
       const response = await plataAuthFetch(
-        `/api/v1/products/applications/me/loan-workflow${queryParams.toString() ? `?${queryParams}` : ''}`,
+        `/api/v1/products/app/${encodeURIComponent(params.appId)}/applications/loan-workflow${queryParams.toString() ? `?${queryParams}` : ''}`,
         { headers: getAuthHeaders() },
       );
       const result = await response.json();

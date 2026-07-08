@@ -98,6 +98,8 @@ export interface ProductConfigAboutStepProps {
   className?: string
   /** Marks About fields per merchant spec (default: all required). */
   fieldRequirement?: "required" | "optional"
+  /** Type section can differ from other About fields (e.g. optional when set at product creation). */
+  typeSectionRequirement?: "required" | "optional"
 }
 
 const TEXTAREA_CLASS =
@@ -147,8 +149,10 @@ export function ProductConfigAboutStep({
   accentColor = "#9A813F",
   className = "",
   fieldRequirement = "required",
+  typeSectionRequirement,
 }: ProductConfigAboutStepProps) {
   const previewInputRef = useRef<HTMLInputElement>(null)
+  const typeRequirement = typeSectionRequirement ?? fieldRequirement
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
 
   /** True after user picks “Custom” or when loaded value is not a preset (e.g. saved custom tenure). */
@@ -274,7 +278,7 @@ export function ProductConfigAboutStep({
       <div className="space-y-3">
         <label className="block text-sm font-medium text-gray-700">
           {typeSectionLabel}
-          <span className="font-normal text-gray-500">{requirementSuffix(fieldRequirement)}</span>
+          <span className="font-normal text-gray-500">{requirementSuffix(typeRequirement)}</span>
         </label>
         {typeInputMode === "select" ? (
           <ProductConfigSelect
@@ -283,7 +287,7 @@ export function ProductConfigAboutStep({
             value={typeSelectedValue}
             options={typeSelectOptions}
             onChange={(value) => onTypeSelectedValueChange?.(value)}
-            requirement={fieldRequirement}
+            requirement={typeRequirement}
           />
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
@@ -292,14 +296,14 @@ export function ProductConfigAboutStep({
               placeholder="Enter Name"
               value={typeNameDraft}
               onChange={onTypeNameDraftChange}
-              requirement={fieldRequirement}
+              requirement={typeRequirement}
             />
             <ProductConfigInput
               label="Type description"
               placeholder="Enter Description"
               value={typeDescDraft}
               onChange={onTypeDescDraftChange}
-              requirement={fieldRequirement}
+              requirement={typeRequirement}
             />
             <Button
               type="button"

@@ -986,6 +986,7 @@ export default function ConfigureLoanDrawer({
           description={description}
           onDescriptionChange={setDescription}
           typeSectionLabel="Loan Type"
+          typeSectionRequirement="optional"
           typeNameDraft={loanTypeName}
           typeDescDraft={loanTypeDescription}
           onTypeNameDraftChange={setLoanTypeName}
@@ -1184,7 +1185,7 @@ export default function ConfigureLoanDrawer({
           <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
             <p className="text-sm font-medium text-gray-700">
               Document Requirements{" "}
-              <span className="font-normal text-gray-500">(Required) Requires customer to fill the form</span>
+              <span className="font-normal text-gray-500">(Optional) Requires customer to fill the form</span>
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] items-end">
               <ProductConfigInput
@@ -1192,7 +1193,7 @@ export default function ConfigureLoanDrawer({
                 placeholder="Name document"
                 value={documentName}
                 onChange={setDocumentName}
-                requirement="required"
+                requirement="optional"
               />
               <Button
                 type="button"

@@ -1134,6 +1134,7 @@ export default function ConfigureMortgageDrawer({
             description={description}
             onDescriptionChange={setDescription}
             typeSectionLabel="Mortgage Type"
+            typeSectionRequirement="optional"
             typeNameDraft=""
             typeDescDraft=""
             onTypeNameDraftChange={() => {}}
@@ -1336,7 +1337,7 @@ export default function ConfigureMortgageDrawer({
             <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
               <p className="text-sm font-medium text-gray-700">
                 Document Requirements{" "}
-                <span className="font-normal text-gray-500">(Required) Requires customer to download fill the form</span>
+                <span className="font-normal text-gray-500">(Optional) Requires customer to download fill the form</span>
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
                 <ProductConfigInput
@@ -1344,7 +1345,7 @@ export default function ConfigureMortgageDrawer({
                   placeholder="Name document"
                   value={documentName}
                   onChange={setDocumentName}
-                  requirement="required"
+                  requirement="optional"
                 />
                 <div className="flex flex-col gap-2 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center">
                   <Upload className="shrink-0 text-gray-500" size={18} />

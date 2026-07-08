@@ -3,7 +3,6 @@
  * Returns human-readable messages for UI.
  */
 
-import { isDocumentTemplateContentType, isDocumentUploadContentType } from "@/lib/otherRequirementPayload"
 import { isOtherSecuritySelected } from "@/lib/securityRequirementOptions"
 
 const t = (s: string) => s.trim()
@@ -29,37 +28,6 @@ export type LoanLikeStructureInput = {
   equityRequirementMode: EquityMode
   equityFixedAmount: string
   equityPercentage: string
-}
-
-function isDocumentTemplateApiOrLabel(contentType: string): boolean {
-  const s = String(contentType ?? "").trim().toLowerCase()
-  if (s === "document_template") return true
-  return isDocumentTemplateContentType(contentType)
-}
-
-type OtherRequirementRowForDocCoverage = {
-  contentType?: string
-  description?: string
-  file?: File | null
-  templateFileUrl?: string | null
-}
-
-/** Document-to-download section filled, or equivalent under Other Requirements: template (file/URL) or document upload with description. */
-function hasLoanDocumentRequirementCoverage(
-  documents: unknown[],
-  otherRequirements?: OtherRequirementRowForDocCoverage[],
-): boolean {
-  if (documents.length > 0) return true
-  return (otherRequirements ?? []).some((row) => {
-    const ct = String(row?.contentType ?? "")
-    if (isDocumentTemplateApiOrLabel(ct)) {
-      const hasFile = !!row?.file
-      const hasUrl = typeof row?.templateFileUrl === "string" && row.templateFileUrl.trim().length > 0
-      return hasFile || hasUrl
-    }
-    if (isDocumentUploadContentType(ct) && has(String(row?.description ?? ""))) return true
-    return false
-  })
 }
 
 function pushLoanLikeStructureErrors(prefix: string, s: LoanLikeStructureInput, errors: string[]) {
@@ -99,8 +67,6 @@ export type LoanStepCtx = {
   /** Free text when “Other” security is selected; required in that case. */
   securityOtherSpecification: string
   documents: unknown[]
-  /** Optional rows from “Other Requirements”; document template (file/URL) or document upload (non-empty description) counts toward document coverage. */
-  otherRequirements?: OtherRequirementRowForDocCoverage[]
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
   penalties: { name?: string; type?: string; value?: string; triggerDuration?: string }[]
@@ -114,13 +80,7 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
     if (!has(ctx.name)) errors.push("About Product: Product name is required.")
     if (!has(ctx.tenure)) errors.push("About Product: Tenure is required.")
     if (!has(ctx.description)) errors.push("About Product: Product description is required.")
-    if (!ctx.loanTypes.length) errors.push("About Product: Add at least one loan type (name and description).")
-    else {
-      ctx.loanTypes.forEach((row, i) => {
-        if (!has(row.name)) errors.push(`About Product: Loan type #${i + 1} name is required.`)
-        if (!has(row.description)) errors.push(`About Product: Loan type #${i + 1} description is required.`)
-      })
-    }
+    // Loan type rows are optional — product type is captured at product creation.
     if (!ctx.previewImage && !ctx.hasPreviewAsset) errors.push("About Product: Preview file upload is required.")
   }
 
@@ -134,11 +94,7 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
     if (isOtherSecuritySelected(ctx.selectedSecurities) && !has(ctx.securityOtherSpecification)) {
       errors.push('Requirements: Describe the “Other” security requirement (text field below).')
     }
-    if (!hasLoanDocumentRequirementCoverage(ctx.documents, ctx.otherRequirements)) {
-      errors.push(
-        "Requirements: Add at least one document under Document Requirements (name + upload), or under Other Requirements add “Document upload” (with description) or “Document template” (with file), then click Add.",
-      )
-    }
+    // Document requirements are optional — customers may satisfy docs via Other Requirements instead.
   }
 
   if (step === 4) {
@@ -170,7 +126,6 @@ export type MortgageStepCtx = {
   selectedSecurities: string[]
   securityOtherSpecification: string
   documents: unknown[]
-  otherRequirements?: OtherRequirementRowForDocCoverage[]
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
   penalties: { name?: string; type?: string; value?: string; triggerDuration?: string }[]
@@ -197,7 +152,7 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
     if (!has(ctx.name)) errors.push("About Product: Product name is required.")
     if (!has(ctx.tenure)) errors.push("About Product: Tenure is required.")
     if (!has(ctx.description)) errors.push("About Product: Product description is required.")
-    if (!has(ctx.mortgageTypeSelected)) errors.push("About Product: Mortgage type is required.")
+    // Mortgage type is optional — product type is captured at product creation.
     if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
   }
 
@@ -210,11 +165,7 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
     if (isOtherSecuritySelected(ctx.selectedSecurities) && !has(ctx.securityOtherSpecification)) {
       errors.push('Requirements: Describe the “Other” security requirement (text field below).')
     }
-    if (!hasLoanDocumentRequirementCoverage(ctx.documents, ctx.otherRequirements)) {
-      errors.push(
-        "Requirements: Add at least one document under Document Requirements (name + upload), or under Other Requirements add “Document upload” (with description) or “Document template” (with file), then click Add.",
-      )
-    }
+    // Document requirements are optional.
     if (!has(ctx.contractId)) errors.push("Requirements: Contract ID is required.")
     if (!has(ctx.airSignSecretKey)) errors.push("Requirements: AirSign Secret Key is required.")
     if (!has(ctx.airSignUid)) errors.push("Requirements: AirSign UID is required.")

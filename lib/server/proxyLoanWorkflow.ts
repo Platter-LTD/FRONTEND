@@ -38,13 +38,25 @@ export async function proxyLoanWorkflowRequest(
     })
 
   let tokensToSet: RefreshedTokens | null = refreshed
-  let response = await upstream(authorization)
+  let response: Response
+  try {
+    response = await upstream(authorization)
+  } catch (error: unknown) {
+    // Fly.io gateway occasionally times out; don't crash the route and return HTML/empty body.
+    const msg = error instanceof Error ? error.message : "Upstream request failed"
+    return NextResponse.json({ success: false, error: msg }, { status: 502 })
+  }
 
   if (response.status === 401) {
     const retryTokens = await refreshTokensFromRequest(request)
     if (retryTokens?.accessToken) {
       tokensToSet = retryTokens
-      response = await upstream(`Bearer ${retryTokens.accessToken}`)
+      try {
+        response = await upstream(`Bearer ${retryTokens.accessToken}`)
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : "Upstream request failed"
+        return NextResponse.json({ success: false, error: msg }, { status: 502 })
+      }
     }
   }
 

@@ -156,8 +156,8 @@ export function WorkflowTable({
 
         if (activeTab === "under_review") {
           const [requestedRes, underReviewRes] = await Promise.all([
-            applicationApi.getLoanWorkflowApplications({ loanWorkflowStatus: "requested", limit: 100 }),
-            applicationApi.getLoanWorkflowApplications({ loanWorkflowStatus: "under_review", limit: 100 }),
+            applicationApi.getLoanWorkflowApplications({ appId, loanWorkflowStatus: "requested", limit: 100 }),
+            applicationApi.getLoanWorkflowApplications({ appId, loanWorkflowStatus: "under_review", limit: 100 }),
           ])
           if (!requestedRes.success && !underReviewRes.success) {
             throw new Error(requestedRes.error || underReviewRes.error || "Failed to load")
@@ -173,6 +173,7 @@ export function WorkflowTable({
           )
         } else {
           const res = await applicationApi.getLoanWorkflowApplications({
+            appId,
             loanWorkflowStatus: activeTab,
             limit: 100,
           })
