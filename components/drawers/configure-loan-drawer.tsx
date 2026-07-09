@@ -20,6 +20,7 @@ import {
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import type { LoanConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
+import { ProductConfigDocumentRequirementsPanel } from "@/components/drawers/product-config-document-requirements"
 import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 import {
   DEFAULT_REPAYMENT_WORKFLOWS,
@@ -987,6 +988,7 @@ export default function ConfigureLoanDrawer({
           onDescriptionChange={setDescription}
           typeSectionLabel="Loan Type"
           typeSectionRequirement="optional"
+          typeSectionHelperText="Product type is already captured when you created this loan. Add types here only if you need extra variants."
           typeNameDraft={loanTypeName}
           typeDescDraft={loanTypeDescription}
           onTypeNameDraftChange={setLoanTypeName}
@@ -1182,54 +1184,15 @@ export default function ConfigureLoanDrawer({
             ) : null}
           </div>
 
-          <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
-            <p className="text-sm font-medium text-gray-700">
-              Document Requirements{" "}
-              <span className="font-normal text-gray-500">(Optional) Requires customer to fill the form</span>
-            </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] items-end">
-              <ProductConfigInput
-                label="Name Document"
-                placeholder="Name document"
-                value={documentName}
-                onChange={setDocumentName}
-                requirement="optional"
-              />
-              <Button
-                type="button"
-                onClick={() => documentsInputRef.current?.click()}
-                className="h-10 bg-[#9A813F] text-white hover:bg-[#8A7335]"
-              >
-                Upload
-              </Button>
-              <input
-                ref={documentsInputRef}
-                type="file"
-                accept=".pdf,application/pdf"
-                onChange={handleDocumentUpload}
-                className="hidden"
-              />
-            </div>
-            {documents.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {documents.map((doc, index) => (
-                  <span
-                    key={`${doc.file?.name ?? doc.fileUrl ?? doc.name}-${index}`}
-                    className="inline-flex items-center gap-2 rounded-md bg-[#9A813F] px-3 py-2 text-xs text-white"
-                  >
-                    {doc.name}
-                    <button
-                      type="button"
-                      onClick={() => setDocuments((prev) => prev.filter((_, current) => current !== index))}
-                      className="text-white/90 hover:text-white"
-                    >
-                      <X size={14} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          <ProductConfigDocumentRequirementsPanel
+            documentName={documentName}
+            onDocumentNameChange={setDocumentName}
+            documents={documents}
+            onDocumentsChange={setDocuments}
+            uploadInputRef={documentsInputRef}
+            onUpload={handleDocumentUpload}
+            helperText="Requires customer to fill the form"
+          />
 
           <ProductConfigOtherRequirementsPanel
             otherRequirementOptions={otherRequirementOptions}

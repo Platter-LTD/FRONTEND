@@ -20,6 +20,7 @@ import {
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import type { MortgageConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
+import { ProductConfigDocumentRequirementsPanel } from "@/components/drawers/product-config-document-requirements"
 import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 import {
   DEFAULT_REPAYMENT_WORKFLOWS,
@@ -1135,6 +1136,7 @@ export default function ConfigureMortgageDrawer({
             onDescriptionChange={setDescription}
             typeSectionLabel="Mortgage Type"
             typeSectionRequirement="optional"
+            typeSectionHelperText="Product type is already captured when you created this mortgage. Select a type here only if you need to specify it again."
             typeNameDraft=""
             typeDescDraft=""
             onTypeNameDraftChange={() => {}}
@@ -1334,60 +1336,16 @@ export default function ConfigureMortgageDrawer({
             ) : null}
           </div>
 
-            <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
-              <p className="text-sm font-medium text-gray-700">
-                Document Requirements{" "}
-                <span className="font-normal text-gray-500">(Optional) Requires customer to download fill the form</span>
-              </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-                <ProductConfigInput
-                  label="Name Document"
-                  placeholder="Name document"
-                  value={documentName}
-                  onChange={setDocumentName}
-                  requirement="optional"
-                />
-                <div className="flex flex-col gap-2 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center">
-                  <Upload className="shrink-0 text-gray-500" size={18} />
-                  <div className="min-w-0 flex-1 text-xs text-gray-600">
-                    Add image <span className="text-gray-400">PDF format • Max. 5MB</span>
-                  </div>
-              <Button 
-                type="button"
-                    onClick={() => documentsInputRef.current?.click()}
-                    className="h-10 shrink-0 bg-[#9A813F] text-white hover:bg-[#8A7335]"
-              >
-                    Upload
-              </Button>
-                  <input
-                    ref={documentsInputRef}
-                    type="file"
-                    onChange={handleDocumentUpload}
-                    accept=".pdf,application/pdf"
-                    className="hidden"
-                  />
-                </div>
-              </div>
-              {documents.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {documents.map((doc, index) => (
-                    <span
-                      key={`${doc.file?.name ?? doc.fileUrl ?? doc.name}-${index}`}
-                      className="inline-flex items-center gap-2 rounded-md bg-[#9A813F] px-3 py-2 text-xs text-white"
-                    >
-                      {doc.name}
-                      <button
-                        type="button"
-                        onClick={() => setDocuments((prev) => prev.filter((_, current) => current !== index))}
-                        className="text-white/90 hover:text-white"
-                      >
-                        <X size={14} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ProductConfigDocumentRequirementsPanel
+              documentName={documentName}
+              onDocumentNameChange={setDocumentName}
+              documents={documents}
+              onDocumentsChange={setDocuments}
+              uploadInputRef={documentsInputRef}
+              onUpload={handleDocumentUpload}
+              helperText="Requires customer to download and fill the form"
+              uploadVariant="card"
+            />
 
             <ProductConfigOtherRequirementsPanel
               otherRequirementOptions={otherRequirementOptions}

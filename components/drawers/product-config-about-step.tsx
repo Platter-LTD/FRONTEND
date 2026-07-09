@@ -100,6 +100,8 @@ export interface ProductConfigAboutStepProps {
   fieldRequirement?: "required" | "optional"
   /** Type section can differ from other About fields (e.g. optional when set at product creation). */
   typeSectionRequirement?: "required" | "optional"
+  /** Shown under the type section when optional (e.g. product type already captured at creation). */
+  typeSectionHelperText?: string
 }
 
 const TEXTAREA_CLASS =
@@ -150,6 +152,7 @@ export function ProductConfigAboutStep({
   className = "",
   fieldRequirement = "required",
   typeSectionRequirement,
+  typeSectionHelperText,
 }: ProductConfigAboutStepProps) {
   const previewInputRef = useRef<HTMLInputElement>(null)
   const typeRequirement = typeSectionRequirement ?? fieldRequirement
@@ -280,6 +283,9 @@ export function ProductConfigAboutStep({
           {typeSectionLabel}
           <span className="font-normal text-gray-500">{requirementSuffix(typeRequirement)}</span>
         </label>
+        {typeRequirement === "optional" && typeSectionHelperText ? (
+          <p className="text-xs text-gray-500">{typeSectionHelperText}</p>
+        ) : null}
         {typeInputMode === "select" ? (
           <ProductConfigSelect
             label=""
