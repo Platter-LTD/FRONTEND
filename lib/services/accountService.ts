@@ -1,7 +1,10 @@
 import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 import { getAccessToken } from '@/lib/cookieAuth';
 import { plataAuthFetch } from "@/lib/plataAuthFetch";
-import type { SpringApplicantProfileResponse } from "@/lib/springApplicantProfile";
+import {
+  normalizeSpringApplicantProfileResponse,
+  type SpringApplicantProfileResponse,
+} from "@/lib/springApplicantProfile";
 
 /** Plata account / product API origin — `NEXT_PUBLIC_API_URL` from `.env`. */
 const ACCOUNT_API_BASE = getPlataApiBaseUrl();
@@ -833,10 +836,9 @@ export const applicationApi = {
       const result = await response.json();
 
       if (!response.ok) {
-        const err = result.error || result.message || 'Failed to load workflow applications'
         return {
           success: false,
-          error: response.status === 401 ? 'Your session has expired. Please sign in again.' : err,
+          error: result.error || result.message || 'Failed to load workflow applications',
         };
       }
 
@@ -852,7 +854,7 @@ export const applicationApi = {
 
   async getWorkflowApplication(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
-      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}`, {
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}`, {
         headers: getAuthHeaders(),
       });
       const result = await response.json();
@@ -898,7 +900,7 @@ export const applicationApi = {
           return { success: false, error: lastError }
         }
 
-        const data = (result.data ?? result) as SpringApplicantProfileResponse
+        const data = normalizeSpringApplicantProfileResponse(result)
         const profileError = data.springApplicantProfileError
         const hasProfile = Boolean(data.springApplicantProfile)
 
@@ -908,8 +910,11 @@ export const applicationApi = {
         }
 
         return {
-          success: result.success !== false,
+          success: result.success !== false && response.ok,
           data,
+          ...(profileError && !hasProfile && !data.application
+            ? { error: profileError }
+            : {}),
         }
       } catch (error: unknown) {
         lastError = error instanceof Error ? error.message : lastError

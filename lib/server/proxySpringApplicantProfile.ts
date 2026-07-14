@@ -35,24 +35,58 @@ export async function proxySpringApplicantProfileRequest(
   }
 
   let tokensToSet: RefreshedTokens | null = refreshed
-  let response = await plataUpstreamAxios.get(upstreamPath, {
-    headers: buildHeaders(request, authorization),
-    timeout: UPSTREAM_TIMEOUT_MS,
-  })
+  let response
+  try {
+    response = await plataUpstreamAxios.get(upstreamPath, {
+      headers: buildHeaders(request, authorization),
+      timeout: UPSTREAM_TIMEOUT_MS,
+    })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Upstream request failed"
+    const timedOut = /timeout|ETIMEDOUT|ECONNABORTED/i.test(message)
+    return NextResponse.json(
+      { success: false, error: timedOut ? "Applicant profile request timed out" : message },
+      { status: timedOut ? 504 : 502 },
+    )
+  }
 
   if (response.status === 401) {
     const retryTokens = await refreshTokensFromRequest(request)
     if (retryTokens?.accessToken) {
       tokensToSet = retryTokens
       const retryAuth = `Bearer ${retryTokens.accessToken}`
-      response = await plataUpstreamAxios.get(upstreamPath, {
-        headers: buildHeaders(request, retryAuth),
-        timeout: UPSTREAM_TIMEOUT_MS,
-      })
+      try {
+        response = await plataUpstreamAxios.get(upstreamPath, {
+          headers: buildHeaders(request, retryAuth),
+          timeout: UPSTREAM_TIMEOUT_MS,
+        })
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Upstream request failed"
+        const timedOut = /timeout|ETIMEDOUT|ECONNABORTED/i.test(message)
+        return NextResponse.json(
+          { success: false, error: timedOut ? "Applicant profile request timed out" : message },
+          { status: timedOut ? 504 : 502 },
+        )
+      }
     }
   }
 
-  const nextResponse = NextResponse.json(response.data ?? {}, { status: response.status })
+  const nextResponse = NextResponse.json(
+    response.status === 401
+      ? {
+          success: false,
+          error:
+            (response.data as { error?: string } | undefined)?.error ||
+            "Unable to load applicant profile upstream",
+          springApplicantProfileError:
+            (response.data as { springApplicantProfileError?: string } | undefined)
+              ?.springApplicantProfileError ||
+            (response.data as { error?: string } | undefined)?.error ||
+            "Upstream authorization failed",
+        }
+      : (response.data ?? {}),
+    { status: response.status === 401 ? 403 : response.status },
+  )
   if (tokensToSet) applyRefreshedTokens(nextResponse, tokensToSet)
   return nextResponse
 }

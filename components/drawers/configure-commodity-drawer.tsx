@@ -12,6 +12,7 @@ import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOption
 import type { CommodityConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
 import {
+  PRODUCT_TYPE_SECTION_HELPER,
   ProductConfigInput,
   ProductConfigSelect,
   ProductConfigTabs,
@@ -121,7 +122,7 @@ export default function ConfigureCommodityDrawer({
   const [previewImage, setPreviewImage] = useState<File | null>(null)
   const [existingPreviewAssetUrl, setExistingPreviewAssetUrl] = useState("")
   const [minInvestmentAmount, setMinInvestmentAmount] = useState("")
-  const [enableUnitInvestmentPurchase, setEnableUnitInvestmentPurchase] = useState(true)
+  const [enableUnitInvestmentPurchase, setEnableUnitInvestmentPurchase] = useState(false)
   const [unitOfMeasure, setUnitOfMeasure] = useState("")
   const [compoundingFrequency, setCompoundingFrequency] = useState("")
 
@@ -576,6 +577,7 @@ export default function ConfigureCommodityDrawer({
     offerYieldValue,
     withdrawalFlexibility,
     minInvestmentAmount: removeCommas(minInvestmentAmount),
+    enableUnitInvestmentPurchase: isInvestment ? enableUnitInvestmentPurchase : undefined,
     unitAmount: removeCommas(unitAmount),
     minQuantityPurchase,
     maxAmount: removeCommas(maxAmount),
@@ -760,6 +762,8 @@ export default function ConfigureCommodityDrawer({
             description={description}
             onDescriptionChange={setDescription}
             typeSectionLabel={typeSectionLabel}
+            typeSectionRequirement="optional"
+            typeSectionHelperText={PRODUCT_TYPE_SECTION_HELPER}
             typeNameDraft={typeNameDraft}
             typeDescDraft={typeDescDraft}
             onTypeNameDraftChange={setTypeNameDraft}
@@ -794,8 +798,8 @@ export default function ConfigureCommodityDrawer({
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <ProductConfigSelect
-                label={isInvestment ? "Interest method" : "Yield Method"}
-                placeholder="Select Section"
+                label="Yield Method"
+                placeholder="Select"
                 value={yieldMethod}
                 options={yieldMethodOptions}
                 onChange={setYieldMethod}
@@ -872,27 +876,37 @@ export default function ConfigureCommodityDrawer({
               </div>
             ) : null}
 
+            {isInvestment ? (
+              <ProductConfigToggle
+                id="enable-unit-investment-purchase"
+                label="Enable unit investment purchase"
+                checked={enableUnitInvestmentPurchase}
+                onChange={setEnableUnitInvestmentPurchase}
+                requirement="optional"
+              />
+            ) : null}
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {isInvestment && enableUnitInvestmentPurchase ? (
+                <ProductConfigInput
+                  label="Unit price (per unit)"
+                  placeholder="e.g 1,000"
+                  value={unitAmount}
+                  onChange={setUnitAmount}
+                  numericOnly
+                  formatThousands
+                  requirement="optional"
+                />
+              ) : null}
               {isInvestment ? (
-                <>
-                  <ProductConfigInput
-                    label="Unit price (per unit)"
-                    placeholder="e.g 1,000"
-                    value={unitAmount}
-                    onChange={setUnitAmount}
-                    numericOnly
-                    formatThousands
-                    requirement="required"
-                  />
-                  <ProductConfigInput
-                    label="Min Quantity Purchase"
-                    placeholder="Min Quantity"
-                    value={minQuantityPurchase}
-                    onChange={setMinQuantityPurchase}
-                    numericOnly
-                    requirement="required"
-                  />
-                </>
+                <ProductConfigInput
+                  label="Min Quantity Purchase"
+                  placeholder="Min Quantity"
+                  value={minQuantityPurchase}
+                  onChange={setMinQuantityPurchase}
+                  numericOnly
+                  requirement="required"
+                />
               ) : (
                 <>
                   <ProductConfigInput
@@ -928,16 +942,6 @@ export default function ConfigureCommodityDrawer({
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
               />
             </div>
-
-            {isInvestment ? (
-              <ProductConfigToggle
-                id="enable-unit-investment-purchase"
-                label="Enable unit investment purchase"
-                checked={enableUnitInvestmentPurchase}
-                onChange={setEnableUnitInvestmentPurchase}
-                requirement="optional"
-              />
-            ) : null}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <ProductConfigToggle

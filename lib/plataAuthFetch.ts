@@ -68,8 +68,8 @@ export async function plataAuthFetch(input: string, init?: RequestInit): Promise
 
   const newToken = await refreshAccessTokenClient()
   if (newToken) {
-    response = await fetch(input, buildInit(newToken, init))
-    if (response.status !== 401) return response
+    // Session was refreshed — return the response even on 401 (upstream auth/permission issue).
+    return fetch(input, buildInit(newToken, init))
   }
 
   token = typeof window !== "undefined" ? getAccessToken() : null
@@ -79,16 +79,15 @@ export async function plataAuthFetch(input: string, init?: RequestInit): Promise
   }
 
   await handleSessionExpired()
+  throw new Error("Session expired")
 }
 
-export function isSessionExpiredError(status: number, error?: string): boolean {
-  if (status === 401) return true
+export function isSessionExpiredError(_status: number, error?: string): boolean {
   const msg = String(error || "").toLowerCase()
   return (
-    msg.includes("invalid token") ||
-    msg.includes("token expired") ||
-    msg.includes("authorization required") ||
+    msg === "session expired" ||
     msg.includes("session has expired") ||
-    msg.includes("please sign in again")
+    msg.includes("please sign in again") ||
+    msg.includes("no refresh token")
   )
 }

@@ -62,11 +62,9 @@ export async function fetchWithAuth(
     const newToken = await doRefresh();
     if (newToken) {
       headers.set('Authorization', `Bearer ${newToken}`);
-      res = await fetch(input, { ...init, headers, credentials: init.credentials ?? 'include' });
+      return fetch(input, { ...init, headers, credentials: init.credentials ?? 'include' });
     }
-    if (res.status === 401) {
-      await handleSessionExpired();
-    }
+    await handleSessionExpired();
   }
 
   return res;

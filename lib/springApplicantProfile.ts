@@ -73,6 +73,36 @@ export type SpringApplicantProfileResponse = {
   springApplicantProfileSkipped?: boolean
 }
 
+/** Normalize BFF / product-ms envelopes (nested `data`, snake_case fallbacks). */
+export function normalizeSpringApplicantProfileResponse(raw: unknown): SpringApplicantProfileResponse {
+  if (!raw || typeof raw !== "object") return {}
+  const envelope = raw as Record<string, unknown>
+  const data =
+    envelope.data && typeof envelope.data === "object"
+      ? (envelope.data as Record<string, unknown>)
+      : envelope
+
+  const profileErrorRaw =
+    data.springApplicantProfileError ??
+    data.spring_applicant_profile_error ??
+    envelope.springApplicantProfileError ??
+    envelope.spring_applicant_profile_error
+
+  return {
+    application:
+      data.application && typeof data.application === "object"
+        ? (data.application as Record<string, unknown>)
+        : undefined,
+    springApplicantProfile: (data.springApplicantProfile ??
+      data.spring_applicant_profile) as SpringApplicantProfile | undefined,
+    springApplicantProfileError:
+      typeof profileErrorRaw === "string" && profileErrorRaw.trim() ? profileErrorRaw.trim() : undefined,
+    springApplicantProfileSkipped: Boolean(
+      data.springApplicantProfileSkipped ?? data.spring_applicant_profile_skipped,
+    ),
+  }
+}
+
 function pickStr(obj: Record<string, unknown> | undefined, ...keys: string[]): string {
   if (!obj) return ""
   for (const key of keys) {
@@ -88,10 +118,10 @@ export function springApplicantDisplayName(
 ): string {
   const fromAuth = [auth?.firstName, auth?.lastName].filter(Boolean).join(" ").trim()
   return (
-    pickStr(application as Record<string, unknown> | undefined, "applicantName") ||
+    pickStr(application as Record<string, unknown> | undefined, "customerName", "applicantName") ||
     fromAuth ||
     auth?.email ||
-    "Applicant"
+    ""
   )
 }
 
@@ -447,4 +477,137 @@ export function collectNonDocumentRequirements(
   payload: SpringApplicantProfileResponse,
 ): Record<string, unknown>[] {
   return collectRequirementSubmissions(payload).filter((r) => !isDocumentRequirementSubmission(r))
+}
+
+/** True when Plata-side application data is enough to render a review panel without Spring. */
+export function hasPlataReviewContent(payload: SpringApplicantProfileResponse): boolean {
+  const plataApp =
+    payload.application && typeof payload.application === "object"
+      ? (payload.application as Record<string, unknown>)
+      : null
+  if (!plataApp) return false
+
+  if (Array.isArray(plataApp.submittedRequirements) && plataApp.submittedRequirements.length > 0) {
+    return true
+  }
+  if (collectRequirementSubmissions(payload).length > 0) return true
+  if (collectApplicantUploadedDocuments(payload).length > 0) return true
+
+  if (pickStr(plataApp, "customerName", "applicantName", "email", "productName")) return true
+  if (plataApp.amount != null || plataApp.contractSnapshot != null) return true
+
+  return false
+}
+
+export type ApplicantCustomerInfo = {
+  loanReason?: string
+  maritalStatus?: string
+  monthlyEarnings?: string
+  repaymentSource?: string
+  politicallyExposed?: string
+  repayingWithSpouse?: string
+}
+
+function readProfileSubmissionValue(submissions: Record<string, unknown>[], ...keys: string[]): string {
+  const normalizedKeys = keys.map((k) => k.toLowerCase())
+  for (const r of submissions) {
+    const type = pickStr(r, "requirementType", "label", "name", "requirementName").toLowerCase()
+    if (!normalizedKeys.includes(type)) continue
+    const val = r.value ?? r.text ?? r.answer
+    if (typeof val === "string" && val.trim()) return val.trim()
+    if (val && typeof val === "object") {
+      const obj = val as { value?: unknown; other?: unknown }
+      if (typeof obj.value === "string" && obj.value.trim()) {
+        const base = obj.value.trim()
+        if (base.toLowerCase() === "other" && typeof obj.other === "string" && obj.other.trim()) {
+          return obj.other.trim()
+        }
+        return base
+      }
+    }
+  }
+  return ""
+}
+
+function formatPepAnswer(value: string): string {
+  const v = value.toLowerCase()
+  if (v === "yes") return "Yes — Politically Exposed Person"
+  if (v === "no") return "No"
+  return value || ""
+}
+
+function formatYesNo(value: string): string {
+  const v = value.toLowerCase()
+  if (v === "yes") return "Yes"
+  if (v === "no") return "No"
+  return value || ""
+}
+
+/** Customer questionnaire fields (PEP, spouse repayment, etc.) from requirement submissions. */
+export function extractApplicantCustomerInfo(
+  payload: SpringApplicantProfileResponse,
+): ApplicantCustomerInfo {
+  const submissions = collectRequirementSubmissions(payload)
+  const snapshot =
+    payload.application && typeof payload.application === "object"
+      ? ((payload.application as Record<string, unknown>).contractSnapshot as Record<string, unknown> | undefined)
+      : undefined
+  const profileBlock =
+    snapshot?.applicantProfile && typeof snapshot.applicantProfile === "object"
+      ? (snapshot.applicantProfile as Record<string, unknown>)
+      : undefined
+
+  return {
+    loanReason:
+      readProfileSubmissionValue(submissions, "Loan Reason") ||
+      pickStr(profileBlock, "loanReason", "loan_reason"),
+    maritalStatus:
+      readProfileSubmissionValue(submissions, "Marital Status") ||
+      pickStr(profileBlock, "maritalStatus", "marital_status"),
+    monthlyEarnings:
+      readProfileSubmissionValue(submissions, "Monthly Earnings") ||
+      pickStr(profileBlock, "monthlyEarnings", "monthly_earnings"),
+    repaymentSource:
+      readProfileSubmissionValue(submissions, "Source of Repayment") ||
+      pickStr(profileBlock, "repaymentSource", "repayment_source"),
+    politicallyExposed:
+      readProfileSubmissionValue(submissions, "PEP Status", "Politically Exposed") ||
+      pickStr(profileBlock, "politicallyExposed", "pepStatus", "pep"),
+    repayingWithSpouse:
+      readProfileSubmissionValue(submissions, "Repaying with Spouse") ||
+      pickStr(profileBlock, "repayingWithSpouse", "repaying_with_spouse"),
+  }
+}
+
+export function applicantCustomerInfoRows(info: ApplicantCustomerInfo): { label: string; value: string }[] {
+  const rows = [
+    { label: "Loan reason", value: info.loanReason || "" },
+    { label: "Marital status", value: info.maritalStatus || "" },
+    { label: "Monthly earnings", value: info.monthlyEarnings || "" },
+    { label: "Source of repayment", value: info.repaymentSource || "" },
+    { label: "PEP status", value: formatPepAnswer(info.politicallyExposed || "") },
+    { label: "Repaying with spouse", value: formatYesNo(info.repayingWithSpouse || "") },
+  ]
+  return rows.filter((r) => r.value)
+}
+
+/** Spouse / co-borrower KYC rows when applicant indicated joint repayment. */
+export function collectSpouseKycEntries(payload: SpringApplicantProfileResponse): Record<string, unknown>[] {
+  const plataApp =
+    payload.application && typeof payload.application === "object"
+      ? (payload.application as Record<string, unknown>)
+      : undefined
+
+  const fromSpouseKyc = plataApp?.spouseKyc
+  if (Array.isArray(fromSpouseKyc) && fromSpouseKyc.length) {
+    return fromSpouseKyc as Record<string, unknown>[]
+  }
+  if (fromSpouseKyc && typeof fromSpouseKyc === "object") {
+    return [fromSpouseKyc as Record<string, unknown>]
+  }
+
+  return collectGuarantors(payload).filter((g) => {
+    const rel = String(g.relationship || g.role || g.type || "").toLowerCase()
+    return rel.includes("spouse") || rel.includes("co-borrower") || rel.includes("coborrower")
+  })
 }

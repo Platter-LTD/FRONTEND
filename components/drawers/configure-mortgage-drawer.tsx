@@ -29,6 +29,7 @@ import {
   ProductConfigSelect,
   ProductConfigTabs,
   ProductConfigToggle,
+  withRepaymentStructureOptions,
 } from "@/components/drawers/product-config-form-fields"
 import { validateAllMortgageSteps, validateMortgageStep } from "@/lib/productConfigureStepValidation"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
@@ -311,7 +312,7 @@ export default function ConfigureMortgageDrawer({
       setInterestMethodOptions(prefetchedOptions.interestMethods)
       setMoratoriumTypeOptions(prefetchedOptions.moratoriumType)
       setMoratoriumDurationOptions(prefetchedOptions.moratoriumDuration)
-      setRepaymentScheduleOptions(prefetchedOptions.repaymentSchedule)
+      setRepaymentScheduleOptions(withRepaymentStructureOptions(prefetchedOptions.repaymentSchedule))
       setAmortizationScheduleOptions(prefetchedOptions.amortizationSchedule)
       setRepaymentFrequencyOptions(prefetchedOptions.repaymentFrequency)
       setAcceptableNpaOptions(prefetchedOptions.acceptableNpa)
@@ -372,7 +373,7 @@ export default function ConfigureMortgageDrawer({
       setInterestMethodOptions(interestMethods)
       setMoratoriumTypeOptions(moratoriumType)
       setMoratoriumDurationOptions(moratoriumDuration)
-      setRepaymentScheduleOptions(repaymentSchedule)
+      setRepaymentScheduleOptions(withRepaymentStructureOptions(repaymentSchedule))
       setAmortizationScheduleOptions(amortizationSchedule)
       setRepaymentFrequencyOptions(repaymentFrequency)
       setAcceptableNpaOptions(acceptableNpa)
@@ -828,6 +829,10 @@ export default function ConfigureMortgageDrawer({
       setPropertyFormError("Fill name, type, value and location before adding.")
       return
     }
+    if (!propertyVideoUrl.trim()) {
+      setPropertyFormError("Property video URL is required before adding.")
+      return
+    }
     setPropertyFormError("")
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     const previewFiles = [...propertyPreviewFiles]
@@ -1245,7 +1250,7 @@ export default function ConfigureMortgageDrawer({
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <ProductConfigSelect
-                label="Repayment Schedule"
+                label="Repayment Structure"
                 placeholder="Select Section"
                 value={repaymentSchedule}
                 options={repaymentScheduleOptions}
@@ -1639,7 +1644,7 @@ export default function ConfigureMortgageDrawer({
               placeholder="https://…"
               value={propertyVideoUrl}
               onChange={setPropertyVideoUrl}
-              requirement="optional"
+              requirement="required"
             />
 
             <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">

@@ -137,6 +137,11 @@ export function MortgageWorkflowDetailSheet({
 
       if (profileRes.success && profileRes.data) {
         setProfilePayload(profileRes.data)
+        setProfileError(
+          profileRes.data.springApplicantProfileError && !profileRes.data.springApplicantProfile
+            ? profileRes.data.springApplicantProfileError
+            : profileRes.error || null,
+        )
         const plataFromProfile = profileRes.data.application
         if (plataFromProfile && typeof plataFromProfile === "object") {
           setDetail(plataFromProfile as Record<string, unknown>)
@@ -359,7 +364,7 @@ export function MortgageWorkflowDetailSheet({
           <div className="flex flex-1 flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto">
               <div className="space-y-5 px-6 py-5">
-                {profileError && !profilePayload ? (
+                {profileError && !profilePayload && !detail ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     Applicant profile could not be loaded: {profileError}
                   </div>

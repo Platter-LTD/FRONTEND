@@ -29,6 +29,7 @@ import {
   ProductConfigSelect,
   ProductConfigTabs,
   ProductConfigToggle,
+  withRepaymentStructureOptions,
 } from "@/components/drawers/product-config-form-fields"
 import { validateAllLoanSteps, validateLoanStep } from "@/lib/productConfigureStepValidation"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
@@ -334,7 +335,7 @@ export default function ConfigureLoanDrawer({
       setInterestMethodOptions(prefetchedOptions.interestMethods)
       setMoratoriumTypeOptions(prefetchedOptions.moratoriumType)
       setMoratoriumDurationOptions(prefetchedOptions.moratoriumDuration)
-      setRepaymentScheduleOptions(prefetchedOptions.repaymentSchedule)
+      setRepaymentScheduleOptions(withRepaymentStructureOptions(prefetchedOptions.repaymentSchedule))
       setAmortizationScheduleOptions(prefetchedOptions.amortizationSchedule)
       setRepaymentFrequencyOptions(prefetchedOptions.repaymentFrequency)
       setAcceptableNpaOptions(prefetchedOptions.acceptableNpa)
@@ -386,7 +387,7 @@ export default function ConfigureLoanDrawer({
       setInterestMethodOptions(interestMethods)
       setMoratoriumTypeOptions(moratoriumType)
       setMoratoriumDurationOptions(moratoriumDuration)
-      setRepaymentScheduleOptions(repaymentSchedule)
+      setRepaymentScheduleOptions(withRepaymentStructureOptions(repaymentSchedule))
       setAmortizationScheduleOptions(amortizationSchedule)
       setRepaymentFrequencyOptions(repaymentFrequency)
       setAcceptableNpaOptions(acceptableNpa)
@@ -806,6 +807,14 @@ export default function ConfigureLoanDrawer({
     setPenaltyTriggerDuration("")
   }
 
+  const removeCharge = (index: number) => {
+    setCharges((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const removePenalty = (index: number) => {
+    setPenalties((prev) => prev.filter((_, i) => i !== index))
+  }
+
   const handleDocumentUpload = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -1093,7 +1102,7 @@ export default function ConfigureLoanDrawer({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <ProductConfigSelect
-              label="Repayment Schedule"
+              label="Repayment Structure"
               placeholder="Select Section"
               value={repaymentSchedule}
               options={repaymentScheduleOptions}
@@ -1247,16 +1256,30 @@ export default function ConfigureLoanDrawer({
 
           {charges.length > 0 && (
             <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-              <div className="grid grid-cols-3 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
                 <span>Name</span>
                 <span>Type</span>
                 <span>Value</span>
+                <span className="text-right" />
               </div>
               {charges.map((charge, index) => (
-                <div key={`${charge.name}-${index}`} className="grid grid-cols-3 border-b border-gray-100 py-2 text-sm last:border-0">
+                <div
+                  key={`${charge.name}-${index}`}
+                  className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                >
                   <span className="pr-2">{charge.name}</span>
                   <span>{charge.feeType}</span>
                   <span>{charge.value}</span>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removeCharge(index)}
+                      className="text-red-600 hover:text-red-700"
+                      aria-label={`Remove ${charge.name}`}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1329,18 +1352,32 @@ export default function ConfigureLoanDrawer({
 
           {penalties.length > 0 && (
             <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-              <div className="grid grid-cols-4 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+              <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
                 <span>Name</span>
                 <span>Type</span>
                 <span>Value</span>
                 <span>Trigger Duration</span>
+                <span className="text-right" />
               </div>
               {penalties.map((penalty, index) => (
-                <div key={`${penalty.name}-${index}`} className="grid grid-cols-4 border-b border-gray-100 py-2 text-sm last:border-0">
+                <div
+                  key={`${penalty.name}-${index}`}
+                  className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                >
                   <span className="pr-2">{penalty.name}</span>
                   <span>{penalty.type}</span>
                   <span>{penalty.value}</span>
                   <span>{penalty.triggerDuration}</span>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removePenalty(index)}
+                      className="text-red-600 hover:text-red-700"
+                      aria-label={`Remove ${penalty.name}`}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

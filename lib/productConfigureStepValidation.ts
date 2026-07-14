@@ -41,7 +41,7 @@ function pushLoanLikeStructureErrors(prefix: string, s: LoanLikeStructureInput, 
   if (has(s.minAmount) && has(s.maxAmount) && Number.isFinite(minN) && Number.isFinite(maxN) && maxN < minN) {
     errors.push(`${prefix}Maximum loan amount must be greater than or equal to the minimum.`)
   }
-  if (!has(s.repaymentSchedule)) errors.push(`${prefix}Repayment Schedule is required.`)
+  if (!has(s.repaymentSchedule)) errors.push(`${prefix}Repayment Structure is required.`)
   if (!has(s.amortizationSchedule)) errors.push(`${prefix}Amortization Schedule is required.`)
   if (!has(s.repaymentFrequency)) errors.push(`${prefix}Repayment Frequency is required.`)
   if (!has(s.acceptableNpa)) errors.push(`${prefix}Acceptable NPA is required.`)
@@ -189,7 +189,7 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
         errors.push(`Properties: Property #${n} — Select at least one facility.`)
       }
       if (!p.previewFiles?.length) errors.push(`Properties: Property #${n} — At least one property image is required.`)
-      // videoUrl optional
+      if (!has(p.videoUrl)) errors.push(`Properties: Property #${n} — Property video URL is required.`)
     })
   }
 
@@ -232,18 +232,12 @@ export function validateSavingsStep(ctx: SavingsStepCtx): { ok: boolean; errors:
     if (!has(ctx.name)) errors.push("About Product: Product name is required.")
     if (!has(ctx.duration)) errors.push("About Product: Duration is required.")
     if (!has(ctx.description)) errors.push("About Product: Product description is required.")
-    if (!ctx.savingsTypes.length) errors.push("About Product: Add at least one savings type.")
-    else {
-      ctx.savingsTypes.forEach((row, i) => {
-        if (!has(row.name)) errors.push(`About Product: Savings type #${i + 1} name is required.`)
-        if (!has(row.description)) errors.push(`About Product: Savings type #${i + 1} description is required.`)
-      })
-    }
+    // Savings type rows are optional — product type is captured at product creation.
     if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
   }
   if (ctx.step === 2) {
     if (!has(ctx.interestRate)) errors.push("Structure: Interest rate is required.")
-    if (!has(ctx.interestMethod)) errors.push("Structure: Interest method is required.")
+    if (!has(ctx.interestMethod)) errors.push("Structure: Yield method is required.")
     if (!has(ctx.savingsType)) errors.push("Structure: Savings type is required.")
     if (!has(ctx.withdrawalFlexibility)) errors.push("Structure: Withdrawal flexibility is required.")
     if (!has(ctx.minSavingsAmount)) errors.push("Structure: Minimum savings amount is required.")
@@ -308,18 +302,12 @@ export function validateInvestmentStep(ctx: InvestmentStepCtx): { ok: boolean; e
     if (!has(ctx.name)) errors.push("About Product: Investment name is required.")
     if (!has(ctx.duration)) errors.push("About Product: Duration is required.")
     if (!has(ctx.description)) errors.push("About Product: Description is required.")
-    if (!ctx.investmentTypes.length) errors.push("About Product: Add at least one investment type.")
-    else {
-      ctx.investmentTypes.forEach((row, i) => {
-        if (!has(row.name)) errors.push(`About Product: Investment type #${i + 1} name is required.`)
-        if (!has(row.description)) errors.push(`About Product: Investment type #${i + 1} description is required.`)
-      })
-    }
+    // Investment type rows are optional — product type is captured at product creation.
     if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
   }
   if (ctx.step === 2) {
     if (!has(ctx.roi)) errors.push("Structure: Returns on Investment (ROI) is required.")
-    if (!has(ctx.interestMethod)) errors.push("Structure: Interest method is required.")
+    if (!has(ctx.interestMethod)) errors.push("Structure: Yield method is required.")
     if (!has(ctx.investmentType)) errors.push("Structure: Investment type is required.")
     if (!has(ctx.withdrawalFlexibility)) errors.push("Structure: Withdrawal flexibility is required.")
     if (!has(ctx.minAmount)) errors.push("Structure: Minimum investment amount is required.")
@@ -331,7 +319,6 @@ export function validateInvestmentStep(ctx: InvestmentStepCtx): { ok: boolean; e
     }
     if (!has(ctx.termsAndConditions)) errors.push("Structure: Terms and conditions are required.")
     if (ctx.enableUnitInvestment) {
-      if (!has(ctx.unitAmount)) errors.push("Unit: Unit amount is required when unit investment is enabled.")
       if (!has(ctx.minQuantity)) errors.push("Unit: Minimum quantity is required when unit investment is enabled.")
     }
   }
@@ -367,6 +354,7 @@ export type CommodityStepCtx = {
   offerYieldValue: string
   withdrawalFlexibility: string
   minInvestmentAmount: string
+  enableUnitInvestmentPurchase?: boolean
   unitAmount: string
   minQuantityPurchase: string
   maxAmount: string
@@ -388,13 +376,7 @@ export function validateCommodityStep(ctx: CommodityStepCtx): { ok: boolean; err
     if (!has(ctx.name)) errors.push(`${aboutLabel}: Product name is required.`)
     if (!has(ctx.duration)) errors.push(`${aboutLabel}: Duration is required.`)
     if (!has(ctx.description)) errors.push(`${aboutLabel}: Description is required.`)
-    if (!ctx.typeRows.length) errors.push(`${aboutLabel}: Add at least one ${ctx.isInvestment ? "investment" : "commodity"} type.`)
-    else {
-      ctx.typeRows.forEach((row, i) => {
-        if (!has(row.name)) errors.push(`${aboutLabel}: Type #${i + 1} name is required.`)
-        if (!has(row.description)) errors.push(`${aboutLabel}: Type #${i + 1} description is required.`)
-      })
-    }
+    // Commodity / investment type rows are optional — product type is captured at product creation.
     if (!ctx.previewImage && !ctx.hasPreviewAsset) errors.push(`${aboutLabel}: Preview file upload is required.`)
   }
 
@@ -404,7 +386,12 @@ export function validateCommodityStep(ctx: CommodityStepCtx): { ok: boolean; err
     if (!has(ctx.withdrawalFlexibility)) errors.push("Structure: Withdrawal flexibility is required.")
     if (ctx.isInvestment && !has(ctx.minInvestmentAmount))
       errors.push("Structure: Minimum investment amount is required.")
-    if (!has(ctx.unitAmount)) errors.push(ctx.isInvestment ? "Structure: Unit price is required." : "Structure: Unit amount is required.")
+    if (!ctx.isInvestment && !has(ctx.unitAmount)) {
+      errors.push("Structure: Unit amount is required.")
+    }
+    if (ctx.isInvestment && ctx.enableUnitInvestmentPurchase && !has(ctx.unitAmount)) {
+      /* Unit price optional when unit investment is enabled */
+    }
     if (!has(ctx.minQuantityPurchase)) errors.push("Structure: Minimum quantity purchase is required.")
     if (!has(ctx.maxAmount))
       errors.push(ctx.isInvestment ? "Structure: Maximum investment amount is required." : "Structure: Max amount is required.")

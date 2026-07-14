@@ -10,6 +10,7 @@ import { uploadProductMediaToUrl } from "@/lib/uploadProductMediaToUrl"
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
 import {
+  PRODUCT_TYPE_SECTION_HELPER,
   ProductConfigInput,
   ProductConfigSelect,
   ProductConfigTabs,
@@ -382,6 +383,8 @@ export default function ConfigureInvestmentDrawer({
             description={description}
             onDescriptionChange={setDescription}
             typeSectionLabel="Investment Type"
+            typeSectionRequirement="optional"
+            typeSectionHelperText={PRODUCT_TYPE_SECTION_HELPER}
             typeNameDraft={typeNameDraft}
             typeDescDraft={typeDescDraft}
             onTypeNameDraftChange={setTypeNameDraft}
@@ -407,8 +410,8 @@ export default function ConfigureInvestmentDrawer({
                 requirement="required"
               />
               <ProductConfigSelect
-                label="Interest Method"
-                placeholder="Select Section"
+                label="Yield Method"
+                placeholder="Select"
                 value={interestMethod}
                 options={interestMethodOptions}
                 onChange={setInterestMethod}
@@ -462,6 +465,35 @@ export default function ConfigureInvestmentDrawer({
               </div>
             </div>
 
+            <ProductConfigToggle
+              id="investment-unit-purchase"
+              label="Enable unit investment purchase"
+              checked={enableUnitInvestment}
+              onChange={setEnableUnitInvestment}
+              requirement="optional"
+            />
+
+            {enableUnitInvestment ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <ProductConfigInput
+                  label="Unit price (per unit)"
+                  placeholder="e.g 1,000"
+                  value={unitAmount}
+                  onChange={setUnitAmount}
+                  numericOnly
+                  formatThousands
+                  requirement="optional"
+                />
+                <ProductConfigInput
+                  label="Min Quantity Purchase"
+                  placeholder="Min Quantity"
+                  value={minQuantity}
+                  onChange={setMinQuantity}
+                  requirement="required"
+                />
+              </div>
+            ) : null}
+
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
                 Investment Terms &amp; Condition
@@ -475,14 +507,6 @@ export default function ConfigureInvestmentDrawer({
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
               />
             </div>
-
-            <ProductConfigToggle
-              id="investment-unit-purchase"
-              label="Enable Unit Investment Purchase"
-              checked={enableUnitInvestment}
-              onChange={setEnableUnitInvestment}
-              requirement="optional"
-            />
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
               <ProductConfigToggle
@@ -505,27 +529,6 @@ export default function ConfigureInvestmentDrawer({
                 </div>
               ) : null}
             </div>
-
-            {enableUnitInvestment && (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <ProductConfigInput
-                  label="Unit Amount"
-                  placeholder="Amount"
-                  value={unitAmount}
-                  onChange={setUnitAmount}
-                  numericOnly
-                  formatThousands
-                  requirement="required"
-                />
-                <ProductConfigInput
-                  label="Min Quantity"
-                  placeholder="Min Quantity"
-                  value={minQuantity}
-                  onChange={setMinQuantity}
-                  requirement="required"
-                />
-              </div>
-            )}
           </div>
         )}
 

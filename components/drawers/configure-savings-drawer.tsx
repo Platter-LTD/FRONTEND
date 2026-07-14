@@ -11,10 +11,12 @@ import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOption
 import type { SavingsConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
 import {
+  PRODUCT_TYPE_SECTION_HELPER,
   ProductConfigInput,
   ProductConfigSelect,
   ProductConfigTabs,
   ProductConfigToggle,
+  SAVINGS_INTEREST_METHOD_OPTIONS,
 } from "@/components/drawers/product-config-form-fields"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import { validateAllSavingsSteps, validateSavingsStep } from "@/lib/productConfigureStepValidation"
@@ -36,7 +38,7 @@ interface ConfigureSavingsDrawerProps {
 
 const STEPS = ["About Product", "Structure", "Fees & Charges"]
 
-const DEFAULT_INTEREST_METHOD_OPTIONS: string[] = []
+const DEFAULT_INTEREST_METHOD_OPTIONS: string[] = [...SAVINGS_INTEREST_METHOD_OPTIONS]
 const DEFAULT_SAVINGS_TYPE_OPTIONS: string[] = []
 const DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS: string[] = []
 const DEFAULT_FEE_TYPE_OPTIONS: string[] = []
@@ -185,7 +187,7 @@ export default function ConfigureSavingsDrawer({
     if (!isOpen) return
     if (prefetchedOptions) {
       setDurationOptions(prefetchedOptions.duration)
-      setInterestMethodOptions(prefetchedOptions.interestMethods)
+      setInterestMethodOptions([...SAVINGS_INTEREST_METHOD_OPTIONS])
       setSavingsTypeOptions(prefetchedOptions.savingsTypes)
       setWithdrawalFlexibilityOptions(prefetchedOptions.withdrawalFlexibility)
       setFeeTypeOptions(prefetchedOptions.feeType)
@@ -211,7 +213,6 @@ export default function ConfigureSavingsDrawer({
         // keep defaults
       }
       const [
-        interestMethods,
         savingsTypes,
         withdrawalFlexibility,
         feeTypes,
@@ -220,7 +221,6 @@ export default function ConfigureSavingsDrawer({
         otherRequirementType,
         requirementContentType,
       ] = await Promise.all([
-        fetchOptionLabels("savings-interest-method", DEFAULT_INTEREST_METHOD_OPTIONS),
         fetchOptionLabels("savings-type", DEFAULT_SAVINGS_TYPE_OPTIONS),
         fetchOptionLabels("withdrawal-flexibility", DEFAULT_WITHDRAWAL_FLEXIBILITY_OPTIONS),
         fetchOptionLabels("fee-type", DEFAULT_FEE_TYPE_OPTIONS),
@@ -229,7 +229,7 @@ export default function ConfigureSavingsDrawer({
         fetchProductOptionLabels("loan-other-requirement-type", []),
         fetchProductOptionLabels("loan-other-requirement-content-type", []),
       ])
-      setInterestMethodOptions(interestMethods)
+      setInterestMethodOptions([...SAVINGS_INTEREST_METHOD_OPTIONS])
       setSavingsTypeOptions(savingsTypes)
       setWithdrawalFlexibilityOptions(withdrawalFlexibility)
       setFeeTypeOptions(feeTypes)
@@ -580,6 +580,8 @@ export default function ConfigureSavingsDrawer({
             description={description}
             onDescriptionChange={setDescription}
             typeSectionLabel="Savings Type"
+            typeSectionRequirement="optional"
+            typeSectionHelperText={PRODUCT_TYPE_SECTION_HELPER}
             typeNameDraft={typeNameDraft}
             typeDescDraft={typeDescDraft}
             onTypeNameDraftChange={setTypeNameDraft}
@@ -623,7 +625,7 @@ export default function ConfigureSavingsDrawer({
               />
               <ProductConfigSelect
                 label="Interest Method"
-                placeholder="Select Section"
+                placeholder="Select"
                 value={interestMethod}
                 options={interestMethodOptions}
                 onChange={setInterestMethod}

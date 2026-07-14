@@ -218,6 +218,24 @@ export const DEFAULT_REPAYMENT_WORKFLOWS = [
   "Interest -> Charges -> Principal",
 ] as const
 
+/** Savings Structure — interest accrual frequency (merchant spec). */
+export const SAVINGS_INTEREST_METHOD_OPTIONS = ["Daily", "Monthly", "Quarterly", "Annually"] as const
+
+/** Repayment Structure option added per mortgage/loan merchant spec. */
+export const REPAYMENT_STRUCTURE_ANNUITY = "Annuity"
+
+/** Ensure Annuity appears in repayment structure dropdowns. */
+export function withRepaymentStructureOptions(options: string[]): string[] {
+  const merged = [...options]
+  const hasAnnuity = merged.some((o) => o.trim().toLowerCase() === "annuity")
+  if (!hasAnnuity) merged.push(REPAYMENT_STRUCTURE_ANNUITY)
+  return merged
+}
+
+/** Shown when product type on About step is optional (captured at product creation). */
+export const PRODUCT_TYPE_SECTION_HELPER =
+  "Product type is already captured when you created this product. Add types here only if you need extra variants."
+
 function formatWorkflowLabel(workflow: string) {
   return workflow.replace(/->/g, " → ")
 }

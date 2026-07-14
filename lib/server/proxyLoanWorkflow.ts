@@ -61,7 +61,20 @@ export async function proxyLoanWorkflowRequest(
   }
 
   const data = await response.json().catch(() => ({}))
-  const nextResponse = NextResponse.json(data, { status: response.status })
+  const status =
+    response.status === 401
+      ? 403
+      : response.status
+  const responseBody =
+    response.status === 401
+      ? {
+          success: false,
+          error:
+            (data as { error?: string }).error ||
+            "Unable to authorize this workflow request. Check merchant access for this application.",
+        }
+      : data
+  const nextResponse = NextResponse.json(responseBody, { status })
   if (tokensToSet) applyRefreshedTokens(nextResponse, tokensToSet)
   return nextResponse
 }

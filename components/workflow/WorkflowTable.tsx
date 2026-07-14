@@ -178,11 +178,7 @@ export function WorkflowTable({
             limit: 100,
           })
           if (!res.success) {
-            const err = res.error || "Failed to load"
-            if (isSessionExpiredError(401, err)) {
-              await handleSessionExpired()
-            }
-            throw new Error(err)
+            throw new Error(res.error || "Failed to load")
           }
           list = extractList(res)
         }
