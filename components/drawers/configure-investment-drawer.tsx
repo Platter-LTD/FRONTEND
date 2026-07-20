@@ -89,7 +89,7 @@ export default function ConfigureInvestmentDrawer({
   const [maxAmount, setMaxAmount] = useState("")
   const [termsAndConditions, setTermsAndConditions] = useState("")
 
-  const [enableUnitInvestment, setEnableUnitInvestment] = useState(true)
+  const [enableUnitInvestment, setEnableUnitInvestment] = useState(false)
   const [moratoriumEnabled, setMoratoriumEnabled] = useState(true)
   const [moratoriumDays, setMoratoriumDays] = useState("")
   const [unitAmount, setUnitAmount] = useState("")
@@ -237,6 +237,11 @@ export default function ConfigureInvestmentDrawer({
 
   const removePenalty = (index: number) => setWithdrawalPenalties((prev) => prev.filter((_, i) => i !== index))
 
+  const handleEnableUnitInvestmentChange = (checked: boolean) => {
+    setEnableUnitInvestment(checked)
+    if (!checked) setUnitAmount("")
+  }
+
   const handleBack = () => {
     if (isSubmitting) return
     if (step > 1) setStep((s) => s - 1)
@@ -317,7 +322,7 @@ export default function ConfigureInvestmentDrawer({
           enableUnitInvestment,
           moratoriumEnabled,
           moratoriumDays,
-          unitAmount: removeCommas(unitAmount),
+          unitAmount: enableUnitInvestment ? removeCommas(unitAmount) : "",
           minQuantity,
           charges,
           chargeForcefulWithdrawal,
@@ -469,29 +474,30 @@ export default function ConfigureInvestmentDrawer({
               id="investment-unit-purchase"
               label="Enable unit investment purchase"
               checked={enableUnitInvestment}
-              onChange={setEnableUnitInvestment}
+              onChange={handleEnableUnitInvestmentChange}
               requirement="optional"
             />
 
             {enableUnitInvestment ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <ProductConfigInput
-                  label="Unit price (per unit)"
-                  placeholder="e.g 1,000"
-                  value={unitAmount}
-                  onChange={setUnitAmount}
-                  numericOnly
-                  formatThousands
-                  requirement="optional"
-                />
-                <ProductConfigInput
-                  label="Min Quantity Purchase"
-                  placeholder="Min Quantity"
-                  value={minQuantity}
-                  onChange={setMinQuantity}
-                  requirement="required"
-                />
-              </div>
+              <ProductConfigInput
+                label="Unit price (per unit)"
+                placeholder="e.g 1,000"
+                value={unitAmount}
+                onChange={setUnitAmount}
+                numericOnly
+                formatThousands
+                requirement="optional"
+              />
+            ) : null}
+
+            {enableUnitInvestment ? (
+              <ProductConfigInput
+                label="Min Quantity Purchase"
+                placeholder="Min Quantity"
+                value={minQuantity}
+                onChange={setMinQuantity}
+                requirement="required"
+              />
             ) : null}
 
             <div className="space-y-2">

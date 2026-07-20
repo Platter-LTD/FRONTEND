@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, ExternalLink, FileText, User } from "lucid
 import { Badge } from "@/components/ui/badge"
 import {
   applicantCustomerInfoRows,
+  applicantSpouseInfoRows,
   collectApplicantUploadedDocuments,
   collectGuarantors,
   collectNonDocumentRequirements,
@@ -16,6 +17,7 @@ import {
   formatProfileCurrency,
   formatProfileDate,
   hasPlataReviewContent,
+  hasSpouseDetails,
   mergeProfilePayloadWithPlataApplication,
   mortgageSelectionFromSnapshot,
   parseRequirementSubmission,
@@ -230,7 +232,9 @@ export function SpringApplicantReviewPanel({
   const guarantors = collectGuarantors(mergedPayload)
   const customerInfo = extractApplicantCustomerInfo(mergedPayload)
   const customerInfoRows = applicantCustomerInfoRows(customerInfo)
+  const spouseInfoRows = applicantSpouseInfoRows(customerInfo)
   const spouseKycEntries = collectSpouseKycEntries(mergedPayload)
+  const showSpouseSection = hasSpouseDetails(customerInfo) || spouseKycEntries.length > 0
   const kycDocs = Array.isArray(kyc?.documents) ? kyc.documents : []
 
   return (
@@ -559,54 +563,85 @@ export function SpringApplicantReviewPanel({
         </Section>
       ) : null}
 
-      {spouseKycEntries.length > 0 ? (
+      {showSpouseSection ? (
         <Section title="Spouse KYC">
-          <ul className="space-y-3">
-            {spouseKycEntries.map((entry, i) => {
-              const row = entry as Record<string, unknown>
-              const name =
-                [row.firstName, row.lastName].filter((x) => typeof x === "string").join(" ").trim() ||
-                String(row.name || row.fullName || `Spouse ${i + 1}`)
-              const kycUrl =
-                typeof row.verificationUrl === "string"
-                  ? row.verificationUrl
-                  : typeof row.kycUrl === "string"
-                    ? row.kycUrl
-                    : typeof row.kycLink === "string"
-                      ? row.kycLink
+          {spouseInfoRows.length > 0 ? (
+            <div className="mb-4">
+              <FieldGrid rows={spouseInfoRows} />
+            </div>
+          ) : null}
+
+          {spouseKycEntries.length > 0 ? (
+            <ul className="space-y-3">
+              {spouseKycEntries.map((entry, i) => {
+                const row = entry as Record<string, unknown>
+                const name =
+                  [row.firstName, row.lastName].filter((x) => typeof x === "string").join(" ").trim() ||
+                  String(row.name || row.fullName || `Spouse ${i + 1}`)
+                const kycUrl =
+                  typeof row.verificationUrl === "string"
+                    ? row.verificationUrl
+                    : typeof row.kycUrl === "string"
+                      ? row.kycUrl
+                      : typeof row.kycLink === "string"
+                        ? row.kycLink
+                        : ""
+                const kycStatus =
+                  typeof row.kycStatus === "string"
+                    ? row.kycStatus
+                    : typeof row.status === "string"
+                      ? row.status
                       : ""
-              const meta = [row.email, row.phone, row.relationship, row.status]
-                .filter((x) => typeof x === "string" && x && x !== "Not specified")
-                .join(" · ")
-              return (
-                <li key={`spouse-${name}-${i}`} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
-                  <div className="flex items-start gap-2">
-                    <User className="mt-0.5 h-4 w-4 text-gray-400" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-gray-900">{name}</p>
-                      <p className="text-xs text-gray-500">{meta || "—"}</p>
-                      {kycUrl ? (
-                        <a
-                          href={kycUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center gap-1 text-xs text-[#8B7355] hover:underline"
-                        >
-                          Verification link <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : null}
+                const meta = [row.email, row.phone, row.occupation, row.country, row.relationship, kycStatus]
+                  .filter((x) => typeof x === "string" && x && x !== "Not specified")
+                  .join(" · ")
+                const alreadyShownInGrid =
+                  spouseInfoRows.length > 0 &&
+                  !kycUrl &&
+                  !kycStatus &&
+                  name === (customerInfo.spouseFullName || "")
+                if (alreadyShownInGrid) return null
+                return (
+                  <li key={`spouse-${name}-${i}`} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3">
+                    <div className="flex items-start gap-2">
+                      <User className="mt-0.5 h-4 w-4 text-gray-400" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-gray-900">{name || "Spouse"}</p>
+                        {meta ? <p className="text-xs text-gray-500">{meta}</p> : null}
+                        {kycStatus ? (
+                          <Badge
+                            className={cn(
+                              "mt-2",
+                              /approved|completed|verified/i.test(kycStatus)
+                                ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                : "bg-[#F5F0E8] text-[#8B7355] hover:bg-[#F5F0E8]",
+                            )}
+                          >
+                            KYC {kycStatus}
+                          </Badge>
+                        ) : null}
+                        {kycUrl ? (
+                          <a
+                            href={kycUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-flex items-center gap-1 text-xs text-[#8B7355] hover:underline"
+                          >
+                            Verification link <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </Section>
-      ) : customerInfo.repayingWithSpouse?.toLowerCase() === "yes" ? (
-        <Section title="Spouse KYC">
-          <p className="text-sm text-gray-500">
-            Applicant indicated joint repayment with a spouse; spouse KYC details were not returned in this profile.
-          </p>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : customerInfo.repayingWithSpouse?.toLowerCase() === "yes" && spouseInfoRows.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              Applicant indicated joint repayment with a spouse; spouse KYC details were not returned in this
+              profile.
+            </p>
+          ) : null}
         </Section>
       ) : null}
 

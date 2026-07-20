@@ -79,6 +79,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const [isProductsOpen, setIsProductsOpen] = useState(false)
   const [isApplicationsOpen, setIsApplicationsOpen] = useState(false)
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
+  const [isAdminOpen, setIsAdminOpen] = useState(false)
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
@@ -143,12 +144,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
       setIsProductsOpen(false)
       setIsApplicationsOpen(false)
       setIsWorkflowOpen(false)
+      setIsAdminOpen(false)
       return
     }
     setIsWalletsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/wallets`))
     setIsProductsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/products`))
     setIsApplicationsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/applications`))
     setIsWorkflowOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/operation-workflow`))
+    setIsAdminOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/admin`))
   }, [pathname, appId])
 
   const globalNavItems: GlobalNavItem[] = [
@@ -167,6 +170,10 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
           icon: <ShieldCheck size={20} />,
           label: "Admin",
           href: `/dashboard/create-app/all-apps/${appId}/admin`,
+          subItems: [
+            { label: "Overview", href: `/dashboard/create-app/all-apps/${appId}/admin` },
+            { label: "Analytics", href: `/dashboard/create-app/all-apps/${appId}/admin/analytics` },
+          ],
         },
         {
           icon: <FaWallet size={20} />,
@@ -227,25 +234,29 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
                 ? activeSubHref !== null || pathname === item.href || pathname.startsWith(`${item.href}/`)
                 : pathname === item.href || pathname.startsWith(`${item.href}/`)
               const isOpen =
-                item.label === "Wallets"
-                  ? isWalletsOpen
-                  : item.label === "Products"
-                    ? isProductsOpen
-                    : item.label === "Applications"
-                      ? isApplicationsOpen
-                      : item.label === "Operation Workflow"
-                        ? isWorkflowOpen
-                        : false
+                item.label === "Admin"
+                  ? isAdminOpen
+                  : item.label === "Wallets"
+                    ? isWalletsOpen
+                    : item.label === "Products"
+                      ? isProductsOpen
+                      : item.label === "Applications"
+                        ? isApplicationsOpen
+                        : item.label === "Operation Workflow"
+                          ? isWorkflowOpen
+                          : false
               const setIsOpen =
-                item.label === "Wallets"
-                  ? setIsWalletsOpen
-                  : item.label === "Products"
-                    ? setIsProductsOpen
-                    : item.label === "Applications"
-                      ? setIsApplicationsOpen
-                      : item.label === "Operation Workflow"
-                        ? setIsWorkflowOpen
-                        : () => {}
+                item.label === "Admin"
+                  ? setIsAdminOpen
+                  : item.label === "Wallets"
+                    ? setIsWalletsOpen
+                    : item.label === "Products"
+                      ? setIsProductsOpen
+                      : item.label === "Applications"
+                        ? setIsApplicationsOpen
+                        : item.label === "Operation Workflow"
+                          ? setIsWorkflowOpen
+                          : () => {}
 
               return (
                 <li key={index}>

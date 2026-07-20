@@ -237,14 +237,22 @@ export default function ConfigureCommodityDrawer({
         )
       }
       const u = structure.unitAmount
+      let resolvedUnitAmount = ""
       if (u && typeof u === "object" && !Array.isArray(u)) {
         const uo = u as Record<string, unknown>
-        setUnitAmount(formatAmountDisplayFromUnknown(uo.amount ?? ""))
+        resolvedUnitAmount = formatAmountDisplayFromUnknown(uo.amount ?? "")
         setMinQuantityPurchase(String(uo.minQuantity ?? structure.minQuantityPurchase ?? ""))
       } else {
-        setUnitAmount(formatAmountDisplayFromUnknown(structure.minInvestmentAmount ?? commodityData?.unitAmount ?? ""))
+        resolvedUnitAmount = formatAmountDisplayFromUnknown(
+          commodityData?.unitAmountPrice ??
+            structure.unitAmountPrice ??
+            commodityData?.unitAmount ??
+            structure.unitAmount ??
+            "",
+        )
         setMinQuantityPurchase(String(commodityData?.minQuantityPurchase ?? structure.minQuantityPurchase ?? ""))
       }
+      setUnitAmount(resolvedUnitAmount)
       const roi = structure.returnsOnInvestment
       if (roi != null && String(roi).trim() !== "") {
         setOfferYieldOn(true)
@@ -255,8 +263,13 @@ export default function ConfigureCommodityDrawer({
         setOfferYieldValue(String(commodityData?.offerYieldValue ?? structure?.offerYieldValue ?? ""))
       }
       setYieldMethod(String(structure.interestMethod ?? commodityData?.yieldMethod ?? structure.yieldMethod ?? ""))
+      const explicitEnableUnit =
+        commodityData?.enableUnitInvestmentPurchase ?? structure.enableUnitInvestmentPurchase
+      const hasSavedUnitPrice = Boolean(resolvedUnitAmount.replace(/,/g, "").trim())
       setEnableUnitInvestmentPurchase(
-        asBool(commodityData?.enableUnitInvestmentPurchase ?? structure.enableUnitInvestmentPurchase ?? true),
+        explicitEnableUnit !== undefined && explicitEnableUnit !== null
+          ? asBool(explicitEnableUnit)
+          : hasSavedUnitPrice,
       )
       const mor = structure.moratorium
       if (mor != null && String(mor).trim() !== "" && !Number.isNaN(Number(mor))) {
@@ -437,6 +450,11 @@ export default function ConfigureCommodityDrawer({
   }, [moratoriumEnabled])
 
   const removeCommas = (value: string) => value.replace(/,/g, "")
+
+  const handleEnableUnitInvestmentPurchaseChange = (checked: boolean) => {
+    setEnableUnitInvestmentPurchase(checked)
+    if (!checked) setUnitAmount("")
+  }
 
   const addTypeRow = () => {
     if (!typeNameDraft.trim() || !typeDescDraft.trim()) return
@@ -634,7 +652,7 @@ export default function ConfigureCommodityDrawer({
         offerYieldEnabled: offerYieldOn,
         offerYieldValue,
         withdrawalFlexibility,
-        unitAmount: removeCommas(unitAmount),
+        unitAmount: isInvestment && !enableUnitInvestmentPurchase ? "" : removeCommas(unitAmount),
         minQuantityPurchase,
         maxAmount: removeCommas(maxAmount),
         termsAndConditions,
@@ -673,7 +691,7 @@ export default function ConfigureCommodityDrawer({
             additionalRequirements: [],
             minInvestmentAmount: removeCommas(minInvestmentAmount),
             maxInvestmentAmount: removeCommas(maxAmount),
-            unitAmountPrice: removeCommas(unitAmount),
+            unitAmountPrice: enableUnitInvestmentPurchase ? removeCommas(unitAmount) : "",
             enableUnitInvestmentPurchase,
             expectedReturn: offerYieldOn ? offerYieldValue : "",
           }),
@@ -881,23 +899,24 @@ export default function ConfigureCommodityDrawer({
                 id="enable-unit-investment-purchase"
                 label="Enable unit investment purchase"
                 checked={enableUnitInvestmentPurchase}
-                onChange={setEnableUnitInvestmentPurchase}
+                onChange={handleEnableUnitInvestmentPurchaseChange}
                 requirement="optional"
               />
             ) : null}
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {isInvestment && enableUnitInvestmentPurchase ? (
-                <ProductConfigInput
-                  label="Unit price (per unit)"
-                  placeholder="e.g 1,000"
-                  value={unitAmount}
-                  onChange={setUnitAmount}
-                  numericOnly
-                  formatThousands
-                  requirement="optional"
-                />
-              ) : null}
+            {isInvestment && enableUnitInvestmentPurchase ? (
+              <ProductConfigInput
+                label="Unit price (per unit)"
+                placeholder="e.g 1,000"
+                value={unitAmount}
+                onChange={setUnitAmount}
+                numericOnly
+                formatThousands
+                requirement="optional"
+              />
+            ) : null}
+
+            <div className={`grid grid-cols-1 gap-4 ${isInvestment ? "" : "sm:grid-cols-2"}`}>
               {isInvestment ? (
                 <ProductConfigInput
                   label="Min Quantity Purchase"
@@ -905,7 +924,7 @@ export default function ConfigureCommodityDrawer({
                   value={minQuantityPurchase}
                   onChange={setMinQuantityPurchase}
                   numericOnly
-                  requirement="required"
+                  requirement={enableUnitInvestmentPurchase ? "required" : "optional"}
                 />
               ) : (
                 <>

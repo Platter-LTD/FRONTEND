@@ -504,8 +504,94 @@ export type ApplicantCustomerInfo = {
   maritalStatus?: string
   monthlyEarnings?: string
   repaymentSource?: string
+  /** Legacy yes/no string from requirement submissions */
   politicallyExposed?: string
+  /** Spring platform field — self-declaration boolean */
+  isPoliticallyExposedPerson?: boolean
   repayingWithSpouse?: string
+  spouseFullName?: string
+  spouseEmail?: string
+  spousePhone?: string
+  spouseOccupation?: string
+  spouseCountry?: string
+}
+
+const TOP_LEVEL_PLATFORM_FIELD_KEYS = [
+  "isPoliticallyExposedPerson",
+  "monthlyIncome",
+  "repaymentSource",
+  "repaymentSourceOther",
+  "maritalStatus",
+  "maritalStatusOther",
+  "loanReason",
+  "loanReasonOther",
+  "repayingWithSpouse",
+  "spouseFullName",
+  "spouseEmail",
+  "spousePhone",
+  "spouseOccupation",
+  "spouseCountry",
+] as const
+
+function readPlatformFieldsBlock(raw: unknown): Record<string, unknown> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined
+  return raw as Record<string, unknown>
+}
+
+/** Platform fields may live under `platformFields`, progress metadata, or flat on the application root. */
+function pickTopLevelPlatformFields(
+  application: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const out: Record<string, unknown> = {}
+  for (const key of TOP_LEVEL_PLATFORM_FIELD_KEYS) {
+    const value = application[key]
+    if (value === undefined || value === null || value === "") continue
+    out[key] = value
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/** Resolve saved platform fields from GET application (submitted or draft progress). */
+export function resolvePlatformFieldsFromApplication(
+  application?: Record<string, unknown> | null,
+): Record<string, unknown> | undefined {
+  if (!application || typeof application !== "object") return undefined
+
+  const nested = readPlatformFieldsBlock(application.platformFields)
+  const progress = readPlatformFieldsBlock(application.applicationProgress)
+  const progressMeta = readPlatformFieldsBlock(progress?.metadata)
+  const fromProgress = readPlatformFieldsBlock(progressMeta?.platformFields)
+  const fromRoot = pickTopLevelPlatformFields(application)
+
+  if (nested || fromProgress || fromRoot) {
+    return { ...(fromProgress ?? {}), ...(nested ?? {}), ...(fromRoot ?? {}) }
+  }
+
+  const snapshot = readPlatformFieldsBlock(application.contractSnapshot)
+  const snapshotPlatform = readPlatformFieldsBlock(snapshot?.platformFields)
+  if (snapshotPlatform) return snapshotPlatform
+
+  return undefined
+}
+
+export function resolveIsPoliticallyExposedPerson(
+  application?: Record<string, unknown> | null,
+): boolean | undefined {
+  const platformFields = resolvePlatformFieldsFromApplication(application)
+  const pep = platformFields?.isPoliticallyExposedPerson
+  if (typeof pep === "boolean") return pep
+  if (typeof pep === "string") {
+    const normalized = pep.trim().toLowerCase()
+    if (normalized === "true" || normalized === "yes") return true
+    if (normalized === "false" || normalized === "no") return false
+  }
+  return undefined
+}
+
+function formatPepBoolean(value: boolean | undefined): string {
+  if (value === true) return "Yes"
+  if (value === false) return "No"
+  return ""
 }
 
 function readProfileSubmissionValue(submissions: Record<string, unknown>[], ...keys: string[]): string {
@@ -543,52 +629,127 @@ function formatYesNo(value: string): string {
   return value || ""
 }
 
-/** Customer questionnaire fields (PEP, spouse repayment, etc.) from requirement submissions. */
+/** Customer questionnaire fields (PEP, spouse repayment, etc.) from platform fields and legacy submissions. */
 export function extractApplicantCustomerInfo(
   payload: SpringApplicantProfileResponse,
 ): ApplicantCustomerInfo {
   const submissions = collectRequirementSubmissions(payload)
-  const snapshot =
+  const plataApp =
     payload.application && typeof payload.application === "object"
-      ? ((payload.application as Record<string, unknown>).contractSnapshot as Record<string, unknown> | undefined)
+      ? (payload.application as Record<string, unknown>)
       : undefined
+  const springApp = payload.springApplicantProfile?.application as Record<string, unknown> | undefined
+  const platformFields = resolvePlatformFieldsFromApplication(plataApp ?? springApp)
+  const pepFromPlatform = resolveIsPoliticallyExposedPerson(plataApp ?? springApp)
+
+  const snapshot = plataApp?.contractSnapshot as Record<string, unknown> | undefined
   const profileBlock =
     snapshot?.applicantProfile && typeof snapshot.applicantProfile === "object"
       ? (snapshot.applicantProfile as Record<string, unknown>)
       : undefined
 
+  const monthlyIncome = platformFields?.monthlyIncome
+  const monthlyEarningsFromPlatform =
+    typeof monthlyIncome === "number"
+      ? String(monthlyIncome)
+      : typeof monthlyIncome === "string"
+        ? monthlyIncome
+        : ""
+
   return {
     loanReason:
+      pickStr(platformFields, "loanReason", "loan_reason") ||
       readProfileSubmissionValue(submissions, "Loan Reason") ||
       pickStr(profileBlock, "loanReason", "loan_reason"),
     maritalStatus:
+      pickStr(platformFields, "maritalStatus", "marital_status") ||
       readProfileSubmissionValue(submissions, "Marital Status") ||
       pickStr(profileBlock, "maritalStatus", "marital_status"),
     monthlyEarnings:
+      monthlyEarningsFromPlatform ||
       readProfileSubmissionValue(submissions, "Monthly Earnings") ||
       pickStr(profileBlock, "monthlyEarnings", "monthly_earnings"),
     repaymentSource:
+      pickStr(platformFields, "repaymentSource", "repayment_source") ||
       readProfileSubmissionValue(submissions, "Source of Repayment") ||
       pickStr(profileBlock, "repaymentSource", "repayment_source"),
+    isPoliticallyExposedPerson: pepFromPlatform,
     politicallyExposed:
-      readProfileSubmissionValue(submissions, "PEP Status", "Politically Exposed") ||
-      pickStr(profileBlock, "politicallyExposed", "pepStatus", "pep"),
+      pepFromPlatform === true
+        ? "yes"
+        : pepFromPlatform === false
+          ? "no"
+          : readProfileSubmissionValue(submissions, "PEP Status", "Politically Exposed") ||
+            pickStr(profileBlock, "politicallyExposed", "pepStatus", "pep"),
     repayingWithSpouse:
-      readProfileSubmissionValue(submissions, "Repaying with Spouse") ||
-      pickStr(profileBlock, "repayingWithSpouse", "repaying_with_spouse"),
+      platformFields?.repayingWithSpouse === true
+        ? "yes"
+        : platformFields?.repayingWithSpouse === false
+          ? "no"
+          : readProfileSubmissionValue(submissions, "Repaying with Spouse") ||
+            pickStr(profileBlock, "repayingWithSpouse", "repaying_with_spouse") ||
+            pickStr(plataApp, "repayingWithSpouse", "repaying_with_spouse"),
+    spouseFullName:
+      pickStr(platformFields, "spouseFullName", "spouse_full_name") ||
+      pickStr(plataApp, "spouseFullName", "spouse_full_name"),
+    spouseEmail:
+      pickStr(platformFields, "spouseEmail", "spouse_email") ||
+      pickStr(plataApp, "spouseEmail", "spouse_email"),
+    spousePhone:
+      pickStr(platformFields, "spousePhone", "spouse_phone") ||
+      pickStr(plataApp, "spousePhone", "spouse_phone"),
+    spouseOccupation:
+      pickStr(platformFields, "spouseOccupation", "spouse_occupation") ||
+      pickStr(plataApp, "spouseOccupation", "spouse_occupation"),
+    spouseCountry:
+      pickStr(platformFields, "spouseCountry", "spouse_country") ||
+      pickStr(plataApp, "spouseCountry", "spouse_country"),
   }
 }
 
 export function applicantCustomerInfoRows(info: ApplicantCustomerInfo): { label: string; value: string }[] {
-  const rows = [
+  const pepValue =
+    info.isPoliticallyExposedPerson !== undefined
+      ? formatPepBoolean(info.isPoliticallyExposedPerson)
+      : formatPepAnswer(info.politicallyExposed || "")
+
+  const optionalRows = [
     { label: "Loan reason", value: info.loanReason || "" },
     { label: "Marital status", value: info.maritalStatus || "" },
     { label: "Monthly earnings", value: info.monthlyEarnings || "" },
     { label: "Source of repayment", value: info.repaymentSource || "" },
-    { label: "PEP status", value: formatPepAnswer(info.politicallyExposed || "") },
     { label: "Repaying with spouse", value: formatYesNo(info.repayingWithSpouse || "") },
+  ].filter((r) => r.value)
+
+  // PEP is a required self-declaration — always surface it, even when not yet provided.
+  return [
+    ...optionalRows,
+    { label: "Are you a Politically Exposed Person?", value: pepValue || "Not provided" },
+  ]
+}
+
+/** Contact + declaration rows for the Spouse KYC section on merchant review. */
+export function applicantSpouseInfoRows(info: ApplicantCustomerInfo): { label: string; value: string }[] {
+  const rows = [
+    { label: "Repaying with spouse", value: formatYesNo(info.repayingWithSpouse || "") },
+    { label: "Spouse full name", value: info.spouseFullName || "" },
+    { label: "Spouse email", value: info.spouseEmail || "" },
+    { label: "Spouse phone", value: info.spousePhone || "" },
+    { label: "Spouse occupation", value: info.spouseOccupation || "" },
+    { label: "Spouse country", value: info.spouseCountry || "" },
   ]
   return rows.filter((r) => r.value)
+}
+
+export function hasSpouseDetails(info: ApplicantCustomerInfo): boolean {
+  return Boolean(
+    info.repayingWithSpouse?.toLowerCase() === "yes" ||
+      info.spouseFullName ||
+      info.spouseEmail ||
+      info.spousePhone ||
+      info.spouseOccupation ||
+      info.spouseCountry,
+  )
 }
 
 /** Spouse / co-borrower KYC rows when applicant indicated joint repayment. */
@@ -606,8 +767,41 @@ export function collectSpouseKycEntries(payload: SpringApplicantProfileResponse)
     return [fromSpouseKyc as Record<string, unknown>]
   }
 
-  return collectGuarantors(payload).filter((g) => {
+  const fromGuarantors = collectGuarantors(payload).filter((g) => {
     const rel = String(g.relationship || g.role || g.type || "").toLowerCase()
     return rel.includes("spouse") || rel.includes("co-borrower") || rel.includes("coborrower")
   })
+  if (fromGuarantors.length > 0) return fromGuarantors
+
+  // Synthesize a spouse entry from flat application / platform fields when spouseKyc is null.
+  const platformFields = resolvePlatformFieldsFromApplication(plataApp)
+  const fullName =
+    pickStr(platformFields, "spouseFullName", "spouse_full_name") ||
+    pickStr(plataApp, "spouseFullName", "spouse_full_name")
+  const email =
+    pickStr(platformFields, "spouseEmail", "spouse_email") ||
+    pickStr(plataApp, "spouseEmail", "spouse_email")
+  const phone =
+    pickStr(platformFields, "spousePhone", "spouse_phone") ||
+    pickStr(plataApp, "spousePhone", "spouse_phone")
+  const occupation =
+    pickStr(platformFields, "spouseOccupation", "spouse_occupation") ||
+    pickStr(plataApp, "spouseOccupation", "spouse_occupation")
+  const country =
+    pickStr(platformFields, "spouseCountry", "spouse_country") ||
+    pickStr(plataApp, "spouseCountry", "spouse_country")
+
+  if (!fullName && !email && !phone) return []
+
+  return [
+    {
+      fullName,
+      name: fullName,
+      email,
+      phone,
+      occupation,
+      country,
+      relationship: "Spouse",
+    },
+  ]
 }

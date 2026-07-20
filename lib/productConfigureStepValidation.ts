@@ -392,7 +392,13 @@ export function validateCommodityStep(ctx: CommodityStepCtx): { ok: boolean; err
     if (ctx.isInvestment && ctx.enableUnitInvestmentPurchase && !has(ctx.unitAmount)) {
       /* Unit price optional when unit investment is enabled */
     }
-    if (!has(ctx.minQuantityPurchase)) errors.push("Structure: Minimum quantity purchase is required.")
+    if (ctx.isInvestment) {
+      if (ctx.enableUnitInvestmentPurchase && !has(ctx.minQuantityPurchase)) {
+        errors.push("Structure: Minimum quantity purchase is required when unit investment is enabled.")
+      }
+    } else if (!has(ctx.minQuantityPurchase)) {
+      errors.push("Structure: Minimum quantity purchase is required.")
+    }
     if (!has(ctx.maxAmount))
       errors.push(ctx.isInvestment ? "Structure: Maximum investment amount is required." : "Structure: Max amount is required.")
     if (!has(ctx.termsAndConditions)) errors.push("Structure: Terms and conditions are required.")

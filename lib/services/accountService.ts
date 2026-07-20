@@ -129,7 +129,7 @@ export interface ProductApplication {
   updatedAt: string;
 }
 
-export type LoanWorkflowStatus = 'requested' | 'under_review' | 'approved' | 'declined' | 'blacklisted';
+export type LoanWorkflowStatus = 'requested' | 'under_review' | 'approved' | 'declined' | 'blacklisted' | 'completed' | 'offer_sent';
 
 export interface LoanWorkflowApplication {
   id: string;

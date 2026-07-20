@@ -26,6 +26,7 @@ import {
 import { applicationApi, type LoanWorkflowStatus } from "@/lib/services/accountService"
 import { resolveApplicationCustomerName } from "@/lib/applicationCustomer"
 import { MortgageWorkflowDetailSheet } from "@/components/workflow/MortgageWorkflowDetailSheet"
+import { LoanWorkflowDetailSheet } from "@/components/workflow/LoanWorkflowDetailSheet"
 import { handleSessionExpired, isSessionExpiredError } from "@/lib/plataAuthFetch"
 
 const PLATA_ACCENT_DARK = "#9A813F"
@@ -328,12 +329,8 @@ export function WorkflowTable({
                   return (
                     <tr
                       key={row.id}
-                      className={`hover:bg-gray-50 ${productType === "MORTGAGE" ? "cursor-pointer" : ""}`}
-                      onClick={
-                        productType === "MORTGAGE"
-                          ? () => setDetailId(row.id)
-                          : undefined
-                      }
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => setDetailId(row.id)}
                     >
                       <td className="px-6 py-4 text-sm text-gray-900">{row.requestLabel}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{row.name}</td>
@@ -447,7 +444,14 @@ export function WorkflowTable({
           onOpenChange={(open) => !open && setDetailId(null)}
           onUpdated={() => void fetchRows(true)}
         />
-      ) : null}
+      ) : (
+        <LoanWorkflowDetailSheet
+          applicationId={detailId}
+          open={detailId !== null}
+          onOpenChange={(open) => !open && setDetailId(null)}
+          onUpdated={() => void fetchRows(true)}
+        />
+      )}
     </div>
   )
 }
