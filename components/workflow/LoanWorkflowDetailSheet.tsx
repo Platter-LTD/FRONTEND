@@ -24,6 +24,7 @@ import {
 } from "@/lib/loanWorkflowSpec"
 import type { SpringApplicantProfileResponse } from "@/lib/springApplicantProfile"
 import { SpringApplicantReviewPanel } from "@/components/workflow/SpringApplicantReviewPanel"
+import { OfferLetterUploadControl } from "@/components/workflow/OfferLetterUploadControl"
 import { cn } from "@/lib/utils"
 
 const PLATA_ACCENT = "#9A813F"
@@ -239,6 +240,22 @@ export function LoanWorkflowDetailSheet({
 
   const renderStepAction = (stepId: PlataLoanStepId) => {
     const actionKind = plataLoanActionForStep(stepId, detail ?? undefined)
+
+    if (stepId === "accept_offer" || stepId === "approved") {
+      const upload = applicationId ? (
+        <OfferLetterUploadControl
+          applicationId={applicationId}
+          detail={detail}
+          onUploaded={() => {
+            void load()
+            onUpdated?.()
+          }}
+        />
+      ) : null
+      if (!actionKind) return upload
+      // Fall through if there's also a primary action (unlikely on these steps)
+    }
+
     if (!actionKind) return null
 
     if (actionKind === "approve_offer" && canApproveOffer && stepId === currentStep) {

@@ -19,6 +19,7 @@ export type PostApprovalMortgageStatus =
 export type PostApprovalFulfillment = {
   status?: PostApprovalMortgageStatus
   updatedAt?: string
+  currentWorkflowStepId?: string
   offerAcceptedAt?: string
   appointmentScheduledAt?: string
   inspectionStartedAt?: string
@@ -28,6 +29,18 @@ export type PostApprovalFulfillment = {
   contractIssuedAt?: string
   contractSignedAt?: string
   disbursedAt?: string
+  contract?: {
+    documentUrl?: string
+    documentSource?: string
+    documentFileName?: string
+    uploadedAt?: string
+    uploadedByMerchantId?: string
+    issuedAt?: string
+  }
+  offer?: {
+    sentAt?: string
+    acceptedAt?: string
+  }
   bankDetails?: {
     merchantReference?: string
     accountNumber?: string

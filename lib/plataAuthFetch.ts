@@ -41,7 +41,11 @@ async function refreshAccessTokenClient(): Promise<string | null> {
 
 function buildInit(token: string | null, init?: RequestInit): RequestInit {
   const headers = new Headers(init?.headers)
-  if (!headers.has("Content-Type")) {
+  // FormData must keep browser-managed multipart Content-Type (with boundary).
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData
+  if (isFormData) {
+    headers.delete("Content-Type")
+  } else if (!headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json")
   }
   if (token) {

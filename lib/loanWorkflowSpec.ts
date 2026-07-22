@@ -47,7 +47,7 @@ export const PLATA_LOAN_STEPS: Array<{
     id: "accept_offer",
     stepNumber: 3,
     title: "Accept offer",
-    creatorAction: "Sees applicant accept or decline the offer",
+    creatorAction: "Upload custom offer letter PDF (optional); sees applicant accept or decline",
   },
   {
     id: "awaiting_disbursement",

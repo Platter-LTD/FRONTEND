@@ -1,6 +1,6 @@
 /**
- * Plata Product Creator mortgage workflow (9 steps).
- * @see Mortgage Workflow Specification — Plata Product Creator Flow
+ * Plata Product Creator mortgage workflow (10 steps).
+ * Virtual Inspection sits after approval and before Offer Letter (aligned with User-App).
  */
 
 import {
@@ -11,6 +11,7 @@ import {
 export type PlataMortgageStepId =
   | "application_submission"
   | "review_approval"
+  | "virtual_inspection"
   | "offer_letter"
   | "inspection_booking"
   | "inspection_outcome"
@@ -20,6 +21,7 @@ export type PlataMortgageStepId =
   | "loan_disbursement"
 
 export type MortgageWorkflowProgress = {
+  virtualTourCompletedAt?: string
   offerAcceptedAt?: string
   inspectionBookedAt?: string
   inspectionCompletedAt?: string
@@ -61,44 +63,50 @@ export const PLATA_MORTGAGE_STEPS: Array<{
     creatorAction: "Approves or rejects",
   },
   {
-    id: "offer_letter",
+    id: "virtual_inspection",
     stepNumber: 3,
+    title: "Virtual Inspection",
+    creatorAction: "Waits for applicant to complete virtual tour",
+  },
+  {
+    id: "offer_letter",
+    stepNumber: 4,
     title: "Offer Letter",
-    creatorAction: "Sees acceptance in thread",
+    creatorAction: "Upload custom offer letter PDF (optional) and waits for acceptance",
   },
   {
     id: "inspection_booking",
-    stepNumber: 4,
+    stepNumber: 5,
     title: "Inspection Booking",
     creatorAction: "Sees booking in thread",
   },
   {
     id: "inspection_outcome",
-    stepNumber: 5,
+    stepNumber: 6,
     title: "Inspection Outcome",
     creatorAction: "Sees outcome in thread",
   },
   {
     id: "down_payment",
-    stepNumber: 6,
+    stepNumber: 7,
     title: "Down Payment",
     creatorAction: "Sees & confirms payment",
   },
   {
     id: "contract_issued",
-    stepNumber: 7,
+    stepNumber: 8,
     title: "Contract Issued",
     creatorAction: "System sends contract",
   },
   {
     id: "contract_signed",
-    stepNumber: 8,
+    stepNumber: 9,
     title: "Contract Signed",
     creatorAction: "Sees acceptance in thread",
   },
   {
     id: "loan_disbursement",
-    stepNumber: 9,
+    stepNumber: 10,
     title: "Loan Disbursement",
     creatorAction: "Manually triggers disbursement",
   },
@@ -111,12 +119,36 @@ function pickString(...vals: unknown[]): string | undefined {
   return undefined
 }
 
+function hasOfferLetterPdf(raw?: Record<string, unknown>): boolean {
+  if (!raw) return false
+  const offer = raw.offerLetter
+  if (offer && typeof offer === "object") {
+    const url = String((offer as Record<string, unknown>).pdfUrl || "").trim()
+    if (url) return true
+  }
+  const paf = raw.postApprovalFulfillment
+  if (paf && typeof paf === "object") {
+    const contract = (paf as Record<string, unknown>).contract
+    if (contract && typeof contract === "object") {
+      const url = String((contract as Record<string, unknown>).documentUrl || "").trim()
+      if (url) return true
+    }
+  }
+  return false
+}
+
 export function extractMortgageProgress(raw: Record<string, unknown>): MortgageWorkflowProgress {
   const disbursement = (raw.loanDisbursement ?? {}) as Record<string, unknown>
   const nested = (disbursement.mortgageWorkflow ?? disbursement) as Record<string, unknown>
   const snapshot = (raw.contractSnapshot ?? {}) as Record<string, unknown>
+  const paf = (raw.postApprovalFulfillment ?? {}) as Record<string, unknown>
 
   return {
+    virtualTourCompletedAt: pickString(
+      nested.virtualTourCompletedAt,
+      snapshot.virtualTourCompletedAt,
+      paf.virtualTourCompletedAt,
+    ),
     offerAcceptedAt: pickString(nested.offerAcceptedAt, snapshot.offerAcceptedAt),
     inspectionBookedAt: pickString(nested.inspectionBookedAt, snapshot.inspectionBookedAt),
     inspectionCompletedAt: pickString(nested.inspectionCompletedAt, snapshot.inspectionCompletedAt),
@@ -139,15 +171,34 @@ function isTerminalWorkflowStatus(status: string): boolean {
   return s === "declined" || s === "blacklisted" || s === "rejected"
 }
 
-function isApprovedWorkflowStatus(status: string): boolean {
+export function isApprovedWorkflowStatus(status: string): boolean {
   const s = status.toLowerCase()
   return s === "approved" || s === "offer_sent" || s === "completed" || s === "active"
 }
 
-function stepFromPostApprovalStatus(status: PostApprovalMortgageStatus): PlataMortgageStepId {
+function resolveOfferPendingStep(
+  progress: MortgageWorkflowProgress,
+  raw?: Record<string, unknown>,
+): PlataMortgageStepId {
+  const paf = raw ? extractPostApprovalFulfillment(raw) : null
+  const stepId = String(paf?.currentWorkflowStepId || "")
+    .trim()
+    .toLowerCase()
+
+  if (stepId === "offer_letter") return "offer_letter"
+  if (stepId === "virtual_tour" || stepId === "virtual_inspection") return "virtual_inspection"
+  if (progress.virtualTourCompletedAt || hasOfferLetterPdf(raw)) return "offer_letter"
+  return "virtual_inspection"
+}
+
+function stepFromPostApprovalStatus(
+  status: PostApprovalMortgageStatus,
+  progress: MortgageWorkflowProgress,
+  raw?: Record<string, unknown>,
+): PlataMortgageStepId {
   switch (status) {
     case "offer_pending":
-      return "offer_letter"
+      return resolveOfferPendingStep(progress, raw)
     case "offer_accepted":
     case "appointment_scheduled":
       return "inspection_booking"
@@ -179,7 +230,7 @@ export function resolvePlataMortgageStep(
   const paf = raw ? extractPostApprovalFulfillment(raw) : null
   if (paf?.status) {
     if (paf.status === "disbursed") return "loan_disbursement"
-    return stepFromPostApprovalStatus(paf.status)
+    return stepFromPostApprovalStatus(paf.status, progress, raw)
   }
 
   const status = String(loanWorkflowStatus || "requested").toLowerCase()
@@ -193,7 +244,10 @@ export function resolvePlataMortgageStep(
   if (progress.inspectionCompletedAt || progress.inspectionDeclined) return "inspection_outcome"
   if (progress.inspectionBookedAt) return "inspection_outcome"
   if (progress.offerAcceptedAt) return "inspection_booking"
-  if (isApprovedWorkflowStatus(status)) return "offer_letter"
+  if (isApprovedWorkflowStatus(status)) {
+    if (progress.virtualTourCompletedAt || hasOfferLetterPdf(raw)) return "offer_letter"
+    return "virtual_inspection"
+  }
   if (status === "under_review") return "review_approval"
   return "application_submission"
 }

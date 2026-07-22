@@ -26,6 +26,7 @@ import {
 } from "@/lib/mortgageWorkflowSpec"
 import type { SpringApplicantProfileResponse } from "@/lib/springApplicantProfile"
 import { SpringApplicantReviewPanel } from "@/components/workflow/SpringApplicantReviewPanel"
+import { OfferLetterUploadControl } from "@/components/workflow/OfferLetterUploadControl"
 import { cn } from "@/lib/utils"
 
 const PLATA_ACCENT = "#9A813F"
@@ -346,6 +347,52 @@ export function MortgageWorkflowDetailSheet({
     return null
   }
 
+  const renderOfferLetterAction = (stepId: PlataMortgageStepId) => {
+    if (stepId !== "offer_letter" || !applicationId) return null
+    return (
+      <OfferLetterUploadControl
+        applicationId={applicationId}
+        detail={detail}
+        onUploaded={() => {
+          void load()
+          onUpdated?.()
+        }}
+      />
+    )
+  }
+
+  const renderVirtualInspectionAction = (stepId: PlataMortgageStepId) => {
+    if (stepId !== "virtual_inspection") return null
+    const done = Boolean(progress.virtualTourCompletedAt)
+    return (
+      <p className={cn("text-xs", done ? "font-medium text-green-700" : "text-gray-500")}>
+        {done
+          ? `Completed ${new Date(progress.virtualTourCompletedAt!).toLocaleString("en-US", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}`
+          : "Waiting for applicant to finish the virtual property tour"}
+      </p>
+    )
+  }
+
+  const renderStepActionWithOffer = (stepId: PlataMortgageStepId) => {
+    const primary = renderStepAction(stepId)
+    const offer = renderOfferLetterAction(stepId)
+    const virtual = renderVirtualInspectionAction(stepId)
+    const extras = [offer, virtual].filter(Boolean)
+    if (!primary && extras.length === 0) return null
+    if (primary && extras.length > 0) {
+      return (
+        <div className="space-y-3">
+          {primary}
+          {extras}
+        </div>
+      )
+    }
+    return primary || extras[0] || null
+  }
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
@@ -392,7 +439,7 @@ export function MortgageWorkflowDetailSheet({
                         key={item.id}
                         item={item}
                         isLast={index === thread.length - 1}
-                        action={renderStepAction(item.id)}
+                        action={renderStepActionWithOffer(item.id)}
                       />
                     ))}
                   </div>
