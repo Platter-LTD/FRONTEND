@@ -320,6 +320,7 @@ export default function ConfigureInvestmentDrawer({
           maxInvestmentAmount: removeCommas(maxAmount),
           termsAndConditions,
           enableUnitInvestment,
+          enableUnitInvestmentPurchase: enableUnitInvestment,
           moratoriumEnabled,
           moratoriumDays,
           unitAmount: enableUnitInvestment ? removeCommas(unitAmount) : "",
@@ -330,6 +331,7 @@ export default function ConfigureInvestmentDrawer({
           contractId,
           airSignSecretKey,
           airSignUid,
+          requireApplicantSignature: false,
           /** Fields older flows / APIs may still read */
           purpose: description,
           investmentTenure: duration,

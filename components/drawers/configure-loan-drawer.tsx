@@ -233,6 +233,11 @@ export default function ConfigureLoanDrawer({
   const [interestRate, setInterestRate] = useState("")
   const [interestMethod, setInterestMethod] = useState("")
   const [allowMoratorium, setAllowMoratorium] = useState(false)
+  const [autoApproveLoans, setAutoApproveLoans] = useState(false)
+  const [requireApplicantSignature, setRequireApplicantSignature] = useState(false)
+  const [contractId, setContractId] = useState("")
+  const [airSignSecretKey, setAirSignSecretKey] = useState("")
+  const [airSignUid, setAirSignUid] = useState("")
   const [moratoriumSelectDuration, setMoratoriumSelectDuration] = useState("")
   const [moratoriumDurationOf, setMoratoriumDurationOf] = useState("")
   const [moratoriumType, setMoratoriumType] = useState("")
@@ -452,6 +457,37 @@ export default function ConfigureLoanDrawer({
       ),
     )
     setInterestMethod(String(loanData.interestMethod ?? structure.interestMethod ?? ""))
+    setAutoApproveLoans(asBool(loanData.autoApproveLoans ?? structure.autoApproveLoans))
+    setRequireApplicantSignature(
+      asBool(
+        loanData.requireApplicantSignature ??
+          (loanData as Record<string, unknown>).requireApplicantSignature,
+      ),
+    )
+    setContractId(
+      String(
+        loanData.contractId ??
+          structure.contractId ??
+          (requirements as Record<string, unknown>).contractId ??
+          "",
+      ),
+    )
+    setAirSignSecretKey(
+      String(
+        loanData.airSignSecretKey ??
+          structure.airSignSecretKey ??
+          (requirements as Record<string, unknown>).airSignSecretKey ??
+          "",
+      ),
+    )
+    setAirSignUid(
+      String(
+        loanData.airSignUid ??
+          structure.airSignUid ??
+          (requirements as Record<string, unknown>).airSignUid ??
+          "",
+      ),
+    )
     const allowMoratoriumValue = asBool(loanData.allowMoratorium ?? structure.allowMoratorium)
     const morStr = extractMoratoriumPrefill(
       loanData.moratorium ??
@@ -868,6 +904,9 @@ export default function ConfigureLoanDrawer({
     charges,
     enableLateRepaymentCharges,
     penalties,
+    contractId,
+    airSignSecretKey,
+    airSignUid,
   })
 
   const handleNext = async () => {
@@ -923,6 +962,8 @@ export default function ConfigureLoanDrawer({
           interestRate,
           interestMethod,
           allowMoratorium,
+          autoApproveLoans,
+          requireApplicantSignature,
           moratoriumSelectDuration: allowMoratorium ? moratoriumSelectDuration : "",
           moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
           moratoriumType: allowMoratorium ? moratoriumType : "",
@@ -940,6 +981,9 @@ export default function ConfigureLoanDrawer({
           securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
+          contractId,
+          airSignSecretKey,
+          airSignUid,
           charges,
           chargePaymentMode,
           deductAllChargesOnLoan: chargePaymentMode === "deduct",
@@ -1055,6 +1099,13 @@ export default function ConfigureLoanDrawer({
               label="Allow Moratorium for this instrument"
               checked={allowMoratorium}
               onChange={setAllowMoratorium}
+              requirement="optional"
+            />
+            <ProductConfigToggle
+              id="auto-approve-loans"
+              label="Auto-approve loans (treasury disburses on submit)"
+              checked={autoApproveLoans}
+              onChange={setAutoApproveLoans}
               requirement="optional"
             />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -1220,6 +1271,38 @@ export default function ConfigureLoanDrawer({
             onAdd={addOtherRequirement}
             onRemoveItem={removeOtherRequirement}
           />
+
+          <ProductConfigToggle
+            id="require-applicant-signature"
+            label="Require applicant signature on submit"
+            checked={requireApplicantSignature}
+            onChange={setRequireApplicantSignature}
+            requirement="optional"
+          />
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <ProductConfigInput
+              label="Contract ID"
+              placeholder="Enter Contract ID"
+              value={contractId}
+              onChange={setContractId}
+              requirement="required"
+            />
+            <ProductConfigInput
+              label="AirSign Secret Key"
+              placeholder="Enter secret key"
+              value={airSignSecretKey}
+              onChange={setAirSignSecretKey}
+              requirement="required"
+            />
+            <ProductConfigInput
+              label="AirSign UID"
+              placeholder="Enter UID"
+              value={airSignUid}
+              onChange={setAirSignUid}
+              requirement="required"
+            />
+          </div>
         </div>
       )}
 

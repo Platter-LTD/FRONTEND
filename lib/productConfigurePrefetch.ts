@@ -137,7 +137,7 @@ export async function prefetchMortgageConfigureOptions(): Promise<MortgageConfig
     fetchProductOptionLabels("interest-method", MORTGAGE_DEFAULTS.interestMethods),
     fetchProductOptionLabels("moratorium", MORTGAGE_DEFAULTS.moratoriumType),
     fetchProductOptionLabels("moratorium-duration", MORTGAGE_DEFAULTS.moratoriumDuration),
-    fetchOptionLabels("repayment-schedule", MORTGAGE_DEFAULTS.repaymentSchedule),
+    fetchOptionLabels("repayment-structure", MORTGAGE_DEFAULTS.repaymentSchedule),
     fetchOptionLabels("amortization", MORTGAGE_DEFAULTS.amortizationSchedule),
     fetchOptionLabels("repayment-cycle", MORTGAGE_DEFAULTS.repaymentFrequency),
     fetchOptionLabels("acceptable-npa", MORTGAGE_DEFAULTS.acceptableNpa),

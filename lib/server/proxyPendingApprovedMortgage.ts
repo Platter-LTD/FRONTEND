@@ -15,8 +15,9 @@ export async function proxyPendingApprovedMortgageRequest(
   body?: unknown,
 ): Promise<NextResponse> {
   const { authorization, refreshed } = await resolveAuthorizationForRequest(request)
+  // 403 (not 401): avoid false session logout in plataAuthFetch / axios interceptors.
   if (!authorization) {
-    return NextResponse.json({ success: false, error: "Authorization required" }, { status: 401 })
+    return NextResponse.json({ success: false, error: "Authorization required" }, { status: 403 })
   }
 
   const incomingMerchantId =

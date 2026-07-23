@@ -26,7 +26,6 @@ import {
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
 } from "@/lib/otherRequirementPayload"
-import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 
 interface ConfigureCommodityDrawerProps {
   isOpen: boolean
@@ -635,10 +634,12 @@ export default function ConfigureCommodityDrawer({
         previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
       }
 
-      const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
+      const commodityBase = { ...(commodityData || {}) }
+      delete commodityBase.otherRequirements
+      delete commodityBase.requirements
 
       const payload = {
-        ...commodityData,
+        ...commodityBase,
         name,
         description,
         duration,
@@ -661,11 +662,11 @@ export default function ConfigureCommodityDrawer({
         contractId,
         airSignSecretKey,
         airSignUid,
+        requireApplicantSignature: false,
         charges,
         forcefulWithdrawal,
         chargeForForcefulWithdrawal: forcefulWithdrawal,
         penalties,
-        otherRequirements: otherRequirementsPayload,
         commodityPrices: !isInvestment ? priceRows.map((r) => ({ ...r, price: removeCommas(r.price) })) : undefined,
         unitPrices: isInvestment ? priceRows.map((r) => ({ ...r, price: removeCommas(r.price) })) : undefined,
         priceHistory: priceRows.map((r) => ({ ...r, price: removeCommas(r.price) })),
@@ -983,23 +984,6 @@ export default function ConfigureCommodityDrawer({
               </div>
             </div>
 
-            <ProductConfigOtherRequirementsPanel
-              otherRequirementOptions={otherRequirementOptions}
-              contentTypeOptions={contentTypeOptions}
-              otherRequirementType={otherRequirementType}
-              otherRequirementContentType={otherRequirementContentType}
-              otherRequirementDescription={otherRequirementDescription}
-              otherRequirementFile={otherRequirementFile}
-              otherRequirements={otherRequirements}
-              uploadInputRef={otherRequirementUploadRef}
-              filePickerId={isInvestment ? "investment-other-requirement-file" : "commodity-other-requirement-file"}
-              onTypeChange={handleOtherRequirementTypeChange}
-              onContentTypeChange={handleOtherRequirementContentTypeChange}
-              onDescriptionChange={setOtherRequirementDescription}
-              onFileChange={setOtherRequirementFile}
-              onAdd={addOtherRequirement}
-              onRemoveItem={removeOtherRequirement}
-            />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <ProductConfigInput

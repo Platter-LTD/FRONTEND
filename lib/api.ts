@@ -6,6 +6,7 @@ import axios, {
 } from "axios"
 import { getAccessToken } from "@/lib/cookieAuth"
 import { handleSessionExpired } from "@/lib/plataAuthFetch"
+import { refreshAccessTokenClient } from "@/lib/refreshAccessTokenClient"
 
 // Use relative URL so requests go through our own Next.js API proxy
 export interface ApiRequestConfig extends AxiosRequestConfig {
@@ -19,21 +20,6 @@ const api = axios.create({
   },
   withCredentials: true,
 })
-
-let refreshPromise: Promise<string | null> | null = null
-
-async function refreshAccessToken(): Promise<string | null> {
-  if (!refreshPromise) {
-    refreshPromise = axios
-      .post("/api/auth/refresh", {}, { withCredentials: true })
-      .then((res) => (res.data?.data?.accessToken ?? res.data?.accessToken ?? null) as string | null)
-      .catch(() => null)
-      .finally(() => {
-        refreshPromise = null
-      })
-  }
-  return refreshPromise
-}
 
 // Request interceptor: use cookie (or localStorage fallback) for token
 api.interceptors.request.use((config: InternalAxiosRequestConfig & { includeAuth?: boolean }) => {
@@ -76,7 +62,7 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true
-      const newAccessToken = await refreshAccessToken()
+      const newAccessToken = await refreshAccessTokenClient()
       if (newAccessToken) {
         api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`
         const retryHeaders = (originalRequest.headers ?? {}) as Record<string, string>
@@ -84,8 +70,12 @@ api.interceptors.response.use(
         originalRequest.headers = retryHeaders as any
         return api(originalRequest)
       }
-      delete api.defaults.headers.common.Authorization
-      await handleSessionExpired()
+      // Only force sign-out when the session is actually gone (no access cookie left).
+      // Parallel refresh races used to clear a still-valid session here.
+      if (!getAccessToken()) {
+        delete api.defaults.headers.common.Authorization
+        await handleSessionExpired()
+      }
     }
     return Promise.reject(error)
   },

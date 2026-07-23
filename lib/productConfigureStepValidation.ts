@@ -70,6 +70,9 @@ export type LoanStepCtx = {
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
   penalties: { name?: string; type?: string; value?: string; triggerDuration?: string }[]
+  contractId: string
+  airSignSecretKey: string
+  airSignUid: string
 }
 
 export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: string[] } {
@@ -95,6 +98,9 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
       errors.push('Requirements: Describe the “Other” security requirement (text field below).')
     }
     // Document requirements are optional — customers may satisfy docs via Other Requirements instead.
+    if (!has(ctx.contractId)) errors.push("Requirements: Contract ID is required.")
+    if (!has(ctx.airSignSecretKey)) errors.push("Requirements: AirSign Secret Key is required.")
+    if (!has(ctx.airSignUid)) errors.push("Requirements: AirSign UID is required.")
   }
 
   if (step === 4) {

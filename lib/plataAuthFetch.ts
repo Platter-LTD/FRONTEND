@@ -1,7 +1,7 @@
 import { getAccessToken } from "@/lib/cookieAuth"
+import { refreshAccessTokenClient } from "@/lib/refreshAccessTokenClient"
 import { clearSecureTokens } from "@/lib/tokenManager"
 
-let refreshPromise: Promise<string | null> | null = null
 let sessionRedirectInFlight = false
 
 /** Clear auth cookies and send the user to sign-in (idempotent). */
@@ -21,22 +21,6 @@ export async function handleSessionExpired(): Promise<never> {
   }
 
   throw new Error("Session expired")
-}
-
-async function refreshAccessTokenClient(): Promise<string | null> {
-  if (!refreshPromise) {
-    refreshPromise = fetch("/api/auth/refresh", { method: "POST", credentials: "include" })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}))
-        if (!res.ok || !data?.success) return null
-        return (data.data?.accessToken ?? data.accessToken ?? null) as string | null
-      })
-      .catch(() => null)
-      .finally(() => {
-        refreshPromise = null
-      })
-  }
-  return refreshPromise
 }
 
 function buildInit(token: string | null, init?: RequestInit): RequestInit {
@@ -79,7 +63,9 @@ export async function plataAuthFetch(input: string, init?: RequestInit): Promise
   token = typeof window !== "undefined" ? getAccessToken() : null
   if (token) {
     response = await fetch(input, buildInit(token, init))
-    if (response.status !== 401) return response
+    // Still have a cookie/token but refresh failed or another client already refreshed.
+    // Do not hard-logout: workflow/permission 401s must not wipe a live session.
+    return response
   }
 
   await handleSessionExpired()

@@ -26,7 +26,6 @@ import {
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
 } from "@/lib/otherRequirementPayload"
-import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 
 interface ConfigureSavingsDrawerProps {
   isOpen: boolean
@@ -497,11 +496,13 @@ export default function ConfigureSavingsDrawer({
         previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
       }
 
-      const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
+      const savingsPayload = { ...(savingsData || {}) }
+      delete savingsPayload.otherRequirements
+      delete savingsPayload.requirements
 
       await Promise.resolve(
         onSubmit({
-          ...savingsData,
+          ...savingsPayload,
           name,
           durationOfSavings,
           description,
@@ -518,10 +519,10 @@ export default function ConfigureSavingsDrawer({
           contractId,
           airSignSecretKey,
           airSignUid,
+          requireApplicantSignature: false,
           charges,
           chargeForcefulWithdrawal,
           withdrawalPenalties,
-          otherRequirements: otherRequirementsPayload,
           /** Legacy field names for existing APIs */
           purpose: description,
           savingsTenure: durationOfSavings,
@@ -692,23 +693,6 @@ export default function ConfigureSavingsDrawer({
               />
             </div>
 
-            <ProductConfigOtherRequirementsPanel
-              otherRequirementOptions={otherRequirementOptions}
-              contentTypeOptions={contentTypeOptions}
-              otherRequirementType={otherRequirementType}
-              otherRequirementContentType={otherRequirementContentType}
-              otherRequirementDescription={otherRequirementDescription}
-              otherRequirementFile={otherRequirementFile}
-              otherRequirements={otherRequirements}
-              uploadInputRef={otherRequirementUploadRef}
-              filePickerId="savings-other-requirement-file"
-              onTypeChange={handleOtherRequirementTypeChange}
-              onContentTypeChange={handleOtherRequirementContentTypeChange}
-              onDescriptionChange={setOtherRequirementDescription}
-              onFileChange={setOtherRequirementFile}
-              onAdd={addOtherRequirement}
-              onRemoveItem={removeOtherRequirement}
-            />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <ProductConfigInput

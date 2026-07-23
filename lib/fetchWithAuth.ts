@@ -1,11 +1,12 @@
 /**
  * Client-side fetch that on 401 attempts silent refresh (via /api/auth/refresh) then retries once.
  * Follows convention: do not log user out on first 401; try refresh then retry.
- * When refresh fails (or retry is still 401), clears session and redirects to /signin.
+ * When refresh fails and there is no access token left, clears session and redirects to /signin.
  */
 
 import { getAccessToken } from '@/lib/cookieAuth';
 import { handleSessionExpired } from '@/lib/plataAuthFetch';
+import { refreshAccessTokenClient } from '@/lib/refreshAccessTokenClient';
 
 export type FetchWithAuthOptions = RequestInit & {
   /** Skip adding Authorization header (e.g. for public endpoints) */
@@ -13,28 +14,6 @@ export type FetchWithAuthOptions = RequestInit & {
   /** Applied after defaults (e.g. wallet-ms role hints: x-user-role) */
   additionalHeaders?: Record<string, string>;
 };
-
-let refreshPromise: Promise<string | null> | null = null;
-
-async function doRefresh(): Promise<string | null> {
-  if (!refreshPromise) {
-    refreshPromise = fetch('/api/auth/refresh', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        const newAccess = data?.data?.accessToken ?? data?.accessToken;
-        return res.ok && newAccess ? newAccess : null;
-      })
-      .catch(() => null)
-      .finally(() => {
-        refreshPromise = null;
-      });
-  }
-  return refreshPromise;
-}
 
 /**
  * Fetch with Bearer token. On 401, calls /api/auth/refresh (credentials: include),
@@ -59,12 +38,14 @@ export async function fetchWithAuth(
   let res = await fetch(input, { ...init, headers, credentials: init.credentials ?? 'include' });
 
   if (res.status === 401) {
-    const newToken = await doRefresh();
+    const newToken = await refreshAccessTokenClient();
     if (newToken) {
       headers.set('Authorization', `Bearer ${newToken}`);
       return fetch(input, { ...init, headers, credentials: init.credentials ?? 'include' });
     }
-    await handleSessionExpired();
+    if (!getAccessToken()) {
+      await handleSessionExpired();
+    }
   }
 
   return res;

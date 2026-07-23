@@ -27,7 +27,6 @@ import { applicationApi, type LoanWorkflowStatus } from "@/lib/services/accountS
 import { resolveApplicationCustomerName } from "@/lib/applicationCustomer"
 import { MortgageWorkflowDetailSheet } from "@/components/workflow/MortgageWorkflowDetailSheet"
 import { LoanWorkflowDetailSheet } from "@/components/workflow/LoanWorkflowDetailSheet"
-import { handleSessionExpired, isSessionExpiredError } from "@/lib/plataAuthFetch"
 
 const PLATA_ACCENT_DARK = "#9A813F"
 
@@ -191,10 +190,8 @@ export function WorkflowTable({
         setRows(mapped)
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Failed to load"
-        if (isSessionExpiredError(0, msg)) {
-          await handleSessionExpired()
-          return
-        }
+        // Do not call handleSessionExpired here — shared auth refresh owns that.
+        // Misclassified API errors previously forced a hard redirect to /signin.
         setError(msg)
         setRows([])
         if (silent) toast.error(msg)

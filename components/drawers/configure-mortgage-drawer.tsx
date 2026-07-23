@@ -232,6 +232,7 @@ export default function ConfigureMortgageDrawer({
   const [contractId, setContractId] = useState("")
   const [airSignSecretKey, setAirSignSecretKey] = useState("")
   const [airSignUid, setAirSignUid] = useState("")
+  const [requireApplicantSignature, setRequireApplicantSignature] = useState(false)
 
   const [chargeName, setChargeName] = useState("")
   const [chargeFeeType, setChargeFeeType] = useState("")
@@ -353,7 +354,7 @@ export default function ConfigureMortgageDrawer({
         fetchProductOptionLabels("interest-method", DEFAULT_INTEREST_METHOD_OPTIONS),
         fetchProductOptionLabels("moratorium", DEFAULT_MORATORIUM_TYPE_OPTIONS),
         fetchProductOptionLabels("moratorium-duration", DEFAULT_MORATORIUM_DURATION_OPTIONS),
-        fetchOptionLabels("repayment-schedule", DEFAULT_TENURE_OPTIONS),
+        fetchOptionLabels("repayment-structure", DEFAULT_TENURE_OPTIONS),
         fetchOptionLabels("amortization", DEFAULT_AMORTIZATION_SCHEDULE_OPTIONS),
         fetchOptionLabels("repayment-cycle", DEFAULT_REPAYMENT_FREQUENCY_OPTIONS),
         fetchOptionLabels("acceptable-npa", DEFAULT_ACCEPTABLE_NPA_OPTIONS),
@@ -483,7 +484,11 @@ export default function ConfigureMortgageDrawer({
     )
     setRepaymentSchedule(
       resolveOptionLabel(
-        mortgageData.repaymentSchedule ?? structure.repaymentSchedule ?? "",
+        mortgageData.repaymentStructure ??
+          structure.repaymentStructure ??
+          mortgageData.repaymentSchedule ??
+          structure.repaymentSchedule ??
+          "",
         repaymentScheduleOptions,
       ),
     )
@@ -569,9 +574,18 @@ export default function ConfigureMortgageDrawer({
     setOtherRequirements(
       Array.isArray(otherReqRaw) ? otherReqRaw.map((row: unknown) => normalizeOtherRequirementRowFromApi(row)) : [],
     )
-    setContractId(String(mortgageData.contractId ?? structure.contractId ?? ""))
-    setAirSignSecretKey(String(mortgageData.airSignSecretKey ?? structure.airSignSecretKey ?? ""))
-    setAirSignUid(String(mortgageData.airSignUid ?? structure.airSignUid ?? ""))
+    setContractId(
+      String(mortgageData.contractId ?? structure.contractId ?? requirements.contractId ?? ""),
+    )
+    setAirSignSecretKey(
+      String(
+        mortgageData.airSignSecretKey ?? structure.airSignSecretKey ?? requirements.airSignSecretKey ?? "",
+      ),
+    )
+    setAirSignUid(
+      String(mortgageData.airSignUid ?? structure.airSignUid ?? requirements.airSignUid ?? ""),
+    )
+    setRequireApplicantSignature(asBool(mortgageData.requireApplicantSignature))
     setCharges(
       Array.isArray(mortgageData.charges ?? fees.charges ?? fees.fees)
         ? (mortgageData.charges ?? fees.charges ?? fees.fees)
@@ -581,8 +595,21 @@ export default function ConfigureMortgageDrawer({
     setCustomerPayChargesBeforeDisbursement(
       asBool(mortgageData.customerPayChargesBeforeDisbursement ?? fees.customerPayChargesBeforeDisbursement),
     )
-    setEnableLateRepaymentCharges(asBool(mortgageData.enableLateRepaymentCharges ?? fees.enableLateRepaymentCharges))
-    setPenalties(Array.isArray(mortgageData.penalties ?? fees.penalties) ? (mortgageData.penalties ?? fees.penalties) : [])
+    setEnableLateRepaymentCharges(
+      asBool(
+        mortgageData.enableLateRepaymentCharges ??
+          (fees.lateRepayment as Record<string, unknown> | undefined)?.enabled ??
+          fees.enableLateRepaymentCharges,
+      ),
+    )
+    const latePenList = Array.isArray((fees.lateRepayment as Record<string, unknown> | undefined)?.penalties)
+      ? ((fees.lateRepayment as Record<string, unknown>).penalties as unknown[])
+      : []
+    setPenalties(
+      Array.isArray(mortgageData.penalties ?? fees.penalties ?? latePenList)
+        ? (mortgageData.penalties ?? fees.penalties ?? latePenList)
+        : [],
+    )
   }, [
     isOpen,
     mortgageData,
@@ -1064,6 +1091,7 @@ export default function ConfigureMortgageDrawer({
           repaymentWorkflow,
           minLoanAmount,
           maxLoanAmount,
+          repaymentStructure: repaymentSchedule,
           repaymentSchedule,
           amortizationSchedule,
           repaymentFrequency,
@@ -1077,6 +1105,7 @@ export default function ConfigureMortgageDrawer({
           contractId,
           airSignSecretKey,
           airSignUid,
+          requireApplicantSignature,
           charges,
           deductChargesOnLoan,
           customerPayChargesBeforeDisbursement,
@@ -1369,6 +1398,14 @@ export default function ConfigureMortgageDrawer({
               onAdd={addOtherRequirement}
               onRemoveItem={removeOtherRequirement}
               summarizeItem={otherRequirementSummary}
+            />
+
+            <ProductConfigToggle
+              id="mortgage-require-applicant-signature"
+              label="Require applicant signature on submit"
+              checked={requireApplicantSignature}
+              onChange={setRequireApplicantSignature}
+              requirement="optional"
             />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

@@ -15,8 +15,9 @@ export async function proxyLoanWorkflowRequest(
   body?: unknown,
 ): Promise<NextResponse> {
   const { authorization, refreshed } = await resolveAuthorizationForRequest(request)
+  // 403 (not 401): client auth helpers treat 401 as session death and redirect to /signin.
   if (!authorization) {
-    return NextResponse.json({ success: false, error: "Authorization required" }, { status: 401 })
+    return NextResponse.json({ success: false, error: "Authorization required" }, { status: 403 })
   }
 
   const incomingMerchantId =

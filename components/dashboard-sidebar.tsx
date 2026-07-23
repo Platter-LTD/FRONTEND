@@ -79,7 +79,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const [isProductsOpen, setIsProductsOpen] = useState(false)
   const [isApplicationsOpen, setIsApplicationsOpen] = useState(false)
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
-  const [isAdminOpen, setIsAdminOpen] = useState(false)
+  const [isTeamOpen, setIsTeamOpen] = useState(false)
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
@@ -144,14 +144,14 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
       setIsProductsOpen(false)
       setIsApplicationsOpen(false)
       setIsWorkflowOpen(false)
-      setIsAdminOpen(false)
+      setIsTeamOpen(false)
       return
     }
     setIsWalletsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/wallets`))
     setIsProductsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/products`))
     setIsApplicationsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/applications`))
     setIsWorkflowOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/operation-workflow`))
-    setIsAdminOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/admin`))
+    setIsTeamOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/admin`))
   }, [pathname, appId])
 
   const globalNavItems: GlobalNavItem[] = [
@@ -167,22 +167,13 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const appNavItems: AppNavItem[] = appId
     ? [
         {
-          icon: <ShieldCheck size={20} />,
-          label: "Admin",
-          href: `/dashboard/create-app/all-apps/${appId}/admin`,
-          subItems: [
-            { label: "Overview", href: `/dashboard/create-app/all-apps/${appId}/admin` },
-            { label: "Analytics", href: `/dashboard/create-app/all-apps/${appId}/admin/analytics` },
-          ],
-        },
-        {
           icon: <FaWallet size={20} />,
           label: "Wallets",
           href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury`,
           subItems: [
             { label: "Treasury wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury` },
             { label: "Billing wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/repayment` },
-            { label: "Settlement wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/kyc` },
+            { label: "Repayment wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/kyc` },
           ],
         },
         {
@@ -218,6 +209,19 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
       ]
     : []
 
+  const teamSubItems = appId
+    ? [
+        { label: "Overview", href: `/dashboard/create-app/all-apps/${appId}/admin` },
+        { label: "Analytics", href: `/dashboard/create-app/all-apps/${appId}/admin/analytics` },
+      ]
+    : []
+  const teamActiveSubHref = teamSubItems.length > 0 ? getActiveSubHref(pathname, teamSubItems) : null
+  const isTeamActive =
+    Boolean(appId) &&
+    (teamActiveSubHref !== null ||
+      pathname === `/dashboard/create-app/all-apps/${appId}/admin` ||
+      pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/admin/`))
+
   return (
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
       <div className="p-6">
@@ -234,29 +238,25 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
                 ? activeSubHref !== null || pathname === item.href || pathname.startsWith(`${item.href}/`)
                 : pathname === item.href || pathname.startsWith(`${item.href}/`)
               const isOpen =
-                item.label === "Admin"
-                  ? isAdminOpen
-                  : item.label === "Wallets"
-                    ? isWalletsOpen
-                    : item.label === "Products"
-                      ? isProductsOpen
-                      : item.label === "Applications"
-                        ? isApplicationsOpen
-                        : item.label === "Operation Workflow"
-                          ? isWorkflowOpen
-                          : false
+                item.label === "Wallets"
+                  ? isWalletsOpen
+                  : item.label === "Products"
+                    ? isProductsOpen
+                    : item.label === "Applications"
+                      ? isApplicationsOpen
+                      : item.label === "Operation Workflow"
+                        ? isWorkflowOpen
+                        : false
               const setIsOpen =
-                item.label === "Admin"
-                  ? setIsAdminOpen
-                  : item.label === "Wallets"
-                    ? setIsWalletsOpen
-                    : item.label === "Products"
-                      ? setIsProductsOpen
-                      : item.label === "Applications"
-                        ? setIsApplicationsOpen
-                        : item.label === "Operation Workflow"
-                          ? setIsWorkflowOpen
-                          : () => {}
+                item.label === "Wallets"
+                  ? setIsWalletsOpen
+                  : item.label === "Products"
+                    ? setIsProductsOpen
+                    : item.label === "Applications"
+                      ? setIsApplicationsOpen
+                      : item.label === "Operation Workflow"
+                        ? setIsWorkflowOpen
+                        : () => {}
 
               return (
                 <li key={index}>
@@ -349,7 +349,49 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
           <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">Section Title</h3>
         </div>
 
-        <ul>
+        <ul className="space-y-4">
+          {inAppContext && appId ? (
+            <li>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIsTeamOpen(!isTeamOpen)}
+                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 transition-colors [&_svg]:shrink-0 ${
+                    isTeamActive ? ACTIVE_ROW : INACTIVE_ROW
+                  }`}
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="flex shrink-0 items-center [&_svg]:block">
+                      <ShieldCheck size={20} />
+                    </span>
+                    <span className="truncate text-sm">Team</span>
+                  </div>
+                  <span className={`shrink-0 ${isTeamActive ? "text-[#9A813F]" : "text-slate-500"}`}>
+                    {isTeamOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  </span>
+                </button>
+                {isTeamOpen && (
+                  <ul className="ml-9 mt-2 space-y-1 border-l border-[#E8DFD0] pl-3">
+                    {teamSubItems.map((subItem, subIndex) => {
+                      const isSubActive = teamActiveSubHref === subItem.href
+                      return (
+                        <li key={subIndex}>
+                          <Link
+                            href={subItem.href}
+                            className={`block rounded-md px-3 py-2 text-sm transition-colors ${
+                              isSubActive ? ACTIVE_SUB : INACTIVE_SUB
+                            }`}
+                          >
+                            {subItem.label}
+                          </Link>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+            </li>
+          ) : null}
           <li>
             {inAppContext && appId ? (
               <Link

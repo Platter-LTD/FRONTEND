@@ -250,7 +250,15 @@ const buildLoanStructure = (configuration: any) => {
   return compactObject({
     interestRate: interestRate || undefined,
     interestMethod: interestMethod || undefined,
+    amortizationSchedule: (() => {
+      const am =
+        configuration?.amortizationSchedule ??
+        configuration?.amortization ??
+        configuration?.amortizationType
+      return typeof am === 'string' && am.trim() ? toEnum(am) || am.trim() : undefined
+    })(),
     allowMoratorium,
+    autoApproveLoans: toBool(configuration?.autoApproveLoans),
     ...(allowMoratorium && moratoriumType ? { moratoriumType } : {}),
     ...(allowMoratorium && moratorium !== undefined ? { moratorium } : {}),
     repaymentWorkflow: rw || undefined,
@@ -371,6 +379,18 @@ const buildCommodityStructure = (configuration: any) => {
     maxAmount: maxA,
     commodityTermsAndCondition: configuration?.termsAndConditions,
     ...(moratoriumFinal !== undefined ? { moratorium: moratoriumFinal } : {}),
+    contractId:
+      typeof configuration?.contractId === 'string' && configuration.contractId.trim()
+        ? configuration.contractId.trim()
+        : undefined,
+    airSignSecretKey:
+      typeof configuration?.airSignSecretKey === 'string' && configuration.airSignSecretKey.trim()
+        ? configuration.airSignSecretKey.trim()
+        : undefined,
+    airSignUid:
+      typeof configuration?.airSignUid === 'string' && configuration.airSignUid.trim()
+        ? configuration.airSignUid.trim()
+        : undefined,
   });
 };
 
@@ -507,9 +527,16 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     });
     const enableUnit =
       configuration?.enableUnitInvestmentPurchase === false ||
-      configuration?.enableUnitInvestmentPurchase === 'false'
+      configuration?.enableUnitInvestmentPurchase === 'false' ||
+      configuration?.enableUnitInvestment === false ||
+      configuration?.enableUnitInvestment === 'false'
         ? false
-        : true;
+        : configuration?.enableUnitInvestmentPurchase === true ||
+            configuration?.enableUnitInvestmentPurchase === 'true' ||
+            configuration?.enableUnitInvestment === true ||
+            configuration?.enableUnitInvestment === 'true'
+          ? true
+          : Boolean(Object.keys(unitObj).length);
     structure = compactObject({
       returnsOnInvestment: returnsOn || undefined,
       interestMethod: interestMethod || undefined,
@@ -524,6 +551,18 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
           ? { moratorium: moratoriumFallback }
           : {}),
       ...(Object.keys(unitObj).length ? { unitAmount: unitObj } : {}),
+      contractId:
+        typeof configuration?.contractId === 'string' && configuration.contractId.trim()
+          ? configuration.contractId.trim()
+          : undefined,
+      airSignSecretKey:
+        typeof configuration?.airSignSecretKey === 'string' && configuration.airSignSecretKey.trim()
+          ? configuration.airSignSecretKey.trim()
+          : undefined,
+      airSignUid:
+        typeof configuration?.airSignUid === 'string' && configuration.airSignUid.trim()
+          ? configuration.airSignUid.trim()
+          : undefined,
     });
   } else if (isCommodity) {
     structure = buildCommodityStructure(configuration);
@@ -539,10 +578,14 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
       moratoriumDurationOf: configuration?.moratoriumDurationOf,
       moratoriumType: mapMoratoriumType(configuration?.moratoriumType),
       repaymentWorkflow: mapRepaymentWorkflow(configuration?.repaymentWorkflow),
-      repaymentSchedule: configuration?.repaymentSchedule,
+      // Mortgage uses repaymentStructure; keep repaymentSchedule only as a fallback for older drafts
+      repaymentStructure:
+        configuration?.repaymentStructure ??
+        (isMortgage ? configuration?.repaymentSchedule : undefined),
+      repaymentSchedule: isMortgage ? undefined : configuration?.repaymentSchedule,
       amortizationSchedule: configuration?.amortizationSchedule,
       repaymentFrequency: configuration?.repaymentFrequency,
-      acceptableNpa: configuration?.acceptableNpa,
+      acceptableNPA: configuration?.acceptableNPA ?? configuration?.acceptableNpa,
       equityRequirement: configuration?.equityRequirement,
       savingsType: configuration?.savingsType,
       withdrawalFlexibility: configuration?.withdrawalFlexibility,
@@ -555,6 +598,7 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
       offerYieldOn: configuration?.offerYieldOn,
       offerYieldValue: configuration?.offerYieldValue,
       termsAndConditions: configuration?.termsAndConditions,
+      savingsTermsAndCondition: isSavings ? configuration?.termsAndConditions : undefined,
       contractId: configuration?.contractId,
       airSignSecretKey: configuration?.airSignSecretKey,
       airSignUid: configuration?.airSignUid,
@@ -595,8 +639,13 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
               Array.isArray(configuration?.securityRequirements) ? configuration.securityRequirements : [],
             ),
           ),
-          documentRequirements: configuration?.documentRequirements,
+          documentsToDownload: mapDocumentsToDownloadForLoan(
+            configuration?.documentsToDownload ?? configuration?.documentRequirements,
+          ),
           otherRequirements: mapOtherRequirementsForLoanApi(configuration?.otherRequirements ?? []),
+          contractId: configuration?.contractId,
+          airSignSecretKey: configuration?.airSignSecretKey,
+          airSignUid: configuration?.airSignUid,
         }
       : isLoan
         ? {
@@ -609,18 +658,65 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
               configuration?.documentsToDownload ?? configuration?.documentRequirements,
             ),
             otherRequirements: mapOtherRequirementsForLoanApi(configuration?.otherRequirements ?? []),
+            contractId: configuration?.contractId,
+            airSignSecretKey: configuration?.airSignSecretKey,
+            airSignUid: configuration?.airSignUid,
           }
-        : {
-            securityRequirements: configuration?.securityRequirements,
-            documentRequirements: configuration?.documentRequirements,
-            otherRequirements: mapOtherRequirementsForLoanApi(configuration?.otherRequirements ?? []),
-          },
+        : undefined,
   );
+
+  const loanLikeFeeToggles = () =>
+    compactObject({
+      fees: (() => {
+        const raw = configuration?.charges ?? configuration?.fees ?? [];
+        if (!Array.isArray(raw) || !raw.length) return undefined;
+        return mapFeesFromCharges(raw);
+      })(),
+      deductAllChargesOnLoan: (() => {
+        const customerPays =
+          configuration?.customerPaysChargesBeforeDisbursement === true ||
+          configuration?.customerPaysChargesBeforeDisbursement === 'true' ||
+          configuration?.customerPayChargesBeforeDisbursement === true ||
+          configuration?.chargePaymentMode === 'customer-pay' ||
+          configuration?.chargePaymentMode === 'customer_pay';
+        if (customerPays) return false;
+        if (configuration?.deductAllChargesOnLoan === false || configuration?.deductAllChargesOnLoan === 'false')
+          return false;
+        if (configuration?.deductChargesOnLoan === false || configuration?.deductChargesOnLoan === 'false')
+          return false;
+        return true;
+      })(),
+      customerPaysChargesBeforeDisbursement:
+        configuration?.customerPaysChargesBeforeDisbursement === true ||
+        configuration?.customerPaysChargesBeforeDisbursement === 'true' ||
+        configuration?.customerPayChargesBeforeDisbursement === true ||
+        configuration?.chargePaymentMode === 'customer-pay' ||
+        configuration?.chargePaymentMode === 'customer_pay',
+      lateRepayment: compactObject({
+        enabled: !(
+          configuration?.enableLateRepaymentCharges === false ||
+          configuration?.enableLateRepaymentCharges === 'false'
+        ),
+        penalties: (() => {
+          const raw =
+            configuration?.penalties ??
+            configuration?.lateRepayment?.penalties ??
+            configuration?.lateRepaymentPenalties ??
+            [];
+          const mapped = Array.isArray(raw) ? mapLateRepaymentPenaltiesForLoan(raw) : [];
+          return mapped.length ? mapped : undefined;
+        })(),
+      }),
+    });
 
   const feesAndCharges = compactObject(
     isSavings
       ? {
-          charges: configuration?.charges,
+          fees: (() => {
+            const raw = configuration?.charges ?? configuration?.fees ?? [];
+            if (!Array.isArray(raw) || !raw.length) return undefined;
+            return mapFeesFromCharges(raw);
+          })(),
           chargeForForcefulWithdrawal:
             configuration?.chargeForForcefulWithdrawal ?? configuration?.chargeForcefulWithdrawal,
           forcefulWithdrawalPenalties: (() => {
@@ -629,63 +725,21 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
             return mapped.length ? mapped : undefined;
           })(),
         }
-      : isMortgage
-        ? {
-            fees: (() => {
-              const raw = configuration?.charges ?? configuration?.fees ?? [];
-              if (!Array.isArray(raw) || !raw.length) return undefined;
-              return mapFeesFromCharges(raw);
-            })(),
-          }
-        : isLoan
-          ? compactObject({
-              fees: (() => {
-                const raw = configuration?.charges ?? configuration?.fees ?? [];
-                if (!Array.isArray(raw) || !raw.length) return undefined;
-                return mapFeesFromCharges(raw);
-              })(),
-              deductAllChargesOnLoan: (() => {
-                const customerPays =
-                  configuration?.customerPaysChargesBeforeDisbursement === true ||
-                  configuration?.customerPaysChargesBeforeDisbursement === 'true' ||
-                  configuration?.customerPayChargesBeforeDisbursement === true ||
-                  configuration?.chargePaymentMode === 'customer-pay' ||
-                  configuration?.chargePaymentMode === 'customer_pay';
-                if (customerPays) return false;
-                if (configuration?.deductAllChargesOnLoan === false || configuration?.deductAllChargesOnLoan === 'false')
-                  return false;
-                if (configuration?.deductChargesOnLoan === false || configuration?.deductChargesOnLoan === 'false')
-                  return false;
-                return true;
-              })(),
-              customerPaysChargesBeforeDisbursement:
-                configuration?.customerPaysChargesBeforeDisbursement === true ||
-                configuration?.customerPaysChargesBeforeDisbursement === 'true' ||
-                configuration?.customerPayChargesBeforeDisbursement === true ||
-                configuration?.chargePaymentMode === 'customer-pay' ||
-                configuration?.chargePaymentMode === 'customer_pay',
-              lateRepayment: compactObject({
-                enabled: !(
-                  configuration?.enableLateRepaymentCharges === false ||
-                  configuration?.enableLateRepaymentCharges === 'false'
-                ),
-                penalties: (() => {
-                  const raw =
-                    configuration?.penalties ??
-                    configuration?.lateRepayment?.penalties ??
-                    configuration?.lateRepaymentPenalties ??
-                    [];
-                  const mapped = Array.isArray(raw) ? mapLateRepaymentPenaltiesForLoan(raw) : [];
-                  return mapped.length ? mapped : undefined;
-                })(),
-              }),
-            })
+      : isMortgage || isLoan
+        ? loanLikeFeeToggles()
         : isCommodity
           ? {
               fees: (() => {
                 const raw = configuration?.charges ?? configuration?.fees ?? [];
                 if (!Array.isArray(raw) || !raw.length) return undefined;
                 return mapFeesFromCharges(raw);
+              })(),
+              chargeForForcefulWithdrawal:
+                configuration?.chargeForForcefulWithdrawal ?? configuration?.chargeForcefulWithdrawal,
+              forcefulWithdrawalPenalties: (() => {
+                const raw = configuration?.withdrawalPenalties ?? configuration?.penalties ?? [];
+                const mapped = Array.isArray(raw) ? mapForcefulWithdrawalPenaltiesForApi(raw) : [];
+                return mapped.length ? mapped : undefined;
               })(),
             }
         : isInvestment
@@ -702,6 +756,9 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
                 const mapped = Array.isArray(raw) ? mapForcefulWithdrawalPenaltiesForApi(raw) : [];
                 return mapped.length ? mapped : undefined;
               })(),
+              contractId: configuration?.contractId,
+              airSignSecretKey: configuration?.airSignSecretKey,
+              airSignUid: configuration?.airSignUid,
             }
           : {
               charges: configuration?.charges,
@@ -724,6 +781,12 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     ? compactObject({
         equityContribution: parseSavingsAmountNumber(configuration?.equityContribution),
         propertyValue: parseSavingsAmountNumber(configuration?.propertyValue),
+        mortgageWorkflowStepOrder: Array.isArray(configuration?.mortgageWorkflowStepOrder)
+          ? configuration.mortgageWorkflowStepOrder
+          : undefined,
+        inspectionDates: Array.isArray(configuration?.inspectionDates)
+          ? configuration.inspectionDates
+          : undefined,
       })
     : {};
 
@@ -766,11 +829,13 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
 
   return compactObject({
     ...common,
+    // Platform default false — only send true when merchant opts in.
+    requireApplicantSignature: toBool(configuration?.requireApplicantSignature),
     about,
     structure,
-    requirements,
+    ...(requirements && Object.keys(requirements).length ? { requirements } : {}),
     feesAndCharges,
-    properties: normalizedProperties,
+    ...(isMortgage ? { properties: normalizedProperties } : {}),
     ...(commodityPricesNormalized ? { commodityPrices: commodityPricesNormalized } : {}),
     ...mortgageTopLevel,
     ...commodityTopLevel,
