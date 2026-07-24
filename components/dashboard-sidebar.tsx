@@ -8,7 +8,7 @@ import { IoMdCube } from "react-icons/io"
 import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { FaWallet } from "react-icons/fa"
-import { GitBranch, ChevronDown, ChevronUp, FileText, ShieldCheck } from "lucide-react"
+import { BarChart3, GitBranch, ChevronDown, ChevronUp, FileText, ShieldCheck } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
@@ -79,7 +79,6 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const [isProductsOpen, setIsProductsOpen] = useState(false)
   const [isApplicationsOpen, setIsApplicationsOpen] = useState(false)
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
-  const [isTeamOpen, setIsTeamOpen] = useState(false)
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
@@ -144,14 +143,12 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
       setIsProductsOpen(false)
       setIsApplicationsOpen(false)
       setIsWorkflowOpen(false)
-      setIsTeamOpen(false)
       return
     }
     setIsWalletsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/wallets`))
     setIsProductsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/products`))
     setIsApplicationsOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/applications`))
     setIsWorkflowOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/operation-workflow`))
-    setIsTeamOpen(pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/admin`))
   }, [pathname, appId])
 
   const globalNavItems: GlobalNavItem[] = [
@@ -209,18 +206,13 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
       ]
     : []
 
-  const teamSubItems = appId
-    ? [
-        { label: "Overview", href: `/dashboard/create-app/all-apps/${appId}/admin` },
-        { label: "Analytics", href: `/dashboard/create-app/all-apps/${appId}/admin/analytics` },
-      ]
-    : []
-  const teamActiveSubHref = teamSubItems.length > 0 ? getActiveSubHref(pathname, teamSubItems) : null
+  const teamHref = appId ? `/dashboard/create-app/all-apps/${appId}/admin` : ""
+  const analyticsHref = appId ? `/dashboard/create-app/all-apps/${appId}/admin/analytics` : ""
   const isTeamActive =
     Boolean(appId) &&
-    (teamActiveSubHref !== null ||
-      pathname === `/dashboard/create-app/all-apps/${appId}/admin` ||
-      pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/admin/`))
+    (pathname === teamHref ||
+      (pathname.startsWith(`${teamHref}/`) && !pathname.startsWith(analyticsHref)))
+  const isAnalyticsActive = Boolean(appId) && (pathname === analyticsHref || pathname.startsWith(`${analyticsHref}/`))
 
   return (
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
@@ -351,46 +343,30 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
 
         <ul className="space-y-4">
           {inAppContext && appId ? (
-            <li>
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setIsTeamOpen(!isTeamOpen)}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 transition-colors [&_svg]:shrink-0 ${
+            <>
+              <li>
+                <Link
+                  href={teamHref}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
                     isTeamActive ? ACTIVE_ROW : INACTIVE_ROW
                   }`}
                 >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <span className="flex shrink-0 items-center [&_svg]:block">
-                      <ShieldCheck size={20} />
-                    </span>
-                    <span className="truncate text-sm">Team</span>
-                  </div>
-                  <span className={`shrink-0 ${isTeamActive ? "text-[#9A813F]" : "text-slate-500"}`}>
-                    {isTeamOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                  </span>
-                </button>
-                {isTeamOpen && (
-                  <ul className="ml-9 mt-2 space-y-1 border-l border-[#E8DFD0] pl-3">
-                    {teamSubItems.map((subItem, subIndex) => {
-                      const isSubActive = teamActiveSubHref === subItem.href
-                      return (
-                        <li key={subIndex}>
-                          <Link
-                            href={subItem.href}
-                            className={`block rounded-md px-3 py-2 text-sm transition-colors ${
-                              isSubActive ? ACTIVE_SUB : INACTIVE_SUB
-                            }`}
-                          >
-                            {subItem.label}
-                          </Link>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </div>
-            </li>
+                  <ShieldCheck size={20} />
+                  <span>Team</span>
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href={analyticsHref}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                    isAnalyticsActive ? ACTIVE_ROW : INACTIVE_ROW
+                  }`}
+                >
+                  <BarChart3 size={20} />
+                  <span>Analytics</span>
+                </Link>
+              </li>
+            </>
           ) : null}
           <li>
             {inAppContext && appId ? (
