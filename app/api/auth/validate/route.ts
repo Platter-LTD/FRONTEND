@@ -24,6 +24,13 @@ function userFromPayload(payload: Record<string, unknown>) {
   };
 }
 
+function unauthorized(body: Record<string, unknown>) {
+  const response = NextResponse.json(body, { status: 401 });
+  response.cookies.set('accessToken', '', cookieOpts(0, false));
+  response.cookies.set('refreshToken', '', cookieOpts(0, true));
+  return response;
+}
+
 /**
  * If access token is missing or expired, try to refresh using refreshToken cookie.
  * Returns a response with new access (and optionally refresh) cookie set if refresh succeeds.
@@ -71,10 +78,7 @@ export async function GET(request: NextRequest) {
     if (!accessToken) {
       const refreshResponse = await tryRefreshAndRespond(request);
       if (refreshResponse) return refreshResponse;
-      return NextResponse.json(
-        { success: false, valid: false, error: 'No access token found' },
-        { status: 401 }
-      );
+      return unauthorized({ success: false, valid: false, error: 'No access token found' });
     }
 
     try {
@@ -87,10 +91,7 @@ export async function GET(request: NextRequest) {
       if (payload.exp && (payload.exp as number) * 1000 < Date.now()) {
         const refreshResponse = await tryRefreshAndRespond(request);
         if (refreshResponse) return refreshResponse;
-        return NextResponse.json(
-          { success: false, valid: false, error: 'Token expired' },
-          { status: 401 }
-        );
+        return unauthorized({ success: false, valid: false, error: 'Token expired' });
       }
 
       return NextResponse.json({
@@ -101,10 +102,7 @@ export async function GET(request: NextRequest) {
     } catch {
       const refreshResponse = await tryRefreshAndRespond(request);
       if (refreshResponse) return refreshResponse;
-      return NextResponse.json(
-        { success: false, valid: false, error: 'Invalid token format' },
-        { status: 401 }
-      );
+      return unauthorized({ success: false, valid: false, error: 'Invalid token format' });
     }
   } catch (error: any) {
     console.error('Validate token error:', error);
@@ -124,10 +122,7 @@ export async function POST(request: NextRequest) {
     const accessToken = request.cookies.get('accessToken')?.value;
 
     if (!accessToken) {
-      return NextResponse.json(
-        { success: false, valid: false, error: 'No access token found' },
-        { status: 401 }
-      );
+      return unauthorized({ success: false, valid: false, error: 'No access token found' });
     }
 
     // Validate against auth service
@@ -141,14 +136,11 @@ export async function POST(request: NextRequest) {
 
     if (!authResponse.ok) {
       const errorData = await authResponse.json().catch(() => ({}));
-      return NextResponse.json(
-        { 
-          success: false, 
-          valid: false, 
-          error: errorData.error || 'Token validation failed' 
-        },
-        { status: 401 }
-      );
+      return unauthorized({
+        success: false,
+        valid: false,
+        error: (errorData as any).error || 'Token validation failed',
+      });
     }
 
     const userData = await authResponse.json();

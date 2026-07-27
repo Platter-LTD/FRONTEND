@@ -164,6 +164,11 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const appNavItems: AppNavItem[] = appId
     ? [
         {
+          icon: <BarChart3 size={20} />,
+          label: "Analytics",
+          href: `/dashboard/create-app/all-apps/${appId}/admin/analytics`,
+        },
+        {
           icon: <FaWallet size={20} />,
           label: "Wallets",
           href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury`,
@@ -212,7 +217,6 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
     Boolean(appId) &&
     (pathname === teamHref ||
       (pathname.startsWith(`${teamHref}/`) && !pathname.startsWith(analyticsHref)))
-  const isAnalyticsActive = Boolean(appId) && (pathname === analyticsHref || pathname.startsWith(`${analyticsHref}/`))
 
   return (
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
@@ -343,30 +347,17 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
 
         <ul className="space-y-4">
           {inAppContext && appId ? (
-            <>
-              <li>
-                <Link
-                  href={teamHref}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
-                    isTeamActive ? ACTIVE_ROW : INACTIVE_ROW
-                  }`}
-                >
-                  <ShieldCheck size={20} />
-                  <span>Team</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href={analyticsHref}
-                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
-                    isAnalyticsActive ? ACTIVE_ROW : INACTIVE_ROW
-                  }`}
-                >
-                  <BarChart3 size={20} />
-                  <span>Analytics</span>
-                </Link>
-              </li>
-            </>
+            <li>
+              <Link
+                href={teamHref}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                  isTeamActive ? ACTIVE_ROW : INACTIVE_ROW
+                }`}
+              >
+                <ShieldCheck size={20} />
+                <span>Team</span>
+              </Link>
+            </li>
           ) : null}
           <li>
             {inAppContext && appId ? (

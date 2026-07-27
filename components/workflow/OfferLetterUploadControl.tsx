@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import {
   canMerchantUploadOfferLetter,
   extractOfferLetter,
+  merchantOfferLetterUploadBlockReason,
   uploadOfferLetter,
 } from "@/lib/offerLetterApi"
 import { isPdfFile } from "@/lib/isPdfFile"
@@ -29,6 +30,7 @@ export function OfferLetterUploadControl({
   const [busy, setBusy] = useState(false)
   const offer = extractOfferLetter(detail)
   const canUpload = canMerchantUploadOfferLetter(detail)
+  const blockReason = merchantOfferLetterUploadBlockReason(detail)
 
   if (!canUpload && !offer?.pdfUrl) return null
 
@@ -100,10 +102,12 @@ export function OfferLetterUploadControl({
             {offer?.pdfUrl ? "Replace offer letter PDF" : "Upload offer letter PDF"}
           </Button>
           <p className="text-[11px] leading-relaxed text-gray-400">
-            PDF only, max 10 MB. Replaces the system-generated letter while the offer is pending
-            acceptance.
+            PDF only, max 10 MB. You can replace this letter until the application is disbursed or
+            closed.
           </p>
         </>
+      ) : blockReason ? (
+        <p className="text-[11px] leading-relaxed text-amber-800">{blockReason}</p>
       ) : null}
     </div>
   )

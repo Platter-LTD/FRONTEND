@@ -4,6 +4,47 @@ import { clearSecureTokens } from "@/lib/tokenManager"
 
 let sessionRedirectInFlight = false
 
+export function isOnAuthPage(): boolean {
+  if (typeof window === "undefined") return true
+  const path = window.location.pathname
+  return (
+    path === "/signin" ||
+    path.startsWith("/signin/") ||
+    path === "/forgot-password" ||
+    path.startsWith("/forgot-password") ||
+    path === "/reset-password" ||
+    path.startsWith("/reset-password") ||
+    path.startsWith("/verify-email") ||
+    path.startsWith("/spring/")
+  )
+}
+
+/** True when an API error body indicates the access/refresh token is dead. */
+export function isInvalidOrExpiredTokenError(error?: unknown): boolean {
+  const msg = String(
+    typeof error === "string"
+      ? error
+      : error && typeof error === "object"
+        ? (error as Record<string, unknown>).error ??
+          (error as Record<string, unknown>).message ??
+          ""
+        : "",
+  ).toLowerCase()
+  if (!msg) return false
+  return (
+    msg.includes("invalid or expired") ||
+    msg.includes("token expired") ||
+    msg.includes("expired token") ||
+    msg.includes("jwt expired") ||
+    msg.includes("invalid token") ||
+    msg.includes("no refresh token") ||
+    msg.includes("token refresh failed") ||
+    msg.includes("session has expired") ||
+    msg.includes("please sign in again") ||
+    (msg.includes("unauthorized") && msg.includes("token"))
+  )
+}
+
 /** Clear auth cookies and send the user to sign-in (idempotent). */
 export async function handleSessionExpired(): Promise<never> {
   if (typeof window === "undefined") {
@@ -17,9 +58,22 @@ export async function handleSessionExpired(): Promise<never> {
     } catch {
       /* still redirect */
     }
-    window.location.replace("/signin")
+    if (!isOnAuthPage()) {
+      window.location.replace("/signin")
+    }
   }
 
+  throw new Error("Session expired")
+}
+
+/**
+ * After a 401: try one shared refresh. If refresh fails, force sign-in.
+ * Returns the new access token when refresh succeeds.
+ */
+export async function refreshOrRedirectToSignIn(): Promise<string> {
+  const newToken = await refreshAccessTokenClient()
+  if (newToken) return newToken
+  await handleSessionExpired()
   throw new Error("Session expired")
 }
 
@@ -46,7 +100,7 @@ function buildInit(token: string | null, init?: RequestInit): RequestInit {
 
 /**
  * Browser fetch for Plata BFF routes with cookie session + one refresh retry on 401.
- * Loan workflow and other raw fetch callers should use this instead of fetch + getAuthHeaders.
+ * If refresh fails, clears session and redirects to /signin.
  */
 export async function plataAuthFetch(input: string, init?: RequestInit): Promise<Response> {
   let token = typeof window !== "undefined" ? getAccessToken() : null
@@ -54,30 +108,33 @@ export async function plataAuthFetch(input: string, init?: RequestInit): Promise
 
   if (response.status !== 401) return response
 
-  const newToken = await refreshAccessTokenClient()
-  if (newToken) {
-    // Session was refreshed — return the response even on 401 (upstream auth/permission issue).
-    return fetch(input, buildInit(newToken, init))
-  }
-
-  token = typeof window !== "undefined" ? getAccessToken() : null
-  if (token) {
-    response = await fetch(input, buildInit(token, init))
-    // Still have a cookie/token but refresh failed or another client already refreshed.
-    // Do not hard-logout: workflow/permission 401s must not wipe a live session.
+  // Don't try refresh loops against auth endpoints themselves.
+  const url = typeof input === "string" ? input : ""
+  if (
+    url.includes("/api/auth/login") ||
+    url.includes("/api/auth/refresh") ||
+    url.includes("/api/v1/auth/login")
+  ) {
     return response
   }
 
-  await handleSessionExpired()
-  throw new Error("Session expired")
+  const newToken = await refreshOrRedirectToSignIn()
+  response = await fetch(input, buildInit(newToken, init))
+
+  // Retry still unauthorized with a fresh token → permission issue, not expired session.
+  if (response.status === 401) {
+    const body = await response
+      .clone()
+      .json()
+      .catch(() => ({} as Record<string, unknown>))
+    if (isInvalidOrExpiredTokenError(body)) {
+      await handleSessionExpired()
+    }
+  }
+
+  return response
 }
 
 export function isSessionExpiredError(_status: number, error?: string): boolean {
-  const msg = String(error || "").toLowerCase()
-  return (
-    msg === "session expired" ||
-    msg.includes("session has expired") ||
-    msg.includes("please sign in again") ||
-    msg.includes("no refresh token")
-  )
+  return isInvalidOrExpiredTokenError(error) || String(error || "").toLowerCase() === "session expired"
 }

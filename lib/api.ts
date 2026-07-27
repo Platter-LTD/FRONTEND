@@ -5,8 +5,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios"
 import { getAccessToken } from "@/lib/cookieAuth"
-import { handleSessionExpired } from "@/lib/plataAuthFetch"
-import { refreshAccessTokenClient } from "@/lib/refreshAccessTokenClient"
+import { handleSessionExpired, isInvalidOrExpiredTokenError, refreshOrRedirectToSignIn } from "@/lib/plataAuthFetch"
 
 // Use relative URL so requests go through our own Next.js API proxy
 export interface ApiRequestConfig extends AxiosRequestConfig {
@@ -48,7 +47,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig & { includeAuth
   return config
 })
 
-// Response interceptor: on 401, refresh via cookie (server reads refreshToken cookie)
+// Response interceptor: on 401, refresh once; if refresh fails → sign-in
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -62,21 +61,26 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true
-      const newAccessToken = await refreshAccessTokenClient()
-      if (newAccessToken) {
+      try {
+        const newAccessToken = await refreshOrRedirectToSignIn()
         api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`
         const retryHeaders = (originalRequest.headers ?? {}) as Record<string, string>
         retryHeaders.Authorization = `Bearer ${newAccessToken}`
         originalRequest.headers = retryHeaders as any
         return api(originalRequest)
-      }
-      // Only force sign-out when the session is actually gone (no access cookie left).
-      // Parallel refresh races used to clear a still-valid session here.
-      if (!getAccessToken()) {
-        delete api.defaults.headers.common.Authorization
-        await handleSessionExpired()
+      } catch (sessionErr) {
+        return Promise.reject(sessionErr)
       }
     }
+
+    if (error.response?.status === 401 && isInvalidOrExpiredTokenError(error.response?.data)) {
+      try {
+        await handleSessionExpired()
+      } catch (sessionErr) {
+        return Promise.reject(sessionErr)
+      }
+    }
+
     return Promise.reject(error)
   },
 )

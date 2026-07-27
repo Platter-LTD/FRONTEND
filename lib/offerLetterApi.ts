@@ -45,7 +45,16 @@ export function extractOfferLetter(raw: Record<string, unknown> | null | undefin
   }
 }
 
-/** Merchant may upload while borrower acceptance is pending. */
+function isTerminalWorkflow(workflowStatus: string, pafStatus: string): boolean {
+  const tokens = ["disbursed", "completed", "declined", "cancelled", "canceled", "rejected", "failed"]
+  return tokens.some((t) => workflowStatus.includes(t) || pafStatus.includes(t))
+}
+
+/**
+ * Merchant may upload/replace the offer letter PDF until the loan/mortgage is
+ * disbursed or declined — including after the applicant has accepted (so a wrong
+ * letter can still be corrected before funds move).
+ */
 export function canMerchantUploadOfferLetter(raw: Record<string, unknown> | null | undefined): boolean {
   if (!raw) return false
   const workflowStatus = String(raw.loanWorkflowStatus || "").trim().toLowerCase()
@@ -54,14 +63,31 @@ export function canMerchantUploadOfferLetter(raw: Record<string, unknown> | null
   const pafObj = paf && typeof paf === "object" ? (paf as Record<string, unknown>) : null
   const pafStatus = String(pafObj?.status || "").trim().toLowerCase()
 
-  if (workflowStatus !== "approved" && workflowStatus !== "offer_sent") return false
-  if (pafStatus !== "offer_pending") return false
   if (productType !== "LOAN" && productType !== "MORTGAGE") return false
+  if (isTerminalWorkflow(workflowStatus, pafStatus)) return false
+
+  const allowedWorkflow =
+    workflowStatus === "approved" ||
+    workflowStatus === "offer_sent" ||
+    workflowStatus === "awaiting_disbursement" ||
+    workflowStatus === "awaiting_acceptance" ||
+    workflowStatus.includes("offer") ||
+    workflowStatus.includes("awaiting")
+
+  const allowedPaf =
+    !pafStatus ||
+    pafStatus === "offer_pending" ||
+    pafStatus === "offer_accepted" ||
+    pafStatus.includes("offer") ||
+    pafStatus.includes("inspection") ||
+    pafStatus.includes("appointment") ||
+    pafStatus.includes("down_payment")
+
+  if (!allowedWorkflow && !allowedPaf) return false
 
   if (productType === "MORTGAGE") {
     const stepId = String(pafObj?.currentWorkflowStepId || "").trim().toLowerCase()
     if (stepId === "virtual_tour" || stepId === "virtual_inspection") return false
-    if (stepId && stepId !== "offer_letter") return false
 
     // Before offer letter: require virtual tour completion when step id is unset
     if (!stepId || stepId === "offer_letter") {
@@ -78,11 +104,31 @@ export function canMerchantUploadOfferLetter(raw: Record<string, unknown> | null
             typeof raw.offerLetter === "object" &&
             (raw.offerLetter as Record<string, unknown>).pdfUrl),
       )
-      if (!stepId && !tourDone) return false
+      if (!stepId && !tourDone && pafStatus === "offer_pending") return false
     }
   }
 
   return true
+}
+
+/** Why upload is blocked — for UI copy when canUpload is false but a letter exists. */
+export function merchantOfferLetterUploadBlockReason(
+  raw: Record<string, unknown> | null | undefined,
+): string | null {
+  if (!raw) return null
+  if (canMerchantUploadOfferLetter(raw)) return null
+  const workflowStatus = String(raw.loanWorkflowStatus || "").trim().toLowerCase()
+  const paf = raw.postApprovalFulfillment
+  const pafObj = paf && typeof paf === "object" ? (paf as Record<string, unknown>) : null
+  const pafStatus = String(pafObj?.status || "").trim().toLowerCase()
+  if (isTerminalWorkflow(workflowStatus, pafStatus)) {
+    return "This application is closed — the offer letter can no longer be replaced."
+  }
+  const stepId = String(pafObj?.currentWorkflowStepId || "").trim().toLowerCase()
+  if (stepId === "virtual_tour" || stepId === "virtual_inspection") {
+    return "Finish the virtual tour step before uploading an offer letter."
+  }
+  return "Offer letter upload is not available for this application state."
 }
 
 export async function uploadOfferLetter(

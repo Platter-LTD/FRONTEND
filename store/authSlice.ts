@@ -2,6 +2,7 @@ import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/tool
 import api from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { setSecureTokens, clearSecureTokens, getUserFromToken } from "@/lib/tokenManager"
+import { getAccessToken } from "@/lib/cookieAuth"
 import type {
   AuthUser,
   LoginRequestDto,
@@ -74,7 +75,7 @@ export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
   async () => {
     try {
       const res = await fetch("/api/auth/validate", { method: "GET", credentials: "include" })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({} as any))
       if (process.env.NODE_ENV === "development") {
         console.log("[auth] GET /api/auth/validate → status", res.status, "body", data)
       }
@@ -84,16 +85,37 @@ export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
         }
         return data.user as AuthUser
       }
+
+      // Access/refresh are dead — clear stale cookies so we don't sit on dashboard with 401 spam.
+      if (res.status === 401 || data?.valid === false) {
+        await clearSecureTokens()
+        return null
+      }
     } catch (e) {
       if (process.env.NODE_ENV === "development") {
         console.warn("[auth] GET /api/auth/validate request failed", e)
       }
     }
+
+    // Network hiccup only: keep user if JWT is still unexpired; otherwise clear and sign out.
     const user = getUserFromToken()
-    if (process.env.NODE_ENV === "development") {
-      console.log("[auth] validate had no user; using getUserFromToken()", user)
+    try {
+      const token = getAccessToken()
+      if (token) {
+        const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number }
+        if (payload.exp && payload.exp * 1000 > Date.now()) {
+          if (process.env.NODE_ENV === "development") {
+            console.log("[auth] validate unreachable; using unexpired JWT claims", user)
+          }
+          return (user as any) || null
+        }
+      }
+    } catch {
+      /* fall through */
     }
-    return (user as any) || null
+
+    await clearSecureTokens()
+    return null
   },
 )
 

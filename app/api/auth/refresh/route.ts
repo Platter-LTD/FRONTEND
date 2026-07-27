@@ -21,6 +21,24 @@ const http = axios.create({
   validateStatus: () => true,
 });
 
+function clearAuthCookies(response: NextResponse) {
+  response.cookies.set('accessToken', '', {
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  });
+  response.cookies.set('refreshToken', '', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  });
+  return response;
+}
+
 /**
  * API Route to refresh tokens using httpOnly cookie
  * Forwards refresh request to auth service and updates cookies
@@ -37,9 +55,11 @@ export async function POST(request: NextRequest) {
       }
     }
     if (!refreshToken) {
-      return NextResponse.json(
-        { success: false, error: 'No refresh token found' },
-        { status: 401 }
+      return clearAuthCookies(
+        NextResponse.json(
+          { success: false, error: 'No refresh token found' },
+          { status: 401 },
+        ),
       );
     }
 
@@ -53,13 +73,14 @@ export async function POST(request: NextRequest) {
     const data = authResponse.data as any;
 
     if (!(authResponse.status >= 200 && authResponse.status < 300) || !data?.success) {
-      // Do not clear access/refresh cookies here. A transient or endpoint-specific
-      // 401 should not wipe the current session unexpectedly.
-      const errorResponse = NextResponse.json(
-        { success: false, error: data?.error || 'Token refresh failed' },
-        { status: 401 }
+      // Refresh is definitive for session continuity — clear stale cookies so the
+      // client/middleware send the user to sign-in instead of looping on 401s.
+      return clearAuthCookies(
+        NextResponse.json(
+          { success: false, error: data?.error || 'Token refresh failed' },
+          { status: 401 },
+        ),
       );
-      return errorResponse;
     }
 
     // Extract new tokens

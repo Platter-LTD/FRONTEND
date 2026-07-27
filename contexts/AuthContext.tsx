@@ -1,7 +1,9 @@
 "use client"
 
 import { createContext, useEffect, type ReactNode } from "react"
+import { usePathname } from "next/navigation"
 import { clearSecureTokens } from "@/lib/tokenManager"
+import { handleSessionExpired, isOnAuthPage } from "@/lib/plataAuthFetch"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { loginThunk, loadUserFromTokenThunk, logoutThunk } from "@/store/authSlice"
 import { clearComplianceState } from "@/store/complianceSlice"
@@ -27,11 +29,21 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch()
+  const pathname = usePathname()
   const { user: authUser, loading, isAuthenticated } = useAppSelector((state) => state.auth)
 
   useEffect(() => {
     dispatch(loadUserFromTokenThunk())
   }, [dispatch])
+
+  // Protected routes: once auth finishes and session is invalid, leave immediately.
+  useEffect(() => {
+    if (loading) return
+    if (isAuthenticated) return
+    if (!pathname?.startsWith("/dashboard") && !pathname?.startsWith("/admin")) return
+    if (isOnAuthPage()) return
+    void handleSessionExpired().catch(() => {})
+  }, [loading, isAuthenticated, pathname])
 
   const mapAuthUserToContextUser = (user: AuthUser | null): User | null => {
     if (!user) return null
