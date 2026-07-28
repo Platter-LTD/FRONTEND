@@ -786,6 +786,20 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
           : undefined,
         inspectionDates: Array.isArray(configuration?.inspectionDates)
           ? configuration.inspectionDates
+              .map((slot: Record<string, unknown>) => {
+                const scheduledFor = String(slot?.scheduledFor ?? "").trim()
+                if (!scheduledFor) return null
+                const label = String(slot?.label ?? "").trim().slice(0, 200)
+                const location = String(slot?.location ?? "").trim().slice(0, 300)
+                const notes = String(slot?.notes ?? "").trim().slice(0, 500)
+                return compactObject({
+                  scheduledFor,
+                  label: label || undefined,
+                  location: location || undefined,
+                  notes: notes || undefined,
+                })
+              })
+              .filter(Boolean)
           : undefined,
       })
     : {};

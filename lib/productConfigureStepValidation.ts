@@ -148,6 +148,12 @@ export type MortgageStepCtx = {
     previewFiles: unknown[]
     videoUrl: string
   }[]
+  inspectionDates: {
+    scheduledFor: string
+    label?: string
+    location?: string
+    notes?: string
+  }[]
 }
 
 export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; errors: string[] } {
@@ -199,12 +205,38 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
     })
   }
 
+  if (step === 6) {
+    if (!ctx.inspectionDates.length) {
+      errors.push("Inspection Dates: Add at least one bookable inspection slot for borrowers.")
+    }
+    ctx.inspectionDates.forEach((slot, i) => {
+      const n = i + 1
+      if (!has(slot.scheduledFor)) {
+        errors.push(`Inspection Dates: Slot #${n} — Date & time is required.`)
+        return
+      }
+      const when = new Date(slot.scheduledFor)
+      if (Number.isNaN(when.getTime())) {
+        errors.push(`Inspection Dates: Slot #${n} — Invalid date & time.`)
+      }
+      if (slot.label && slot.label.length > 200) {
+        errors.push(`Inspection Dates: Slot #${n} — Label must be 200 characters or fewer.`)
+      }
+      if (slot.location && slot.location.length > 300) {
+        errors.push(`Inspection Dates: Slot #${n} — Location must be 300 characters or fewer.`)
+      }
+      if (slot.notes && slot.notes.length > 500) {
+        errors.push(`Inspection Dates: Slot #${n} — Notes must be 500 characters or fewer.`)
+      }
+    })
+  }
+
   return { ok: errors.length === 0, errors }
 }
 
 export function validateAllMortgageSteps(base: Omit<MortgageStepCtx, "step">): { ok: boolean; errors: string[] } {
   const all: string[] = []
-  for (let s = 1; s <= 5; s += 1) {
+  for (let s = 1; s <= 6; s += 1) {
     all.push(...validateMortgageStep({ ...base, step: s }).errors)
   }
   return { ok: all.length === 0, errors: all }
