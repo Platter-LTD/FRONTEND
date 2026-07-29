@@ -1,11 +1,11 @@
 /**
- * Plata Product Creator loan workflow (5 steps).
- * Pending approval → Approved → Accept offer → Awaiting Disbursements → Loan disbursed
+ * Plata Product Creator loan workflow (4 steps).
+ * Pending approval → Accept offer → Awaiting Disbursements → Loan disbursed
+ * Approval is shown as a status on the pending step (no separate Approved step).
  */
 
 export type PlataLoanStepId =
   | "pending_approval"
-  | "approved"
   | "accept_offer"
   | "awaiting_disbursement"
   | "loan_disbursed"
@@ -23,6 +23,8 @@ export type LoanThreadItem = {
   title: string
   creatorAction: string
   status: LoanThreadStatus
+  /** Shown instead of Done/In progress when set (e.g. "Approved" on pending step). */
+  statusLabel?: string
 }
 
 export const PLATA_LOAN_STEPS: Array<{
@@ -38,26 +40,21 @@ export const PLATA_LOAN_STEPS: Array<{
     creatorAction: "Reviews and approves or declines the application",
   },
   {
-    id: "approved",
-    stepNumber: 2,
-    title: "Approved",
-    creatorAction: "Offer letter sent — waits for applicant acknowledgment",
-  },
-  {
     id: "accept_offer",
-    stepNumber: 3,
+    stepNumber: 2,
     title: "Accept offer",
-    creatorAction: "Upload custom offer letter PDF (optional); sees applicant accept or decline",
+    creatorAction:
+      "Choose system-generated or custom offer letter; waits for applicant accept or decline",
   },
   {
     id: "awaiting_disbursement",
-    stepNumber: 4,
+    stepNumber: 3,
     title: "Awaiting Disbursements",
     creatorAction: "Triggers loan disbursement to applicant wallet",
   },
   {
     id: "loan_disbursed",
-    stepNumber: 5,
+    stepNumber: 4,
     title: "Loan disbursed — check loan wallet",
     creatorAction: "Confirms funds credited to loan wallet",
   },
@@ -111,7 +108,7 @@ function isDisbursed(status: string, workflow: string, progress: LoanWorkflowPro
   )
 }
 
-function isApproved(workflow: string, status: string): boolean {
+function isPastApproval(workflow: string, status: string, pafStatus: string): boolean {
   return (
     workflow === "approved" ||
     workflow === "offer_sent" ||
@@ -121,7 +118,10 @@ function isApproved(workflow: string, status: string): boolean {
     status === "approved" ||
     status === "active" ||
     status === "completed" ||
-    status === "disbursed"
+    status === "disbursed" ||
+    pafStatus === "offer_pending" ||
+    pafStatus === "offer_accepted" ||
+    pafStatus.includes("disburs")
   )
 }
 
@@ -139,21 +139,20 @@ export function resolvePlataLoanStep(
 
   if (isDisbursed(status, wf, progress) || pafStatus === "disbursed") return "loan_disbursed"
 
+  // Acceptance does not disburse — merchant must call pending-approved-loan/disburse
   if (
     progress.offerAcceptedAt ||
     wf === "awaiting_disbursement" ||
     wf.includes("awaiting_disburs") ||
     pafStatus === "offer_accepted" ||
-    pafStatus.includes("disburs")
+    (pafStatus.includes("disburs") && pafStatus !== "disbursed")
   ) {
     return "awaiting_disbursement"
   }
 
-  if (isApproved(wf, status) || pafStatus === "offer_pending") {
-    if (wf === "offer_sent" || wf.includes("offer") || pafStatus === "offer_pending") {
-      return "accept_offer"
-    }
-    return "approved"
+  // Approved (with or without letter sent) lives on Accept offer — no separate Approved step
+  if (isPastApproval(wf, status, pafStatus)) {
+    return "accept_offer"
   }
 
   if (wf === "under_review") return "pending_approval"
@@ -167,25 +166,50 @@ export function buildPlataLoanThread(
 ): LoanThreadItem[] {
   const wf = normalize(loanWorkflowStatus || "requested")
   const status = normalize(typeof raw?.status === "string" ? raw.status : "")
+  const paf = raw?.postApprovalFulfillment as Record<string, unknown> | undefined
+  const pafStatus = normalize(typeof paf?.status === "string" ? paf.status : "")
 
   if (isTerminal(wf)) {
     return PLATA_LOAN_STEPS.map((step) => ({
       ...step,
       status: step.id === "pending_approval" ? "current" : "upcoming",
+      statusLabel: step.id === "pending_approval" ? (wf === "blacklisted" ? "Blacklisted" : "Declined") : undefined,
+    }))
+  }
+
+  if (pafStatus === "offer_declined") {
+    return PLATA_LOAN_STEPS.map((step) => ({
+      ...step,
+      status: step.id === "pending_approval" ? ("current" as const) : ("upcoming" as const),
+      statusLabel: step.id === "pending_approval" ? "Offer declined" : undefined,
     }))
   }
 
   if (isDisbursed(status, wf, progress)) {
-    return PLATA_LOAN_STEPS.map((step) => ({ ...step, status: "done" as const }))
+    return PLATA_LOAN_STEPS.map((step) => ({
+      ...step,
+      status: "done" as const,
+      statusLabel: step.id === "pending_approval" ? "Approved" : undefined,
+    }))
   }
 
   const current = resolvePlataLoanStep(loanWorkflowStatus, progress, raw)
   const currentIndex = PLATA_LOAN_STEPS.findIndex((step) => step.id === current)
+  const showApprovedOnPending =
+    currentIndex > 0 && isPastApproval(wf, status, pafStatus)
 
-  return PLATA_LOAN_STEPS.map((step, index) => ({
-    ...step,
-    status: index < currentIndex ? "done" : index === currentIndex ? "current" : "upcoming",
-  }))
+  return PLATA_LOAN_STEPS.map((step, index) => {
+    const threadStatus: LoanThreadStatus =
+      index < currentIndex ? "done" : index === currentIndex ? "current" : "upcoming"
+    return {
+      ...step,
+      status: threadStatus,
+      statusLabel:
+        step.id === "pending_approval" && threadStatus === "done" && showApprovedOnPending
+          ? "Approved"
+          : undefined,
+    }
+  })
 }
 
 export function plataLoanActionForStep(
@@ -194,11 +218,18 @@ export function plataLoanActionForStep(
 ): "approve_offer" | "approve_disbursement" | null {
   const progress = raw ? extractLoanProgress(raw) : {}
   const wf = normalize(typeof raw?.loanWorkflowStatus === "string" ? raw.loanWorkflowStatus : "")
+  const paf = raw?.postApprovalFulfillment as Record<string, unknown> | undefined
+  const pafStatus = normalize(typeof paf?.status === "string" ? paf.status : "")
 
   if (step === "pending_approval" && ["requested", "under_review", ""].includes(wf)) {
     return "approve_offer"
   }
-  if (step === "awaiting_disbursement" && !progress.disbursedAt) {
+  if (
+    step === "awaiting_disbursement" &&
+    !progress.disbursedAt &&
+    pafStatus !== "disbursed" &&
+    (pafStatus === "offer_accepted" || Boolean(progress.offerAcceptedAt) || wf === "awaiting_disbursement")
+  ) {
     return "approve_disbursement"
   }
   return null

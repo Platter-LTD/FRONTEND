@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { applicationApi } from "@/lib/services/accountService"
+import { pendingApprovedLoanApi } from "@/lib/pendingApprovedLoanApi"
 import {
   buildPlataLoanThread,
   extractLoanProgress,
@@ -26,6 +27,8 @@ import type { SpringApplicantProfileResponse } from "@/lib/springApplicantProfil
 import { SpringApplicantReviewPanel } from "@/components/workflow/SpringApplicantReviewPanel"
 import { OfferLetterUploadControl } from "@/components/workflow/OfferLetterUploadControl"
 import { cn } from "@/lib/utils"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 const PLATA_ACCENT = "#9A813F"
 
@@ -36,7 +39,16 @@ type LoanWorkflowDetailSheetProps = {
   onUpdated?: () => void
 }
 
-type StepActionKind = "approve_offer" | "approve_disbursement"
+type StepActionKind = "mark_under_review" | "approve_offer" | "approve_disbursement"
+
+function asPositiveNumber(value: unknown): number | undefined {
+  const n = typeof value === "number" ? value : Number(value)
+  return Number.isFinite(n) && n > 0 ? n : undefined
+}
+
+function isEquityGateError(message: string): boolean {
+  return /equity/i.test(message) && /not been received|cannot approve/i.test(message)
+}
 
 function ThreadRow({
   item,
@@ -84,7 +96,11 @@ function ThreadRow({
           >
             {item.title}
           </p>
-          {item.status === "current" ? (
+          {item.statusLabel ? (
+            <span className="shrink-0 rounded-full bg-green-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
+              {item.statusLabel}
+            </span>
+          ) : item.status === "current" ? (
             <span className="shrink-0 rounded-full bg-[#F5F0E8] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8B7355]">
               In progress
             </span>
@@ -112,6 +128,10 @@ export function LoanWorkflowDetailSheet({
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
   const [profilePayload, setProfilePayload] = useState<SpringApplicantProfileResponse | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
+  const [approvedAmountInput, setApprovedAmountInput] = useState("")
+  const [equityReceived, setEquityReceived] = useState(false)
+  const [equityProviderReference, setEquityProviderReference] = useState("")
+  const [showEquityAttest, setShowEquityAttest] = useState(false)
 
   const load = useCallback(async () => {
     if (!applicationId) return
@@ -171,6 +191,19 @@ export function LoanWorkflowDetailSheet({
     if (open && applicationId) void load()
   }, [open, applicationId, load])
 
+  useEffect(() => {
+    if (!detail) return
+    const amount =
+      asPositiveNumber(detail.approvedLoanAmount) ??
+      asPositiveNumber(detail.approvedAmount) ??
+      asPositiveNumber(detail.amount) ??
+      asPositiveNumber(detail.loanAmount)
+    if (amount != null) setApprovedAmountInput(String(amount))
+    setShowEquityAttest(false)
+    setEquityReceived(false)
+    setEquityProviderReference("")
+  }, [detail, open, applicationId])
+
   const loanWorkflowStatus = String(
     detail?.loanWorkflowStatus ??
       profilePayload?.application?.loanWorkflowStatus ??
@@ -183,7 +216,17 @@ export function LoanWorkflowDetailSheet({
   const currentThreadItem = thread.find((t) => t.id === currentStep)
 
   const statusLower = loanWorkflowStatus.toLowerCase()
+  const pafStatus = String(
+    detail?.postApprovalFulfillment &&
+      typeof detail.postApprovalFulfillment === "object"
+      ? (detail.postApprovalFulfillment as Record<string, unknown>).status || ""
+      : "",
+  )
+    .trim()
+    .toLowerCase()
   const isTerminal = ["declined", "blacklisted", "rejected"].includes(statusLower)
+
+  const canMarkUnderReview = !isTerminal && statusLower === "requested"
 
   const canApproveOffer =
     !isTerminal && ["requested", "under_review"].includes(statusLower) && !progress.offerAcceptedAt
@@ -191,7 +234,9 @@ export function LoanWorkflowDetailSheet({
   const canApproveDisbursement =
     !isTerminal &&
     currentStep === "awaiting_disbursement" &&
-    !progress.disbursedAt
+    !progress.disbursedAt &&
+    pafStatus !== "disbursed" &&
+    (pafStatus === "offer_accepted" || Boolean(progress.offerAcceptedAt))
 
   const completedCount = useMemo(
     () => thread.filter((t) => t.status === "done").length,
@@ -210,39 +255,58 @@ export function LoanWorkflowDetailSheet({
       await load()
       onUpdated?.()
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Action failed")
+      const message = e instanceof Error ? e.message : "Action failed"
+      if (action === "approve_offer" && isEquityGateError(message)) {
+        setShowEquityAttest(true)
+      }
+      toast.error(message)
     } finally {
       setBusyAction(null)
     }
   }
 
+  const handleMarkUnderReview = () =>
+    void runAction("mark_under_review", async () => {
+      const res = await applicationApi.updateLoanWorkflowStatus(applicationId!, {
+        loanWorkflowStatus: "under_review",
+      })
+      if (res.success) toast.success("Moved to under review")
+      return res
+    })
+
   const handleApproveOffer = () =>
     void runAction("approve_offer", async () => {
-      const res = await applicationApi.approve(applicationId!)
-      if (res.success) toast.success("Loan approved — offer sent to applicant")
+      const approvedAmount = asPositiveNumber(approvedAmountInput)
+      const res = await applicationApi.approve(applicationId!, {
+        ...(approvedAmount != null ? { approvedAmount } : {}),
+        ...(equityReceived
+          ? {
+              equityReceived: true,
+              ...(equityProviderReference.trim()
+                ? { equityProviderReference: equityProviderReference.trim() }
+                : {}),
+            }
+          : {}),
+      })
+      if (res.success) {
+        setShowEquityAttest(false)
+        toast.success("Loan approved — choose an offer letter on Accept offer")
+      }
       return res
     })
 
   const handleApproveDisbursement = () =>
     void runAction("approve_disbursement", async () => {
-      const now = new Date().toISOString()
-      const progressRes = await applicationApi.updateMortgageWorkflowProgress(applicationId!, {
-        disbursedAt: now,
-        offerAcceptedAt: progress.offerAcceptedAt || now,
-      })
-      if (!progressRes.success) return progressRes
-      const statusRes = await applicationApi.updateLoanWorkflowStatus(applicationId!, {
-        loanWorkflowStatus: "completed",
-      })
-      if (statusRes.success) toast.success("Loan disbursement recorded")
-      return statusRes.success ? statusRes : progressRes
+      const res = await pendingApprovedLoanApi.disburse(applicationId!)
+      if (res.success) toast.success("Loan disbursed from Treasury to borrower wallet")
+      return res
     })
 
   const renderStepAction = (stepId: PlataLoanStepId) => {
     const actionKind = plataLoanActionForStep(stepId, detail ?? undefined)
 
-    if (stepId === "accept_offer" || stepId === "approved") {
-      const upload = applicationId ? (
+    if (stepId === "accept_offer") {
+      const letterChoice = applicationId ? (
         <OfferLetterUploadControl
           applicationId={applicationId}
           detail={detail}
@@ -252,24 +316,92 @@ export function LoanWorkflowDetailSheet({
           }}
         />
       ) : null
-      if (!actionKind) return upload
-      // Fall through if there's also a primary action (unlikely on these steps)
+      if (!actionKind) return letterChoice
     }
 
-    if (!actionKind) return null
-
-    if (actionKind === "approve_offer" && canApproveOffer && stepId === currentStep) {
+    if (stepId === "pending_approval" && (canMarkUnderReview || canApproveOffer)) {
       return (
-        <Button
-          size="sm"
-          disabled={busyAction !== null}
-          onClick={handleApproveOffer}
-          className="h-8 text-white hover:opacity-90"
-          style={{ backgroundColor: PLATA_ACCENT }}
-        >
-          {busyAction === "approve_offer" ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : null}
-          Approve loan
-        </Button>
+        <div className="space-y-3">
+          {canApproveOffer ? (
+            <div className="space-y-2">
+              <div className="space-y-1">
+                <Label htmlFor="approved-amount" className="text-[11px] text-gray-500">
+                  Approved amount (optional)
+                </Label>
+                <Input
+                  id="approved-amount"
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={approvedAmountInput}
+                  onChange={(e) => setApprovedAmountInput(e.target.value)}
+                  className="h-8 text-sm"
+                  placeholder="e.g. 50000"
+                />
+              </div>
+              {(showEquityAttest || equityReceived) && (
+                <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                  <p className="text-[11px] leading-relaxed text-amber-900">
+                    Equity payment is required before approval. Attest an offline payment if it was
+                    received outside Plata.
+                  </p>
+                  <label className="flex items-center gap-2 text-xs text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={equityReceived}
+                      onChange={(e) => setEquityReceived(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    Equity received offline
+                  </label>
+                  {equityReceived ? (
+                    <Input
+                      value={equityProviderReference}
+                      onChange={(e) => setEquityProviderReference(e.target.value)}
+                      className="h-8 text-sm"
+                      placeholder="Bank / provider reference"
+                    />
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {canMarkUnderReview ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busyAction !== null}
+                onClick={handleMarkUnderReview}
+                className="h-8 border-[#E8DFCF] text-[#8B7355] hover:bg-[#FFFBF5]"
+              >
+                {busyAction === "mark_under_review" ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Mark under review
+              </Button>
+            ) : null}
+            {canApproveOffer ? (
+              <Button
+                size="sm"
+                disabled={busyAction !== null}
+                onClick={handleApproveOffer}
+                className="h-8 text-white hover:opacity-90"
+                style={{ backgroundColor: PLATA_ACCENT }}
+              >
+                {busyAction === "approve_offer" ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                Approve loan
+              </Button>
+            ) : null}
+          </div>
+          {canApproveOffer ? (
+            <p className="text-[11px] leading-relaxed text-gray-400">
+              Approval does not send an offer letter. Zero-down loans skip the equity gate.
+            </p>
+          ) : null}
+        </div>
       )
     }
 
@@ -279,29 +411,45 @@ export function LoanWorkflowDetailSheet({
       stepId === "awaiting_disbursement"
     ) {
       return (
-        <Button
-          size="sm"
-          disabled={busyAction !== null}
-          onClick={handleApproveDisbursement}
-          className="h-8 text-white hover:opacity-90"
-          style={{ backgroundColor: PLATA_ACCENT }}
-        >
-          {busyAction === "approve_disbursement" ? (
-            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-          ) : null}
-          Disburse loan
-        </Button>
+        <div className="space-y-2">
+          <Button
+            size="sm"
+            disabled={busyAction !== null}
+            onClick={handleApproveDisbursement}
+            className="h-8 text-white hover:opacity-90"
+            style={{ backgroundColor: PLATA_ACCENT }}
+          >
+            {busyAction === "approve_disbursement" ? (
+              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+            ) : null}
+            Disburse loan
+          </Button>
+          <p className="text-[11px] leading-relaxed text-gray-400">
+            Debits Treasury and credits the borrower wallet. Acceptance alone does not disburse.
+          </p>
+        </div>
       )
     }
 
-    if (stepId === "loan_disbursed" && progress.disbursedAt) {
+    if (stepId === "awaiting_disbursement" && !canApproveDisbursement && pafStatus !== "disbursed") {
+      return (
+        <p className="text-xs text-gray-500">
+          Waiting for the borrower to accept the offer before disbursement.
+        </p>
+      )
+    }
+
+    if (stepId === "loan_disbursed" && (progress.disbursedAt || pafStatus === "disbursed")) {
       return (
         <p className="text-xs font-medium text-green-700">
-          Disbursed{" "}
-          {new Date(progress.disbursedAt).toLocaleString("en-US", {
-            dateStyle: "medium",
-            timeStyle: "short",
-          })}
+          Disbursed
+          {progress.disbursedAt
+            ? ` ${new Date(progress.disbursedAt).toLocaleString("en-US", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}`
+            : ""}
+          . Repayments collect into the merchant Repayment wallet.
         </p>
       )
     }

@@ -15,6 +15,14 @@ export type OfferLetterInfo = {
   signedPdfFileName?: string
 }
 
+export type PostApprovalFulfillmentView = {
+  status?: string
+  offerSentAt?: string
+  documentSource?: string
+  documentUrl?: string
+  currentWorkflowStepId?: string
+}
+
 export function extractOfferLetter(raw: Record<string, unknown> | null | undefined): OfferLetterInfo | null {
   if (!raw || typeof raw !== "object") return null
   const offerLetter = raw.offerLetter
@@ -45,90 +53,141 @@ export function extractOfferLetter(raw: Record<string, unknown> | null | undefin
   }
 }
 
+export function extractPostApprovalFulfillment(
+  raw: Record<string, unknown> | null | undefined,
+): PostApprovalFulfillmentView | null {
+  if (!raw || typeof raw !== "object") return null
+  const paf = raw.postApprovalFulfillment
+  if (!paf || typeof paf !== "object") return null
+  const pafObj = paf as Record<string, unknown>
+  const offer = pafObj.offer && typeof pafObj.offer === "object" ? (pafObj.offer as Record<string, unknown>) : null
+  const contract =
+    pafObj.contract && typeof pafObj.contract === "object"
+      ? (pafObj.contract as Record<string, unknown>)
+      : null
+
+  return {
+    status: typeof pafObj.status === "string" ? pafObj.status : undefined,
+    offerSentAt: typeof offer?.sentAt === "string" ? offer.sentAt : undefined,
+    documentSource: typeof contract?.documentSource === "string" ? contract.documentSource : undefined,
+    documentUrl: typeof contract?.documentUrl === "string" ? contract.documentUrl : undefined,
+    currentWorkflowStepId:
+      typeof pafObj.currentWorkflowStepId === "string" ? pafObj.currentWorkflowStepId : undefined,
+  }
+}
+
+/**
+ * Show letter choice (generate / upload) when approved and no letter has been sent yet.
+ * Mortgages: also require currentWorkflowStepId === "offer_letter".
+ */
+export function isAwaitingOfferLetterChoice(raw: Record<string, unknown> | null | undefined): boolean {
+  if (!raw) return false
+  const workflowStatus = String(raw.loanWorkflowStatus || "").trim().toLowerCase()
+  const productType = String(raw.productType || "").trim().toUpperCase()
+  const fulfillment = extractPostApprovalFulfillment(raw)
+  if (!fulfillment) return false
+
+  // Loan workflow sheet may omit productType; only reject unrelated product types.
+  if (productType && productType !== "LOAN" && productType !== "MORTGAGE") return false
+
+  const awaiting =
+    workflowStatus === "approved" &&
+    String(fulfillment.status || "").toLowerCase() === "offer_pending" &&
+    !fulfillment.offerSentAt
+
+  if (!awaiting) return false
+
+  if (productType === "MORTGAGE") {
+    const stepId = String(fulfillment.currentWorkflowStepId || "").trim().toLowerCase()
+    // Docs: choice only when currentWorkflowStepId === "offer_letter"
+    if (stepId !== "offer_letter") return false
+  }
+
+  return true
+}
+
+export function canGenerateOfferLetter(raw: Record<string, unknown> | null | undefined): boolean {
+  if (!isAwaitingOfferLetterChoice(raw)) return false
+  const fulfillment = extractPostApprovalFulfillment(raw)
+  return fulfillment?.documentSource !== "merchant_upload"
+}
+
+export function canUploadOfferLetterChoice(raw: Record<string, unknown> | null | undefined): boolean {
+  if (!isAwaitingOfferLetterChoice(raw)) return false
+  const fulfillment = extractPostApprovalFulfillment(raw)
+  return !fulfillment?.documentUrl
+}
+
 function isTerminalWorkflow(workflowStatus: string, pafStatus: string): boolean {
   const tokens = ["disbursed", "completed", "declined", "cancelled", "canceled", "rejected", "failed"]
   return tokens.some((t) => workflowStatus.includes(t) || pafStatus.includes(t))
 }
 
 /**
- * Merchant may upload/replace the offer letter PDF until the loan/mortgage is
- * disbursed or declined — including after the applicant has accepted (so a wrong
- * letter can still be corrected before funds move).
+ * @deprecated Prefer canUploadOfferLetterChoice — letter may only be chosen once (until sentAt).
+ * Kept for callers that only need a boolean "letter UI relevant".
  */
 export function canMerchantUploadOfferLetter(raw: Record<string, unknown> | null | undefined): boolean {
-  if (!raw) return false
-  const workflowStatus = String(raw.loanWorkflowStatus || "").trim().toLowerCase()
-  const productType = String(raw.productType || "").trim().toUpperCase()
-  const paf = raw.postApprovalFulfillment
-  const pafObj = paf && typeof paf === "object" ? (paf as Record<string, unknown>) : null
-  const pafStatus = String(pafObj?.status || "").trim().toLowerCase()
-
-  if (productType !== "LOAN" && productType !== "MORTGAGE") return false
-  if (isTerminalWorkflow(workflowStatus, pafStatus)) return false
-
-  const allowedWorkflow =
-    workflowStatus === "approved" ||
-    workflowStatus === "offer_sent" ||
-    workflowStatus === "awaiting_disbursement" ||
-    workflowStatus === "awaiting_acceptance" ||
-    workflowStatus.includes("offer") ||
-    workflowStatus.includes("awaiting")
-
-  const allowedPaf =
-    !pafStatus ||
-    pafStatus === "offer_pending" ||
-    pafStatus === "offer_accepted" ||
-    pafStatus.includes("offer") ||
-    pafStatus.includes("inspection") ||
-    pafStatus.includes("appointment") ||
-    pafStatus.includes("down_payment")
-
-  if (!allowedWorkflow && !allowedPaf) return false
-
-  if (productType === "MORTGAGE") {
-    const stepId = String(pafObj?.currentWorkflowStepId || "").trim().toLowerCase()
-    if (stepId === "virtual_tour" || stepId === "virtual_inspection") return false
-
-    // Before offer letter: require virtual tour completion when step id is unset
-    if (!stepId || stepId === "offer_letter") {
-      const disbursement = raw.loanDisbursement
-      const nested =
-        disbursement && typeof disbursement === "object"
-          ? ((disbursement as Record<string, unknown>).mortgageWorkflow ?? disbursement)
-          : null
-      const nestedObj = nested && typeof nested === "object" ? (nested as Record<string, unknown>) : null
-      const tourDone = Boolean(
-        nestedObj?.virtualTourCompletedAt ||
-          pafObj?.virtualTourCompletedAt ||
-          (raw.offerLetter &&
-            typeof raw.offerLetter === "object" &&
-            (raw.offerLetter as Record<string, unknown>).pdfUrl),
-      )
-      if (!stepId && !tourDone && pafStatus === "offer_pending") return false
-    }
-  }
-
-  return true
+  return canUploadOfferLetterChoice(raw)
 }
 
-/** Why upload is blocked — for UI copy when canUpload is false but a letter exists. */
+/** Why letter actions are blocked — for UI copy when choice is unavailable. */
 export function merchantOfferLetterUploadBlockReason(
   raw: Record<string, unknown> | null | undefined,
 ): string | null {
   if (!raw) return null
-  if (canMerchantUploadOfferLetter(raw)) return null
+  if (isAwaitingOfferLetterChoice(raw)) return null
+
   const workflowStatus = String(raw.loanWorkflowStatus || "").trim().toLowerCase()
-  const paf = raw.postApprovalFulfillment
-  const pafObj = paf && typeof paf === "object" ? (paf as Record<string, unknown>) : null
-  const pafStatus = String(pafObj?.status || "").trim().toLowerCase()
+  const fulfillment = extractPostApprovalFulfillment(raw)
+  const pafStatus = String(fulfillment?.status || "").trim().toLowerCase()
+
   if (isTerminalWorkflow(workflowStatus, pafStatus)) {
-    return "This application is closed — the offer letter can no longer be replaced."
+    return "This application is closed — the offer letter can no longer be changed."
   }
-  const stepId = String(pafObj?.currentWorkflowStepId || "").trim().toLowerCase()
+  if (fulfillment?.offerSentAt) {
+    return "An offer letter has already been sent for this application."
+  }
+  const stepId = String(fulfillment?.currentWorkflowStepId || "").trim().toLowerCase()
   if (stepId === "virtual_tour" || stepId === "virtual_inspection") {
-    return "Finish the virtual tour step before uploading an offer letter."
+    return "Finish the virtual tour step before sending an offer letter."
   }
-  return "Offer letter upload is not available for this application state."
+  if (stepId && stepId !== "offer_letter" && String(raw.productType || "").toUpperCase() === "MORTGAGE") {
+    return "Offer letter actions are only available on the offer letter mortgage step."
+  }
+  if (workflowStatus !== "approved") {
+    return "Approve the application before generating or uploading an offer letter."
+  }
+  return "Offer letter actions are not available for this application state."
+}
+
+export async function generateOfferLetter(
+  applicationId: string,
+): Promise<ApiResponse<LoanWorkflowApplication>> {
+  try {
+    const response = await apiClient.post<ApiResponse<LoanWorkflowApplication> & { message?: string }>(
+      `/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow/offer-letter/generate`,
+      {},
+      { timeout: 120_000 },
+    )
+    const result = response.data
+    if (response.status >= 400 || result?.success === false) {
+      return {
+        success: false,
+        error: result?.error || result?.message || "Failed to generate offer letter",
+      }
+    }
+    return result
+  } catch (error: unknown) {
+    const ax = error as { response?: { data?: { error?: string; message?: string } } }
+    return {
+      success: false,
+      error:
+        ax.response?.data?.error ||
+        ax.response?.data?.message ||
+        (error instanceof Error ? error.message : "Failed to generate offer letter"),
+    }
+  }
 }
 
 export async function uploadOfferLetter(

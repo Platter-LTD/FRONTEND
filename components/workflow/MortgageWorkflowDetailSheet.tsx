@@ -242,7 +242,9 @@ export function MortgageWorkflowDetailSheet({
   const handleApproveOffer = () =>
     void runAction("approve_offer", async () => {
       const res = await applicationApi.approve(applicationId!)
-      if (res.success) toast.success("Offer approved — offer letter sent to applicant")
+      if (res.success) {
+        toast.success("Mortgage approved — send an offer letter on the offer letter step")
+      }
       return res
     })
 

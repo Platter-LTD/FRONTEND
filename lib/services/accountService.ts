@@ -748,16 +748,36 @@ export const applicationApi = {
   },
 
   /**
-   * Approve an application (Admin only)
+   * Approve an application (originating merchant).
+   * Does not generate or send an offer letter — merchant chooses letter separately.
+   * Optional equityReceived / equityProviderReference attest offline equity payment.
    */
-  async approve(id: string, approvedAmount?: number): Promise<ApiResponse<LoanWorkflowApplication>> {
+  async approve(
+    id: string,
+    options?: number | {
+      approvedAmount?: number
+      equityReceived?: boolean
+      equityProviderReference?: string
+    },
+  ): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
+      const opts =
+        typeof options === "number"
+          ? { approvedAmount: options }
+          : options && typeof options === "object"
+            ? options
+            : {}
+
       const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           loanWorkflowStatus: 'approved',
-          ...(approvedAmount != null ? { approvedAmount } : {}),
+          ...(opts.approvedAmount != null ? { approvedAmount: opts.approvedAmount } : {}),
+          ...(opts.equityReceived === true ? { equityReceived: true } : {}),
+          ...(opts.equityProviderReference?.trim()
+            ? { equityProviderReference: opts.equityProviderReference.trim() }
+            : {}),
         }),
       });
 
@@ -991,7 +1011,13 @@ export const applicationApi = {
 
   async updateLoanWorkflowStatus(
     id: string,
-    body: { loanWorkflowStatus: LoanWorkflowStatus; approvedAmount?: number },
+    body: {
+      loanWorkflowStatus: LoanWorkflowStatus
+      approvedAmount?: number
+      equityReceived?: boolean
+      equityProviderReference?: string
+      rejectionReason?: string
+    },
   ): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
       const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {

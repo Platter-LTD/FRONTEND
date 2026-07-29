@@ -1,13 +1,17 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { ExternalLink, FileUp, Loader2 } from "lucide-react"
+import { ExternalLink, FileUp, Loader2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
-  canMerchantUploadOfferLetter,
+  canGenerateOfferLetter,
+  canUploadOfferLetterChoice,
   extractOfferLetter,
+  extractPostApprovalFulfillment,
+  generateOfferLetter,
+  isAwaitingOfferLetterChoice,
   merchantOfferLetterUploadBlockReason,
   uploadOfferLetter,
 } from "@/lib/offerLetterApi"
@@ -27,14 +31,32 @@ export function OfferLetterUploadControl({
   onUploaded,
 }: OfferLetterUploadControlProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<"generate" | "upload" | null>(null)
   const offer = extractOfferLetter(detail)
-  const canUpload = canMerchantUploadOfferLetter(detail)
+  const fulfillment = extractPostApprovalFulfillment(detail)
+  const awaitingChoice = isAwaitingOfferLetterChoice(detail)
+  const canGenerate = canGenerateOfferLetter(detail)
+  const canUpload = canUploadOfferLetterChoice(detail)
   const blockReason = merchantOfferLetterUploadBlockReason(detail)
+  const letterAlreadySent = Boolean(fulfillment?.offerSentAt)
 
-  if (!canUpload && !offer?.pdfUrl) return null
+  if (!awaitingChoice && !offer?.pdfUrl && !letterAlreadySent) return null
 
   const handlePick = () => inputRef.current?.click()
+
+  const handleGenerate = async () => {
+    setBusy("generate")
+    try {
+      const res = await generateOfferLetter(applicationId)
+      if (!res.success) throw new Error(res.error || "Generate failed")
+      toast.success("System-generated offer letter sent — applicant notified")
+      onUploaded?.()
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Generate failed")
+    } finally {
+      setBusy(null)
+    }
+  }
 
   const handleFile = async (file: File | null) => {
     if (!file) return
@@ -47,16 +69,16 @@ export function OfferLetterUploadControl({
       return
     }
 
-    setBusy(true)
+    setBusy("upload")
     try {
       const res = await uploadOfferLetter(applicationId, file)
       if (!res.success) throw new Error(res.error || "Upload failed")
-      toast.success("Offer letter uploaded — applicant notified")
+      toast.success("Custom offer letter uploaded — applicant notified")
       onUploaded?.()
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Upload failed")
     } finally {
-      setBusy(false)
+      setBusy(null)
       if (inputRef.current) inputRef.current.value = ""
     }
   }
@@ -73,11 +95,13 @@ export function OfferLetterUploadControl({
           <ExternalLink className="h-3.5 w-3.5" />
           {offer.pdfFileName || "View current offer letter"}
         </a>
-      ) : (
-        <p className="text-xs text-gray-500">No custom offer letter uploaded yet.</p>
-      )}
+      ) : awaitingChoice ? (
+        <p className="text-xs text-gray-500">
+          Choose how to send the offer letter. Approval alone does not send a letter.
+        </p>
+      ) : null}
 
-      {canUpload ? (
+      {awaitingChoice && (canGenerate || canUpload) ? (
         <>
           <input
             ref={inputRef}
@@ -86,26 +110,58 @@ export function OfferLetterUploadControl({
             className="hidden"
             onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
           />
-          <Button
-            type="button"
-            size="sm"
-            disabled={busy}
-            onClick={handlePick}
-            className="h-8 text-white hover:opacity-90"
-            style={{ backgroundColor: PLATA_ACCENT }}
-          >
-            {busy ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <FileUp className="mr-2 h-3.5 w-3.5" />
-            )}
-            {offer?.pdfUrl ? "Replace offer letter PDF" : "Upload offer letter PDF"}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {canGenerate ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={busy !== null}
+                onClick={() => void handleGenerate()}
+                className="h-8 text-white hover:opacity-90"
+                style={{ backgroundColor: PLATA_ACCENT }}
+              >
+                {busy === "generate" ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-3.5 w-3.5" />
+                )}
+                Generate system letter
+              </Button>
+            ) : null}
+            {canUpload ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={busy !== null}
+                onClick={handlePick}
+                className="h-8 border-[#E8DFCF] text-[#8B7355] hover:bg-[#FFFBF5]"
+              >
+                {busy === "upload" ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <FileUp className="mr-2 h-3.5 w-3.5" />
+                )}
+                Upload custom PDF
+              </Button>
+            ) : null}
+          </div>
           <p className="text-[11px] leading-relaxed text-gray-400">
-            PDF only, max 10 MB. You can replace this letter until the application is disbursed or
-            closed.
+            PDF only for uploads, max 10 MB. Both options email and notify the applicant. Buttons
+            disable once a letter is sent.
           </p>
         </>
+      ) : letterAlreadySent ? (
+        <p className="text-[11px] leading-relaxed text-gray-400">
+          Offer letter sent
+          {fulfillment?.offerSentAt
+            ? ` ${new Date(fulfillment.offerSentAt).toLocaleString("en-US", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}`
+            : ""}
+          . Waiting for applicant to accept or decline.
+        </p>
       ) : blockReason ? (
         <p className="text-[11px] leading-relaxed text-amber-800">{blockReason}</p>
       ) : null}
