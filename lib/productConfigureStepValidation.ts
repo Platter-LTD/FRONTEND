@@ -69,7 +69,7 @@ export type LoanStepCtx = {
   documents: unknown[]
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
-  penalties: { name?: string; type?: string; value?: string; triggerDuration?: string }[]
+  penalties: { name?: string; type?: string; value?: string; triggerDurationDays?: number; triggerDuration?: string }[]
   contractId: string
   airSignSecretKey: string
   airSignUid: string
@@ -134,7 +134,7 @@ export type MortgageStepCtx = {
   documents: unknown[]
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
-  penalties: { name?: string; type?: string; value?: string; triggerDuration?: string }[]
+  penalties: { name?: string; type?: string; value?: string; triggerDurationDays?: number; triggerDuration?: string }[]
   contractId: string
   airSignSecretKey: string
   airSignUid: string

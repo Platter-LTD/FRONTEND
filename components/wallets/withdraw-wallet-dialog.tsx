@@ -115,7 +115,7 @@ export function WithdrawWalletDialog({
       const res = await billingApi.settlementPayout(payload, appId)
       const duplicate = Boolean((res as { duplicate?: boolean }).duplicate)
       if (duplicate) toast.message("Duplicate payout — already processed")
-      else toast.success("Settlement payout initiated")
+      else toast.success("Repayment payout initiated")
 
       await onSuccess?.()
       handleClose(false)

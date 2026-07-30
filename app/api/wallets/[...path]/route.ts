@@ -36,7 +36,16 @@ function forwardHeaders(req: NextRequest): Record<string, string> {
 
 async function proxyWallet(req: NextRequest, pathSegments: string[]) {
   const base = getApiUpstreamBase()
-  const tail = pathSegments.join("/")
+  // Canonical: settlement → repayment. Legacy kyc/.../transactions → repayment/.../transactions.
+  // Do not rewrite kyc/debit|fee (those paths are unrelated fee ops if still used).
+  const rewritten = pathSegments.map((segment, index) => {
+    if (index !== 0) return segment
+    const s = segment.toLowerCase()
+    if (s === "settlement") return "repayment"
+    if (s === "kyc" && pathSegments[2]?.toLowerCase() === "transactions") return "repayment"
+    return segment
+  })
+  const tail = rewritten.join("/")
   const url = `${base}/api/v1/wallets/${tail}${req.nextUrl.search || ""}`
   const method = req.method.toUpperCase()
   const headers = forwardHeaders(req)

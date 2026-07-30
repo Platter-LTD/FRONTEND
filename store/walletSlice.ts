@@ -22,7 +22,7 @@ async function loadTransactionsForAppWallet(
     kind === 'treasury'
       ? await transactionApi.getTreasuryTransactions(merchantId, params)
       : kind === 'settlement'
-        ? await transactionApi.getSettlementTransactions(merchantId, params)
+        ? await transactionApi.getRepaymentTransactions(merchantId, params)
         : await transactionApi.getBillingTransactions(merchantId, params);
 
   const list = Array.isArray(res.data) ? res.data : [];

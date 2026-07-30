@@ -143,10 +143,18 @@ export const BACKEND = {
       toKyc: "/api/v1/wallets/operation-to-kyc",
     },
     kyc: {
-      transactions: (merchantId: string) => `/api/v1/wallets/kyc/${encodeURIComponent(merchantId)}/transactions`,
+      transactions: (merchantId: string) => `/api/v1/wallets/repayment/${encodeURIComponent(merchantId)}/transactions`,
       debit: "/api/v1/wallets/kyc/debit",
       fee: "/api/v1/wallets/kyc/fee",
       toOperation: "/api/v1/wallets/kyc-to-operation",
+    },
+    repayment: {
+      transactions: (merchantId: string) => `/api/v1/wallets/repayment/${encodeURIComponent(merchantId)}/transactions`,
+      payout: "/api/v1/wallets/repayment/payout",
+    },
+    settlement: {
+      transactions: (merchantId: string) => `/api/v1/wallets/repayment/${encodeURIComponent(merchantId)}/transactions`,
+      payout: "/api/v1/wallets/repayment/payout",
     },
     treasury: {
       transactions: (merchantId: string) => `/api/v1/wallets/treasury/${encodeURIComponent(merchantId)}/transactions`,

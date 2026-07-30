@@ -148,8 +148,8 @@ export function WalletTab() {
           loading={!!walletsLoading}
           showBalance={showBalance}
           onToggleBalance={() => setShowBalance((value) => !value)}
-          title="Settlement wallet"
-          subtitle="Fund & withdraw here"
+          title="Repayment wallet"
+          subtitle="Loan repayments · fund & withdraw"
         />
         <MerchantWalletBalanceCard
           wallet={treasury}
@@ -167,7 +167,7 @@ export function WalletTab() {
           disabled={walletsLoading || !settlement}
           onClick={() => setFundOpen(true)}
         >
-          Fund settlement
+          Fund repayment
         </Button>
         <Button
           variant="outline"
@@ -195,7 +195,7 @@ export function WalletTab() {
           accountNumber: settlement?.virtualNuban?.accountNumber,
           bankName: settlement?.virtualNuban?.bankName,
           bankCode: settlement?.virtualNuban?.bankCode,
-          accountHolder: settlement?.name || "Settlement wallet",
+          accountHolder: settlement?.name || "Repayment wallet",
           provisionStatus: settlement?.virtualNuban?.provisionStatus,
         }}
         onRefreshBalance={() => {

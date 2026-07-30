@@ -3,11 +3,12 @@ import { normalizePlataMerchantWalletType } from "@/lib/walletApiHelpers"
 
 export type CanonicalMerchantWallets = {
   billing: MerchantWallet | null
+  /** Repayment wallet (API: REPAYMENT; legacy settlement/kyc). */
   settlement: MerchantWallet | null
   treasury: MerchantWallet | null
 }
 
-/** Resolve BILLING / SETTLEMENT / TREASURY from normalized bundle (legacy keys included). */
+/** Resolve BILLING / REPAYMENT / TREASURY from normalized bundle (legacy keys included). */
 export function resolveCanonicalMerchantWallets(
   bundle: MerchantWalletsBundle | null | undefined,
 ): CanonicalMerchantWallets {
@@ -17,7 +18,7 @@ export function resolveCanonicalMerchantWallets(
 
   return {
     billing: bundle.billing ?? bundle.operation ?? null,
-    settlement: bundle.settlement ?? bundle.kyc ?? null,
+    settlement: bundle.repayment ?? bundle.settlement ?? bundle.kyc ?? null,
     treasury: bundle.treasury ?? null,
   }
 }
@@ -25,7 +26,7 @@ export function resolveCanonicalMerchantWallets(
 export function walletTypeLabel(type?: string): string {
   const norm = normalizePlataMerchantWalletType(type)
   if (norm === "BILLING") return "Billing"
-  if (norm === "SETTLEMENT") return "Settlement"
+  if (norm === "REPAYMENT") return "Repayment"
   if (norm === "TREASURY") return "Treasury"
   return "Wallet"
 }

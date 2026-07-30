@@ -118,7 +118,8 @@ interface ProductConfigSelectProps {
   label: string
   placeholder: string
   value: string
-  options: string[]
+  /** String labels (value === label) or explicit `{ value, label }` from product options APIs. */
+  options: string[] | Array<{ value: string; label: string }>
   onChange: (value: string) => void
   requirement?: "required" | "optional"
   requirementMark?: "text" | "asterisk"
@@ -134,6 +135,14 @@ function normalizeOptionToken(input: string) {
     .trim()
 }
 
+function normalizeSelectOptions(
+  options: string[] | Array<{ value: string; label: string }>,
+): Array<{ value: string; label: string }> {
+  return options.map((option) =>
+    typeof option === "string" ? { value: option, label: option } : option,
+  )
+}
+
 export function ProductConfigSelect({
   label,
   placeholder,
@@ -143,12 +152,15 @@ export function ProductConfigSelect({
   requirement,
   requirementMark = "text",
 }: ProductConfigSelectProps) {
+  const normalized = normalizeSelectOptions(options)
   const resolvedValue = (() => {
     if (!value) return ""
-    if (options.includes(value)) return value
+    if (normalized.some((option) => option.value === value)) return value
     const target = normalizeOptionToken(value)
-    const match = options.find((option) => normalizeOptionToken(option) === target)
-    return match ?? ""
+    const byValue = normalized.find((option) => normalizeOptionToken(option.value) === target)
+    if (byValue) return byValue.value
+    const byLabel = normalized.find((option) => normalizeOptionToken(option.label) === target)
+    return byLabel?.value ?? ""
   })()
 
   return (
@@ -175,9 +187,9 @@ export function ProductConfigSelect({
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent className="py-4">
-          {options.map((option) => (
-            <SelectItem key={option} value={option}>
-              {option}
+          {normalized.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>

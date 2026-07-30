@@ -17,7 +17,7 @@ import {
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
 } from "@/lib/otherRequirementPayload"
-import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
+import { fetchOptionLabels, fetchProductOptionLabels, fetchProductOptions, DEFAULT_TRIGGER_DURATION_OPTIONS, type ProductOption } from "@/lib/productOptions"
 import type { LoanConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
 import { ProductConfigDocumentRequirementsPanel } from "@/components/drawers/product-config-document-requirements"
@@ -72,7 +72,8 @@ interface PenaltyItem {
   name: string
   type: string
   value: string
-  triggerDuration: string
+  /** Numeric days from options API `value`; submitted as triggerDurationDays. */
+  triggerDurationDays: number
 }
 
 type DocumentRequirementUpload = { name: string; file?: File; fileUrl?: string }
@@ -219,6 +220,9 @@ export default function ConfigureLoanDrawer({
   const [securityOptions, setSecurityOptions] = useState<string[]>([])
   const [feeTypeOptions, setFeeTypeOptions] = useState<string[]>([])
   const [penaltyTypeOptions, setPenaltyTypeOptions] = useState<string[]>([])
+  const [triggerDurationOptions, setTriggerDurationOptions] = useState<ProductOption[]>(
+    DEFAULT_TRIGGER_DURATION_OPTIONS,
+  )
   const [repaymentWorkflowOptions, setRepaymentWorkflowOptions] = useState<string[]>([...DEFAULT_REPAYMENT_WORKFLOWS])
 
   const [name, setName] = useState(loanData?.name || "")
@@ -350,6 +354,11 @@ export default function ConfigureLoanDrawer({
       setSecurityOptions(prefetchedOptions.securities)
       setFeeTypeOptions(prefetchedOptions.feeType)
       setPenaltyTypeOptions(prefetchedOptions.penaltyType)
+      setTriggerDurationOptions(
+        prefetchedOptions.triggerDuration?.length
+          ? prefetchedOptions.triggerDuration
+          : DEFAULT_TRIGGER_DURATION_OPTIONS,
+      )
       setRepaymentWorkflowOptions(prefetchedOptions.repaymentWorkflow)
       return
     }
@@ -369,6 +378,7 @@ export default function ConfigureLoanDrawer({
         securities,
         feeType,
         penaltyType,
+        triggerDuration,
         repaymentWorkflow,
       ] = await Promise.all([
         fetchOptionLabels("loan-tenure", []),
@@ -385,9 +395,9 @@ export default function ConfigureLoanDrawer({
         fetchProductOptionLabels("security-requirements", [], { productType: "LOAN" }),
         fetchOptionLabels("fee-type", []),
         fetchOptionLabels("penalty-type", []),
+        fetchProductOptions("trigger-duration", DEFAULT_TRIGGER_DURATION_OPTIONS),
         fetchOptionLabels("repayment-workflow", [...DEFAULT_REPAYMENT_WORKFLOWS]),
       ])
-
       setTenureOptions(tenure)
       setInterestMethodOptions(interestMethods)
       setMoratoriumTypeOptions(moratoriumType)
@@ -402,6 +412,7 @@ export default function ConfigureLoanDrawer({
       setSecurityOptions(securities)
       setFeeTypeOptions(feeType)
       setPenaltyTypeOptions(penaltyType)
+      setTriggerDurationOptions(triggerDuration)
       setRepaymentWorkflowOptions(repaymentWorkflow)
     }
     loadOptions()
@@ -609,10 +620,12 @@ export default function ConfigureLoanDrawer({
               name: String(r?.name ?? ""),
               type: String(r?.type ?? r?.penaltyType ?? ""),
               value: String(r?.value ?? ""),
-              triggerDuration: String(
-                r?.triggerDuration ??
-                  (r?.triggerDurationDays != null ? `${r.triggerDurationDays}` : ""),
-              ),
+              triggerDurationDays: (() => {
+                const raw = r?.triggerDurationDays ?? r?.triggerDuration
+                if (typeof raw === "number" && Number.isFinite(raw)) return Math.round(raw)
+                const m = String(raw ?? "").match(/(\d+)/)
+                return m ? parseInt(m[1], 10) : 0
+              })(),
             }
           })
         : [],
@@ -827,14 +840,17 @@ export default function ConfigureLoanDrawer({
   }
 
   const addPenalty = () => {
-    if (!penaltyName.trim() || !penaltyType || !penaltyValue.trim() || !penaltyTriggerDuration.trim()) return
+    const days = Number(penaltyTriggerDuration)
+    if (!penaltyName.trim() || !penaltyType || !penaltyValue.trim() || !Number.isFinite(days) || days <= 0) {
+      return
+    }
     setPenalties((prev) => [
       ...prev,
       {
         name: penaltyName.trim(),
         type: penaltyType,
         value: penaltyValue.trim(),
-        triggerDuration: penaltyTriggerDuration.trim(),
+        triggerDurationDays: Math.round(days),
       },
     ])
     setPenaltyName("")
@@ -1419,12 +1435,12 @@ export default function ConfigureLoanDrawer({
               requirement="required"
               requirementMark="asterisk"
             />
-            <ProductConfigInput
-              label="Trigger Duration"
+            <ProductConfigSelect
+              label="Trigger Duration (Days)"
               placeholder="Select Section"
               value={penaltyTriggerDuration}
+              options={triggerDurationOptions}
               onChange={setPenaltyTriggerDuration}
-              numericOnly
               requirement="required"
               requirementMark="asterisk"
             />
@@ -1439,7 +1455,7 @@ export default function ConfigureLoanDrawer({
                 <span>Name</span>
                 <span>Type</span>
                 <span>Value</span>
-                <span>Trigger Duration</span>
+                <span>Trigger Duration (Days)</span>
                 <span className="text-right" />
               </div>
               {penalties.map((penalty, index) => (
@@ -1450,7 +1466,10 @@ export default function ConfigureLoanDrawer({
                   <span className="pr-2">{penalty.name}</span>
                   <span>{penalty.type}</span>
                   <span>{penalty.value}</span>
-                  <span>{penalty.triggerDuration}</span>
+                  <span>
+                    {triggerDurationOptions.find((o) => o.value === String(penalty.triggerDurationDays))
+                      ?.label ?? `${penalty.triggerDurationDays} days`}
+                  </span>
                   <div className="flex justify-end">
                     <button
                       type="button"

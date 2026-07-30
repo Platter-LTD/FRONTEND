@@ -162,6 +162,7 @@ export type MerchantWalletsBundle = Partial<{
   kyc: MerchantWallet;
   billing: MerchantWallet;
   settlement: MerchantWallet;
+  repayment: MerchantWallet;
 }>;
 
 function normalizeMerchantWalletsBundle(raw: unknown): MerchantWalletsBundle {
@@ -177,7 +178,11 @@ function normalizeMerchantWalletsBundle(raw: unknown): MerchantWalletsBundle {
     const norm = normalizePlataMerchantWalletType(w.merchantWalletType);
     if (norm === 'BILLING') bundle.billing = w;
     if (norm === 'TREASURY') bundle.treasury = bundle.treasury ?? w;
-    if (norm === 'SETTLEMENT') bundle.settlement = w;
+    if (norm === 'REPAYMENT') {
+      bundle.repayment = w;
+      bundle.settlement = w;
+      bundle.kyc = w;
+    }
   };
 
   if (inner.treasury) assign(inner.treasury);
@@ -185,6 +190,7 @@ function normalizeMerchantWalletsBundle(raw: unknown): MerchantWalletsBundle {
   if (inner.kyc) assign(inner.kyc);
   if (inner.billing) assign(inner.billing);
   if (inner.settlement) assign(inner.settlement);
+  if (inner.repayment) assign(inner.repayment);
 
   const wallets = inner.wallets;
   if (Array.isArray(wallets)) wallets.forEach(assign);
@@ -663,8 +669,26 @@ export const transactionApi = {
   },
 
   /**
-   * Get Settlement wallet transactions (legacy KYC)
+   * Get Repayment wallet transactions
+   * Canonical: GET /api/v1/wallets/repayment/:merchantId/transactions?appId=
+   * Legacy fallbacks: settlement, kyc (rewritten by Vercel proxy to repayment).
    */
+  async getRepaymentTransactions(
+    merchantId: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      type?: 'CREDIT' | 'DEBIT';
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+      appId?: string;
+    }
+  ) {
+    return fetchMerchantWalletTransactions(['repayment', 'settlement', 'kyc'], merchantId, params);
+  },
+
+  /** @deprecated Use getRepaymentTransactions */
   async getSettlementTransactions(
     merchantId: string,
     params?: {
@@ -677,7 +701,7 @@ export const transactionApi = {
       appId?: string;
     }
   ) {
-    return fetchMerchantWalletTransactions(['settlement', 'kyc'], merchantId, params);
+    return transactionApi.getRepaymentTransactions(merchantId, params);
   },
 
   /** @deprecated Use getBillingTransactions */
@@ -696,7 +720,7 @@ export const transactionApi = {
     return transactionApi.getBillingTransactions(merchantId, params);
   },
 
-  /** @deprecated Use getSettlementTransactions */
+  /** @deprecated Use getRepaymentTransactions */
   async getKycTransactions(
     merchantId: string,
     params?: {
@@ -709,7 +733,7 @@ export const transactionApi = {
       appId?: string;
     }
   ) {
-    return transactionApi.getSettlementTransactions(merchantId, params);
+    return transactionApi.getRepaymentTransactions(merchantId, params);
   },
 
   /** GET /api/v1/transactions/:walletId */
@@ -822,7 +846,7 @@ export const billingApi = {
     return data as WalletApiResponse<{ wallet: MerchantWallet; transaction: Transaction }>;
   },
 
-  /** POST /settlement/payout — merchant settlement withdrawal to bank */
+  /** POST /repayment/payout — merchant repayment withdrawal to bank (legacy: /settlement/payout) */
   async settlementPayout(
     payout: {
       appId?: string;
@@ -837,14 +861,23 @@ export const billingApi = {
     },
     appId?: string,
   ) {
-    const response = await walletFetch(`${walletV1WalletsBase()}/settlement/payout`, {
+    const scopedAppId = appId ?? payout.appId;
+    const body = JSON.stringify(payout);
+    let response = await walletFetch(`${walletV1WalletsBase()}/repayment/payout`, {
       method: 'POST',
-      appId: appId ?? payout.appId,
-      body: JSON.stringify(payout),
+      appId: scopedAppId,
+      body,
     });
+    if (response.status === 404) {
+      response = await walletFetch(`${walletV1WalletsBase()}/settlement/payout`, {
+        method: 'POST',
+        appId: scopedAppId,
+        body,
+      });
+    }
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(walletMessageFromBody(data) || 'Failed to initiate settlement payout');
+      throw new Error(walletMessageFromBody(data) || 'Failed to initiate repayment payout');
     }
     return data as WalletApiResponse<{
       wallet: MerchantWallet;

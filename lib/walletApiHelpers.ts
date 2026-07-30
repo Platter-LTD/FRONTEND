@@ -1,8 +1,9 @@
-/** Plata wallet-ms helpers (BILLING / TREASURY / SETTLEMENT). */
+/** Plata wallet-ms helpers (BILLING / TREASURY / REPAYMENT; SETTLEMENT/KYC legacy). */
 
 export type PlataMerchantWalletType =
   | "BILLING"
   | "TREASURY"
+  | "REPAYMENT"
   | "SETTLEMENT"
   | "OPERATION"
   | "KYC"
@@ -22,14 +23,14 @@ export function walletMessageFromBody(data: unknown): string {
   return String(m)
 }
 
-/** Prefer new wallet-type names; legacy OPERATION→BILLING, KYC→SETTLEMENT. */
+/** Prefer new wallet-type names; legacy OPERATION→BILLING, KYC|SETTLEMENT→REPAYMENT. */
 export function normalizePlataMerchantWalletType(
   type?: string,
-): "BILLING" | "TREASURY" | "SETTLEMENT" {
+): "BILLING" | "TREASURY" | "REPAYMENT" {
   const t = String(type || "").toUpperCase()
   if (t === "OPERATION") return "BILLING"
-  if (t === "KYC") return "SETTLEMENT"
-  if (t === "BILLING" || t === "TREASURY" || t === "SETTLEMENT") return t
+  if (t === "KYC" || t === "SETTLEMENT" || t === "REPAYMENT") return "REPAYMENT"
+  if (t === "BILLING" || t === "TREASURY") return t
   return "BILLING"
 }
 
@@ -38,7 +39,7 @@ export function legacyBundleKeyFromType(type?: string): PlataLegacyBundleKey | n
   const t = normalizePlataMerchantWalletType(type)
   if (t === "TREASURY") return "treasury"
   if (t === "BILLING") return "operation"
-  if (t === "SETTLEMENT") return "kyc"
+  if (t === "REPAYMENT") return "kyc"
   return null
 }
 

@@ -1,4 +1,4 @@
-import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
+import { fetchOptionLabels, fetchProductOptionLabels, fetchProductOptions, DEFAULT_TRIGGER_DURATION_OPTIONS, type ProductOption } from "@/lib/productOptions"
 import { DEFAULT_REPAYMENT_WORKFLOWS } from "@/components/drawers/product-config-form-fields"
 
 export type LoanConfigurePrefetched = {
@@ -16,6 +16,7 @@ export type LoanConfigurePrefetched = {
   securities: string[]
   feeType: string[]
   penaltyType: string[]
+  triggerDuration: ProductOption[]
   repaymentWorkflow: string[]
 }
 
@@ -35,6 +36,7 @@ export async function prefetchLoanConfigureOptions(): Promise<LoanConfigurePrefe
     securities,
     feeType,
     penaltyType,
+    triggerDuration,
     repaymentWorkflow,
   ] = await Promise.all([
     fetchOptionLabels("loan-tenure", []),
@@ -51,6 +53,7 @@ export async function prefetchLoanConfigureOptions(): Promise<LoanConfigurePrefe
     fetchProductOptionLabels("security-requirements", [], { productType: "LOAN" }),
     fetchOptionLabels("fee-type", []),
     fetchOptionLabels("penalty-type", []),
+    fetchProductOptions("trigger-duration", DEFAULT_TRIGGER_DURATION_OPTIONS),
     fetchOptionLabels("repayment-workflow", [...DEFAULT_REPAYMENT_WORKFLOWS]),
   ])
 
@@ -69,6 +72,7 @@ export async function prefetchLoanConfigureOptions(): Promise<LoanConfigurePrefe
     securities,
     feeType,
     penaltyType,
+    triggerDuration,
     repaymentWorkflow,
   }
 }
