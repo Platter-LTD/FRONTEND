@@ -90,6 +90,30 @@ const parseSavingsAmountNumber = (value: any): number | undefined => {
   return Number.isFinite(n) ? n : undefined;
 };
 
+/** Resolve equityContribution for loan/mortgage PUT (top-level + structure). */
+const resolveEquityContribution = (configuration: any): number | undefined => {
+  const explicit = parseSavingsAmountNumber(configuration?.equityContribution);
+  if (explicit !== undefined) return explicit;
+
+  const eqLabel = String(configuration?.equityRequirement ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ');
+  if (!eqLabel) return undefined;
+
+  if (eqLabel.includes('fixed') && eqLabel.includes('amount')) {
+    return parseSavingsAmountNumber(configuration?.equityFixedAmount);
+  }
+  if (eqLabel.includes('percentage') || (eqLabel.includes('percent') && eqLabel.includes('based'))) {
+    const pctRaw = String(configuration?.equityPercentage ?? '').replace(/%/g, '');
+    return parseSavingsAmountNumber(pctRaw);
+  }
+  if (eqLabel.includes('zero') && eqLabel.includes('down')) {
+    return 0;
+  }
+  return undefined;
+};
+
 const mapForcefulWithdrawalPenaltiesForApi = (list: any[]) =>
   list.map((p) =>
     compactObject({
@@ -246,6 +270,11 @@ const buildLoanStructure = (configuration: any) => {
   const eq = configuration?.equityRequirement;
   const equityRequirement =
     typeof eq === 'string' && eq.trim() ? toEnum(eq) || eq.trim() : '';
+  const equityContribution = resolveEquityContribution(configuration);
+  const equityFixedAmount = parseSavingsAmountNumber(configuration?.equityFixedAmount);
+  const equityPercentage = parseSavingsAmountNumber(
+    String(configuration?.equityPercentage ?? '').replace(/%/g, ''),
+  );
 
   return compactObject({
     interestRate: interestRate || undefined,
@@ -267,6 +296,10 @@ const buildLoanStructure = (configuration: any) => {
     repaymentFrequency: repaymentFrequency || undefined,
     acceptableNPA: acceptableNPA || undefined,
     equityRequirement: equityRequirement || undefined,
+    equityContribution,
+    // Some Product MS validators read these sibling fields for fixed/percentage modes.
+    ...(equityFixedAmount !== undefined ? { equityFixedAmount } : {}),
+    ...(equityPercentage !== undefined ? { equityPercentage } : {}),
   });
 };
 
@@ -626,6 +659,14 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
         const eq = String(configuration.equityRequirement);
         structureBase.equityRequirement = toEnum(eq) || eq;
       }
+      const mortgageEquity = resolveEquityContribution(configuration);
+      if (mortgageEquity !== undefined) structureBase.equityContribution = mortgageEquity;
+      const eqFixed = parseSavingsAmountNumber(configuration?.equityFixedAmount);
+      if (eqFixed !== undefined) structureBase.equityFixedAmount = eqFixed;
+      const eqPct = parseSavingsAmountNumber(
+        String(configuration?.equityPercentage ?? '').replace(/%/g, ''),
+      );
+      if (eqPct !== undefined) structureBase.equityPercentage = eqPct;
     }
 
     structure = compactObject(structureBase);
@@ -777,9 +818,14 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
       ? configuration.properties
       : [];
 
+  // Product MS validates equityContribution at the document root (loan + mortgage).
+  const equityContributionTopLevel = isLoan || isMortgage
+    ? resolveEquityContribution(configuration)
+    : undefined;
+
   const mortgageTopLevel = isMortgage
     ? compactObject({
-        equityContribution: parseSavingsAmountNumber(configuration?.equityContribution),
+        equityContribution: equityContributionTopLevel,
         propertyValue: parseSavingsAmountNumber(configuration?.propertyValue),
         mortgageWorkflowStepOrder: Array.isArray(configuration?.mortgageWorkflowStepOrder)
           ? configuration.mortgageWorkflowStepOrder
@@ -801,6 +847,12 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
               })
               .filter(Boolean)
           : undefined,
+      })
+    : {};
+
+  const loanTopLevel = isLoan
+    ? compactObject({
+        equityContribution: equityContributionTopLevel,
       })
     : {};
 
@@ -851,6 +903,7 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     feesAndCharges,
     ...(isMortgage ? { properties: normalizedProperties } : {}),
     ...(commodityPricesNormalized ? { commodityPrices: commodityPricesNormalized } : {}),
+    ...loanTopLevel,
     ...mortgageTopLevel,
     ...commodityTopLevel,
   });

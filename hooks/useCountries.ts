@@ -13,7 +13,10 @@ export function useCountries() {
     // Defer fetch so it doesn't block first paint or typing on pages that share the same root
     const id = setTimeout(() => {
       fetchCountries()
-        .then(setCountries)
+        .then((rows) => {
+          setCountries(rows);
+          setError(null);
+        })
         .catch((e) => setError(e instanceof Error ? e.message : "Failed to load countries"))
         .finally(() => setLoading(false));
     }, 0);

@@ -20,6 +20,7 @@ import { fetchMerchantProfileThunk } from "@/store/merchantSettingsSlice"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
 import { displayNameFromEmail, looksLikeEmailLocalOnly } from "@/lib/userNameFromClaims"
+import { ComplianceService } from "@/lib/services/complianceService"
 
 interface GlobalNavItem {
   icon: React.ReactNode
@@ -57,6 +58,12 @@ function appIdFromPathname(pathname: string | null): string | null {
   return m?.[1] ?? null
 }
 
+function pickCompanyLogoUrl(payload: unknown): string | null {
+  const root = payload as { data?: { companyLogoUrl?: unknown }; companyLogoUrl?: unknown }
+  const url = root?.data?.companyLogoUrl ?? root?.companyLogoUrl
+  return typeof url === "string" && url.trim() ? url.trim() : null
+}
+
 export interface DashboardSidebarProps {
   className?: string
   /** When set (e.g. from server layout), used before pathname-derived id. */
@@ -79,6 +86,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const [isProductsOpen, setIsProductsOpen] = useState(false)
   const [isApplicationsOpen, setIsApplicationsOpen] = useState(false)
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
+  const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null)
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
@@ -129,6 +137,22 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   useEffect(() => {
     void dispatch(fetchKycStatusThunk())
   }, [pathname, dispatch])
+
+  useEffect(() => {
+    if (!pathname?.startsWith("/dashboard")) return
+    let cancelled = false
+    void ComplianceService.getBusinessInfo()
+      .then((res) => {
+        if (cancelled) return
+        setCompanyLogoUrl(pickCompanyLogoUrl(res))
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyLogoUrl(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
 
   useEffect(() => {
     if (nameFromUser) return
@@ -221,7 +245,17 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   return (
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
       <div className="p-6">
-        <span className="text-2xl font-bold text-[#9A813F]">PLATA</span>
+        {companyLogoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- KYC CDN URL is merchant-specific
+          <img
+            src={companyLogoUrl}
+            alt="Company logo"
+            className="h-10 w-auto max-w-[180px] object-contain object-left"
+            onError={() => setCompanyLogoUrl(null)}
+          />
+        ) : (
+          <span className="text-2xl font-bold text-[#9A813F]">PLATA</span>
+        )}
       </div>
 
       <nav className="flex-1 px-4">

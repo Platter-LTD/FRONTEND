@@ -76,7 +76,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'", // Required for inline styles
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.fly.dev https://*.vercel.app https://restcountries.com wss:",
+              "connect-src 'self' https://*.fly.dev https://*.vercel.app wss:",
               "frame-ancestors 'self'",
               "base-uri 'self'",
               "form-action 'self'",

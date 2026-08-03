@@ -1159,13 +1159,18 @@ export default function ConfigureMortgageDrawer({
       const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
 
       let equityContributionSubmit: number | undefined
-      if (equityRequirementMode === "percentage") {
+      if (equityRequirementMode === "fixed") {
+        const amount = Number.parseFloat(removeCommas(equityFixedAmount))
+        equityContributionSubmit = Number.isFinite(amount) ? amount : undefined
+      } else if (equityRequirementMode === "percentage") {
         const pct = Number.parseFloat(equityPercentage.replace(/%/g, "").trim())
         equityContributionSubmit = Number.isFinite(pct)
           ? pct
           : typeof mortgageData?.equityContribution === "number"
             ? mortgageData.equityContribution
             : undefined
+      } else if (equityRequirementMode === "zero") {
+        equityContributionSubmit = 0
       } else if (typeof mortgageData?.equityContribution === "number") {
         equityContributionSubmit = mortgageData.equityContribution
       }

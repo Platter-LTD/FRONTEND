@@ -966,6 +966,32 @@ export default function ConfigureLoanDrawer({
       delete loanPayload.moratoriumDuration
       delete loanPayload.moratoriumDays
 
+      let equityContribution: number | undefined
+      if (equityRequirementMode === "fixed") {
+        const cleaned = cleanNumeric(equityFixedAmount)
+        const amount = cleaned ? Number(cleaned) : NaN
+        equityContribution = Number.isFinite(amount) ? amount : undefined
+      } else if (equityRequirementMode === "percentage") {
+        const cleaned = cleanNumeric(equityPercentage.replace(/%/g, ""))
+        const pct = cleaned ? Number(cleaned) : NaN
+        equityContribution = Number.isFinite(pct) ? pct : undefined
+      } else if (equityRequirementMode === "zero") {
+        equityContribution = 0
+      } else {
+        // Fallback if option label classification misses a fixed/percentage variant.
+        const fixedCleaned = cleanNumeric(equityFixedAmount)
+        if (fixedCleaned) {
+          const amount = Number(fixedCleaned)
+          if (Number.isFinite(amount)) equityContribution = amount
+        } else {
+          const pctCleaned = cleanNumeric(equityPercentage.replace(/%/g, ""))
+          if (pctCleaned) {
+            const pct = Number(pctCleaned)
+            if (Number.isFinite(pct)) equityContribution = pct
+          }
+        }
+      }
+
       await Promise.resolve(
         onSubmit({
           ...loanPayload,
@@ -992,6 +1018,7 @@ export default function ConfigureLoanDrawer({
           acceptableNpa,
           acceptableNPA: acceptableNpa,
           equityRequirement,
+          equityContribution,
           equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
           equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
           securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),

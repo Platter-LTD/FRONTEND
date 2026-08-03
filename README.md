@@ -551,7 +551,7 @@ NEXT_PUBLIC_API_URL=https://account-ms-plata.fly.dev
 
 > `NEXT_PUBLIC_*` variables are exposed to the browser. Non-prefixed variables (`JWT_SECRET`) are server-side only.
 
-**Country list:** Country dropdowns use [REST Countries](https://restcountries.com/) (free, no API key). Data is fetched once and cached in `lib/countryApi.ts`. No env var or signup required.
+**Country list:** Country dropdowns use a bundled ISO country dataset served from same-origin `GET /api/countries` (`lib/countriesData.ts`). The client falls back to the bundled list if the route fails. No third-party country API or env var is required.
 
 **Website/URL fields:** All website and callback URL inputs default to `https://`; the user types the rest (e.g. `example.com`). See `lib/websiteUrl.ts` and `WEBSITE_URL_PREFIX`.
 
