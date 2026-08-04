@@ -78,7 +78,8 @@ export function extractPostApprovalFulfillment(
 
 /**
  * Show letter choice (generate / upload) when approved and no letter has been sent yet.
- * Mortgages: also require currentWorkflowStepId === "offer_letter".
+ * Mortgages: available after approve while on virtual inspection or offer letter
+ * (virtual tour completion is tracked separately and does not hide these actions).
  */
 export function isAwaitingOfferLetterChoice(raw: Record<string, unknown> | null | undefined): boolean {
   if (!raw) return false
@@ -98,9 +99,19 @@ export function isAwaitingOfferLetterChoice(raw: Record<string, unknown> | null 
   if (!awaiting) return false
 
   if (productType === "MORTGAGE") {
-    const stepId = String(fulfillment.currentWorkflowStepId || "").trim().toLowerCase()
-    // Docs: choice only when currentWorkflowStepId === "offer_letter"
-    if (stepId !== "offer_letter") return false
+    const stepId = String(fulfillment.currentWorkflowStepId || "")
+      .trim()
+      .toLowerCase()
+    // Allow prepare/send while applicant completes virtual tour, or on the offer letter step.
+    // Backend may leave stepId empty or still on virtual_* after approve.
+    if (
+      stepId &&
+      stepId !== "offer_letter" &&
+      stepId !== "virtual_tour" &&
+      stepId !== "virtual_inspection"
+    ) {
+      return false
+    }
   }
 
   return true
@@ -148,15 +159,18 @@ export function merchantOfferLetterUploadBlockReason(
   if (fulfillment?.offerSentAt) {
     return "An offer letter has already been sent for this application."
   }
-  const stepId = String(fulfillment?.currentWorkflowStepId || "").trim().toLowerCase()
-  if (stepId === "virtual_tour" || stepId === "virtual_inspection") {
-    return "Finish the virtual tour step before sending an offer letter."
-  }
-  if (stepId && stepId !== "offer_letter" && String(raw.productType || "").toUpperCase() === "MORTGAGE") {
-    return "Offer letter actions are only available on the offer letter mortgage step."
-  }
   if (workflowStatus !== "approved") {
     return "Approve the application before generating or uploading an offer letter."
+  }
+  const stepId = String(fulfillment?.currentWorkflowStepId || "").trim().toLowerCase()
+  if (
+    stepId &&
+    stepId !== "offer_letter" &&
+    stepId !== "virtual_tour" &&
+    stepId !== "virtual_inspection" &&
+    String(raw.productType || "").toUpperCase() === "MORTGAGE"
+  ) {
+    return "Offer letter actions are only available after approval, before later workflow steps."
   }
   return "Offer letter actions are not available for this application state."
 }

@@ -886,7 +886,30 @@ export const applicationApi = {
         };
       }
 
-      return result;
+      const envelope = result?.data ?? result;
+      const nested =
+        envelope && typeof envelope === 'object' && envelope.application && typeof envelope.application === 'object'
+          ? envelope.application
+          : null;
+      const application = (nested
+        ? {
+            ...envelope,
+            ...nested,
+            loanDisbursement: nested.loanDisbursement ?? envelope.loanDisbursement,
+            postApprovalFulfillment:
+              nested.postApprovalFulfillment ?? envelope.postApprovalFulfillment,
+            contractSnapshot: nested.contractSnapshot ?? envelope.contractSnapshot,
+            offerLetter: nested.offerLetter ?? envelope.offerLetter,
+            metadata: nested.metadata ?? envelope.metadata,
+          }
+        : envelope) as LoanWorkflowApplication;
+
+      return {
+        success: result.success !== false,
+        data: application,
+        message: result.message,
+        error: result.error,
+      };
     } catch (error: any) {
       console.error('Get workflow application error:', error);
       return {

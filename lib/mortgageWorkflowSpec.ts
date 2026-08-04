@@ -119,22 +119,22 @@ function pickString(...vals: unknown[]): string | undefined {
   return undefined
 }
 
-function hasOfferLetterPdf(raw?: Record<string, unknown>): boolean {
-  if (!raw) return false
-  const offer = raw.offerLetter
-  if (offer && typeof offer === "object") {
-    const url = String((offer as Record<string, unknown>).pdfUrl || "").trim()
-    if (url) return true
-  }
-  const paf = raw.postApprovalFulfillment
-  if (paf && typeof paf === "object") {
-    const contract = (paf as Record<string, unknown>).contract
-    if (contract && typeof contract === "object") {
-      const url = String((contract as Record<string, unknown>).documentUrl || "").trim()
-      if (url) return true
+/** ISO timestamp, epoch ms, or boolean/string true → treat as completed. */
+function pickCompletedAt(...vals: unknown[]): string | undefined {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim()) {
+      const s = v.trim().toLowerCase()
+      if (s === "true" || s === "1" || s === "yes" || s === "completed") {
+        return "completed"
+      }
+      return v.trim()
     }
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) {
+      return new Date(v).toISOString()
+    }
+    if (v === true) return "completed"
   }
-  return false
+  return undefined
 }
 
 export function extractMortgageProgress(raw: Record<string, unknown>): MortgageWorkflowProgress {
@@ -142,17 +142,51 @@ export function extractMortgageProgress(raw: Record<string, unknown>): MortgageW
   const nested = (disbursement.mortgageWorkflow ?? disbursement) as Record<string, unknown>
   const snapshot = (raw.contractSnapshot ?? {}) as Record<string, unknown>
   const paf = (raw.postApprovalFulfillment ?? {}) as Record<string, unknown>
+  const pafWorkflow = (paf.mortgageWorkflow ?? paf.loanWorkflow ?? {}) as Record<string, unknown>
+  const metadata = (raw.metadata ?? {}) as Record<string, unknown>
+  const metaWorkflow = (metadata.mortgageWorkflow ?? metadata.loanWorkflow ?? {}) as Record<
+    string,
+    unknown
+  >
+  const topWorkflow = (raw.mortgageWorkflow ?? {}) as Record<string, unknown>
 
   return {
-    virtualTourCompletedAt: pickString(
+    virtualTourCompletedAt: pickCompletedAt(
       nested.virtualTourCompletedAt,
+      nested.virtualTourCompleted,
       snapshot.virtualTourCompletedAt,
+      snapshot.virtualTourCompleted,
       paf.virtualTourCompletedAt,
+      paf.virtualTourCompleted,
+      pafWorkflow.virtualTourCompletedAt,
+      pafWorkflow.virtualTourCompleted,
+      metaWorkflow.virtualTourCompletedAt,
+      metaWorkflow.virtualTourCompleted,
+      disbursement.virtualTourCompletedAt,
+      disbursement.virtualTourCompleted,
+      topWorkflow.virtualTourCompletedAt,
+      topWorkflow.virtualTourCompleted,
+      raw.virtualTourCompletedAt,
+      raw.virtualTourCompleted,
     ),
-    offerAcceptedAt: pickString(nested.offerAcceptedAt, snapshot.offerAcceptedAt),
-    inspectionBookedAt: pickString(nested.inspectionBookedAt, snapshot.inspectionBookedAt),
-    inspectionCompletedAt: pickString(nested.inspectionCompletedAt, snapshot.inspectionCompletedAt),
-    inspectionDeclined: Boolean(nested.inspectionDeclined ?? snapshot.inspectionDeclined),
+    offerAcceptedAt: pickString(
+      nested.offerAcceptedAt,
+      snapshot.offerAcceptedAt,
+      metaWorkflow.offerAcceptedAt,
+    ),
+    inspectionBookedAt: pickString(
+      nested.inspectionBookedAt,
+      snapshot.inspectionBookedAt,
+      metaWorkflow.inspectionBookedAt,
+    ),
+    inspectionCompletedAt: pickString(
+      nested.inspectionCompletedAt,
+      snapshot.inspectionCompletedAt,
+      metaWorkflow.inspectionCompletedAt,
+    ),
+    inspectionDeclined: Boolean(
+      nested.inspectionDeclined ?? snapshot.inspectionDeclined ?? metaWorkflow.inspectionDeclined,
+    ),
     downPaymentMadeAt: pickString(nested.downPaymentMadeAt, snapshot.downPaymentMadeAt),
     downPaymentConfirmedAt: pickString(
       nested.downPaymentConfirmedAt,
@@ -176,29 +210,20 @@ export function isApprovedWorkflowStatus(status: string): boolean {
   return s === "approved" || s === "offer_sent" || s === "completed" || s === "active"
 }
 
-function resolveOfferPendingStep(
-  progress: MortgageWorkflowProgress,
-  raw?: Record<string, unknown>,
-): PlataMortgageStepId {
-  const paf = raw ? extractPostApprovalFulfillment(raw) : null
-  const stepId = String(paf?.currentWorkflowStepId || "")
-    .trim()
-    .toLowerCase()
-
-  if (stepId === "offer_letter") return "offer_letter"
-  if (stepId === "virtual_tour" || stepId === "virtual_inspection") return "virtual_inspection"
-  if (progress.virtualTourCompletedAt || hasOfferLetterPdf(raw)) return "offer_letter"
-  return "virtual_inspection"
+function resolveOfferPendingStep(progress: MortgageWorkflowProgress): PlataMortgageStepId {
+  // Virtual inspection stays in progress until the applicant completes the tour in User-App.
+  // Do not advance because an offer PDF exists or currentWorkflowStepId is already offer_letter.
+  if (!progress.virtualTourCompletedAt) return "virtual_inspection"
+  return "offer_letter"
 }
 
 function stepFromPostApprovalStatus(
   status: PostApprovalMortgageStatus,
   progress: MortgageWorkflowProgress,
-  raw?: Record<string, unknown>,
 ): PlataMortgageStepId {
   switch (status) {
     case "offer_pending":
-      return resolveOfferPendingStep(progress, raw)
+      return resolveOfferPendingStep(progress)
     case "offer_accepted":
     case "appointment_scheduled":
       return "inspection_booking"
@@ -230,7 +255,7 @@ export function resolvePlataMortgageStep(
   const paf = raw ? extractPostApprovalFulfillment(raw) : null
   if (paf?.status) {
     if (paf.status === "disbursed") return "loan_disbursement"
-    return stepFromPostApprovalStatus(paf.status, progress, raw)
+    return stepFromPostApprovalStatus(paf.status, progress)
   }
 
   const status = String(loanWorkflowStatus || "requested").toLowerCase()
@@ -245,8 +270,9 @@ export function resolvePlataMortgageStep(
   if (progress.inspectionBookedAt) return "inspection_outcome"
   if (progress.offerAcceptedAt) return "inspection_booking"
   if (isApprovedWorkflowStatus(status)) {
-    if (progress.virtualTourCompletedAt || hasOfferLetterPdf(raw)) return "offer_letter"
-    return "virtual_inspection"
+    // After approve: virtual inspection is current/in-progress until User-App completes the tour.
+    if (!progress.virtualTourCompletedAt) return "virtual_inspection"
+    return "offer_letter"
   }
   if (status === "under_review") return "review_approval"
   return "application_submission"

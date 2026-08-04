@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Check, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -114,6 +114,74 @@ function stepIdsForAction(action: StepActionKind): PlataMortgageStepId[] {
   return ["down_payment"]
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null
+}
+
+/** Normalize GET application / loan-workflow envelopes to a flat application record. */
+function unwrapWorkflowApplication(payload: unknown): Record<string, unknown> | null {
+  const root = asRecord(payload)
+  if (!root) return null
+  const data = asRecord(root.data) ?? root
+  const nestedApp = asRecord(data.application)
+  if (
+    nestedApp &&
+    (nestedApp.id || nestedApp.loanWorkflowStatus || nestedApp.productType || nestedApp.loanDisbursement)
+  ) {
+    return {
+      ...data,
+      ...nestedApp,
+      loanDisbursement: nestedApp.loanDisbursement ?? data.loanDisbursement,
+      postApprovalFulfillment: nestedApp.postApprovalFulfillment ?? data.postApprovalFulfillment,
+      contractSnapshot: nestedApp.contractSnapshot ?? data.contractSnapshot,
+      offerLetter: nestedApp.offerLetter ?? data.offerLetter,
+      metadata: nestedApp.metadata ?? data.metadata,
+    }
+  }
+  if (data.id || data.loanWorkflowStatus || data.productType || data.loanDisbursement) {
+    return data
+  }
+  return null
+}
+
+function mergeMortgageWorkflowMaps(
+  preferred: Record<string, unknown> | null | undefined,
+  fallback: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  return { ...(fallback || {}), ...(preferred || {}) }
+}
+
+/** Prefer workflow GET for progress fields; keep profile application for applicant context. */
+function mergeMortgageWorkflowDetail(
+  workflowApp: Record<string, unknown> | null,
+  profileApp: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  if (!workflowApp && !profileApp) return null
+  if (!workflowApp) return profileApp
+  if (!profileApp) return workflowApp
+
+  const workflowDisbursement = asRecord(workflowApp.loanDisbursement)
+  const profileDisbursement = asRecord(profileApp.loanDisbursement)
+  const workflowMortgage = asRecord(workflowDisbursement?.mortgageWorkflow)
+  const profileMortgage = asRecord(profileDisbursement?.mortgageWorkflow)
+  const workflowPaf = asRecord(workflowApp.postApprovalFulfillment)
+  const profilePaf = asRecord(profileApp.postApprovalFulfillment)
+
+  return {
+    ...profileApp,
+    ...workflowApp,
+    postApprovalFulfillment: mergeMortgageWorkflowMaps(workflowPaf, profilePaf),
+    contractSnapshot: workflowApp.contractSnapshot ?? profileApp.contractSnapshot,
+    offerLetter: workflowApp.offerLetter ?? profileApp.offerLetter,
+    metadata: mergeMortgageWorkflowMaps(asRecord(workflowApp.metadata), asRecord(profileApp.metadata)),
+    loanDisbursement: {
+      ...(profileDisbursement || {}),
+      ...(workflowDisbursement || {}),
+      mortgageWorkflow: mergeMortgageWorkflowMaps(workflowMortgage, profileMortgage),
+    },
+  }
+}
+
 export function MortgageWorkflowDetailSheet({
   applicationId,
   open,
@@ -126,67 +194,83 @@ export function MortgageWorkflowDetailSheet({
   const [profilePayload, setProfilePayload] = useState<SpringApplicantProfileResponse | null>(null)
   const [profileError, setProfileError] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (options?: { silent?: boolean }) => {
     if (!applicationId) return
-    setLoading(true)
-    setProfileError(null)
+    const silent = Boolean(options?.silent)
+    if (!silent) {
+      setLoading(true)
+      setProfileError(null)
+    }
     try {
       const [appRes, profileRes] = await Promise.all([
         applicationApi.getWorkflowApplication(applicationId),
         applicationApi.getSpringApplicantProfile(applicationId),
       ])
 
+      const workflowApp =
+        appRes.success && appRes.data
+          ? unwrapWorkflowApplication(appRes.data) ??
+            unwrapWorkflowApplication(appRes) ??
+            asRecord(appRes.data as unknown)
+          : unwrapWorkflowApplication(appRes)
+      const profileApp =
+        unwrapWorkflowApplication(profileRes.data?.application) ??
+        asRecord(profileRes.data?.application)
+
       if (profileRes.success && profileRes.data) {
         setProfilePayload(profileRes.data)
-        setProfileError(
-          profileRes.data.springApplicantProfileError && !profileRes.data.springApplicantProfile
-            ? profileRes.data.springApplicantProfileError
-            : profileRes.error || null,
-        )
-        const plataFromProfile = profileRes.data.application
-        if (plataFromProfile && typeof plataFromProfile === "object") {
-          setDetail(plataFromProfile as Record<string, unknown>)
-        } else if (appRes.success && appRes.data) {
-          setDetail(appRes.data as unknown as Record<string, unknown>)
-        } else {
-          setDetail(null)
+        if (!silent) {
+          setProfileError(
+            profileRes.data.springApplicantProfileError && !profileRes.data.springApplicantProfile
+              ? profileRes.data.springApplicantProfileError
+              : profileRes.error || null,
+          )
         }
       } else if (profileRes.data) {
         setProfilePayload(profileRes.data)
-        setProfileError(profileRes.error || profileRes.data.springApplicantProfileError || null)
-        const plataFromProfile = profileRes.data.application
-        if (plataFromProfile && typeof plataFromProfile === "object") {
-          setDetail(plataFromProfile as Record<string, unknown>)
-        } else if (appRes.success && appRes.data) {
-          setDetail(appRes.data as unknown as Record<string, unknown>)
-        } else {
-          setDetail(null)
+        if (!silent) {
+          setProfileError(profileRes.error || profileRes.data.springApplicantProfileError || null)
         }
-      } else {
+      } else if (!silent) {
         setProfilePayload(null)
         setProfileError(profileRes.error || null)
-        if (appRes.success && appRes.data) {
-          setDetail(appRes.data as unknown as Record<string, unknown>)
-        } else {
-          throw new Error(appRes.error || profileRes.error || "Failed to load application")
-        }
+      }
+
+      const merged = mergeMortgageWorkflowDetail(workflowApp, profileApp)
+      if (merged) {
+        setDetail(merged)
+      } else if (!silent) {
+        throw new Error(appRes.error || profileRes.error || "Failed to load application")
       }
 
       if (!appRes.success && profileRes.success) {
         console.warn("[MortgageWorkflow] application detail GET failed; using profile envelope", appRes.error)
       }
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Failed to load application")
-      setDetail(null)
-      setProfilePayload(null)
+      if (!silent) {
+        toast.error(e instanceof Error ? e.message : "Failed to load application")
+        setDetail(null)
+        setProfilePayload(null)
+      }
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [applicationId])
 
   useEffect(() => {
     if (open && applicationId) void load()
   }, [open, applicationId, load])
+
+  // Poll while the sheet is open so Virtual Inspection advances when User-App syncs tour completion.
+  useEffect(() => {
+    if (!open || !applicationId) return
+    const id = window.setInterval(() => {
+      void load({ silent: true })
+    }, 4000)
+    return () => window.clearInterval(id)
+  }, [open, applicationId, load])
+
+  const prevTourCompletedRef = useRef<string | null | undefined>(undefined)
 
   const loanWorkflowStatus = String(
     detail?.loanWorkflowStatus ??
@@ -200,6 +284,31 @@ export function MortgageWorkflowDetailSheet({
   const currentStep = resolvePlataMortgageStep(loanWorkflowStatus, progress, detail ?? undefined)
   const thread = buildPlataMortgageThread(loanWorkflowStatus, progress, detail ?? undefined)
   const currentThreadItem = thread.find((t) => t.id === currentStep)
+
+  useEffect(() => {
+    if (!open) {
+      prevTourCompletedRef.current = undefined
+      return
+    }
+    if (!detail) return
+    const at = progress.virtualTourCompletedAt
+    if (prevTourCompletedRef.current === undefined) {
+      // First observation after data load — seed without toasting.
+      prevTourCompletedRef.current = at ?? null
+      return
+    }
+    if (!at) {
+      prevTourCompletedRef.current = null
+      return
+    }
+    if (prevTourCompletedRef.current === at) return
+    const advancedFromWaiting = prevTourCompletedRef.current === null
+    prevTourCompletedRef.current = at
+    if (advancedFromWaiting) {
+      toast.success("Virtual inspection completed — moved to Offer Letter")
+      onUpdated?.()
+    }
+  }, [progress.virtualTourCompletedAt, open, onUpdated, detail])
 
   const statusLower = loanWorkflowStatus.toLowerCase()
   const isTerminal = ["declined", "blacklisted", "rejected"].includes(statusLower)
@@ -243,7 +352,7 @@ export function MortgageWorkflowDetailSheet({
     void runAction("approve_offer", async () => {
       const res = await applicationApi.approve(applicationId!)
       if (res.success) {
-        toast.success("Mortgage approved — send an offer letter on the offer letter step")
+        toast.success("Mortgage approved — prepare offer letter while applicant completes virtual inspection")
       }
       return res
     })
@@ -350,7 +459,9 @@ export function MortgageWorkflowDetailSheet({
   }
 
   const renderOfferLetterAction = (stepId: PlataMortgageStepId) => {
-    if (stepId !== "offer_letter" || !applicationId) return null
+    // Show on virtual inspection (current after approve) and on offer letter so merchants
+    // can prepare/send the letter without marking virtual inspection done.
+    if ((stepId !== "offer_letter" && stepId !== "virtual_inspection") || !applicationId) return null
     return (
       <OfferLetterUploadControl
         applicationId={applicationId}
@@ -366,14 +477,19 @@ export function MortgageWorkflowDetailSheet({
   const renderVirtualInspectionAction = (stepId: PlataMortgageStepId) => {
     if (stepId !== "virtual_inspection") return null
     const done = Boolean(progress.virtualTourCompletedAt)
+    const at = progress.virtualTourCompletedAt
+    const completedLabel =
+      at && at !== "completed"
+        ? `Completed ${new Date(at).toLocaleString("en-US", {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}`
+        : "Completed by applicant"
     return (
       <p className={cn("text-xs", done ? "font-medium text-green-700" : "text-gray-500")}>
         {done
-          ? `Completed ${new Date(progress.virtualTourCompletedAt!).toLocaleString("en-US", {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })}`
-          : "Waiting for applicant to finish the virtual property tour"}
+          ? completedLabel
+          : "Waiting for applicant to finish the virtual property tour (auto-refreshes every few seconds)"}
       </p>
     )
   }
