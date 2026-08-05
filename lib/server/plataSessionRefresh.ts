@@ -1,14 +1,11 @@
 import type { NextRequest, NextResponse } from "next/server"
 
-import { BACKEND } from "@/lib/endpoints"
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import {
+  singleFlightRefresh,
+  type RefreshedTokens,
+} from "@/lib/server/singleFlightRefresh"
 
-const AUTH_SERVICE_URL = getPlataApiBaseUrl().replace(/\/+$/, "")
-
-export type RefreshedTokens = {
-  accessToken: string
-  refreshToken?: string
-}
+export type { RefreshedTokens }
 
 export const plataCookieOpts = (maxAge: number, httpOnly: boolean) => ({
   httpOnly,
@@ -28,23 +25,7 @@ export function applyRefreshedTokens(response: NextResponse, tokens: RefreshedTo
 export async function refreshTokensFromRequest(request: NextRequest): Promise<RefreshedTokens | null> {
   const refreshToken = request.cookies.get("refreshToken")?.value
   if (!refreshToken) return null
-
-  const res = await fetch(`${AUTH_SERVICE_URL}${BACKEND.auth.refresh}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
-  })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || !data?.success) return null
-
-  const accessToken = data.data?.accessToken ?? data.accessToken
-  const newRefresh = data.data?.refreshToken ?? data.refreshToken
-  if (!accessToken || typeof accessToken !== "string") return null
-
-  return {
-    accessToken,
-    refreshToken: typeof newRefresh === "string" ? newRefresh : undefined,
-  }
+  return singleFlightRefresh(refreshToken)
 }
 
 function readAccessToken(request: NextRequest): string | null {

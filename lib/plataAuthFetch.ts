@@ -73,6 +73,21 @@ export async function handleSessionExpired(): Promise<never> {
 export async function refreshOrRedirectToSignIn(): Promise<string> {
   const newToken = await refreshAccessTokenClient()
   if (newToken) return newToken
+
+  // Refresh failed — only force sign-out when we also have no usable access cookie.
+  // Transient 500s / race losers used to clear a valid session here.
+  const existing = typeof window !== "undefined" ? getAccessToken() : null
+  if (existing) {
+    try {
+      const payload = JSON.parse(atob(existing.split(".")[1])) as { exp?: number }
+      if (payload.exp && payload.exp * 1000 > Date.now() + 5_000) {
+        return existing
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
   await handleSessionExpired()
   throw new Error("Session expired")
 }

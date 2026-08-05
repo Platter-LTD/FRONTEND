@@ -39,6 +39,12 @@ export function OfferLetterUploadControl({
   const canUpload = canUploadOfferLetterChoice(detail)
   const blockReason = merchantOfferLetterUploadBlockReason(detail)
   const letterAlreadySent = Boolean(fulfillment?.offerSentAt)
+  const sourceLabel =
+    fulfillment?.documentSource === "merchant_upload"
+      ? "Custom PDF upload"
+      : fulfillment?.documentSource
+        ? "System-generated letter"
+        : null
 
   if (!awaitingChoice && !offer?.pdfUrl && !letterAlreadySent) return null
 
@@ -49,7 +55,11 @@ export function OfferLetterUploadControl({
     try {
       const res = await generateOfferLetter(applicationId)
       if (!res.success) throw new Error(res.error || "Generate failed")
-      toast.success("System-generated offer letter sent — applicant notified")
+      toast.success(
+        letterAlreadySent
+          ? "System letter regenerated — applicant notified"
+          : "System-generated offer letter sent — applicant notified",
+      )
       onUploaded?.()
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Generate failed")
@@ -73,7 +83,11 @@ export function OfferLetterUploadControl({
     try {
       const res = await uploadOfferLetter(applicationId, file)
       if (!res.success) throw new Error(res.error || "Upload failed")
-      toast.success("Custom offer letter uploaded — applicant notified")
+      toast.success(
+        letterAlreadySent
+          ? "Custom offer letter replaced — applicant notified"
+          : "Custom offer letter uploaded — applicant notified",
+      )
       onUploaded?.()
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Upload failed")
@@ -86,15 +100,31 @@ export function OfferLetterUploadControl({
   return (
     <div className="space-y-2">
       {offer?.pdfUrl ? (
-        <a
-          href={offer.pdfUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8B7355] hover:underline"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-          {offer.pdfFileName || "View current offer letter"}
-        </a>
+        <div className="space-y-1">
+          <a
+            href={offer.pdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8B7355] hover:underline"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            {offer.pdfFileName || "View current offer letter"}
+          </a>
+          {sourceLabel || letterAlreadySent ? (
+            <p className="text-[11px] leading-relaxed text-gray-400">
+              {sourceLabel ? `${sourceLabel}. ` : ""}
+              {letterAlreadySent && fulfillment?.offerSentAt
+                ? `Sent ${new Date(fulfillment.offerSentAt).toLocaleString("en-US", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}. `
+                : ""}
+              {awaitingChoice
+                ? "The backend may auto-send a system letter when the applicant finishes the virtual tour — you did not have to click Generate. Use the buttons below to replace it before they accept."
+                : "Waiting for applicant to accept or decline."}
+            </p>
+          ) : null}
+        </div>
       ) : awaitingChoice ? (
         <p className="text-xs text-gray-500">
           Choose how to send the offer letter. Approval alone does not send a letter.
@@ -125,7 +155,7 @@ export function OfferLetterUploadControl({
                 ) : (
                   <Sparkles className="mr-2 h-3.5 w-3.5" />
                 )}
-                Generate system letter
+                {letterAlreadySent ? "Regenerate system letter" : "Generate system letter"}
               </Button>
             ) : null}
             {canUpload ? (
@@ -142,16 +172,15 @@ export function OfferLetterUploadControl({
                 ) : (
                   <FileUp className="mr-2 h-3.5 w-3.5" />
                 )}
-                Upload custom PDF
+                {letterAlreadySent ? "Replace with custom PDF" : "Upload custom PDF"}
               </Button>
             ) : null}
           </div>
           <p className="text-[11px] leading-relaxed text-gray-400">
-            PDF only for uploads, max 10 MB. Both options email and notify the applicant. Buttons
-            disable once a letter is sent.
+            PDF only for uploads, max 10 MB. Both options email and notify the applicant.
           </p>
         </>
-      ) : letterAlreadySent ? (
+      ) : !awaitingChoice && letterAlreadySent ? (
         <p className="text-[11px] leading-relaxed text-gray-400">
           Offer letter sent
           {fulfillment?.offerSentAt

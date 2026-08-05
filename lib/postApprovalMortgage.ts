@@ -20,10 +20,21 @@ export type PostApprovalFulfillment = {
   status?: PostApprovalMortgageStatus
   updatedAt?: string
   currentWorkflowStepId?: string
+  completedWorkflowSteps?: string[]
   offerAcceptedAt?: string
   appointmentScheduledAt?: string
   inspectionStartedAt?: string
   inspectionCompletedAt?: string
+  /** Canonical virtual-tour completion from storefront POST …/virtual-inspection/complete */
+  virtualInspection?: {
+    completedAt?: string
+    completedByUserId?: string
+    notes?: string
+  }
+  /** @deprecated Prefer virtualInspection.completedAt */
+  virtualTourCompletedAt?: string
+  /** @deprecated Prefer virtualInspection.completedAt */
+  virtualInspectionCompletedAt?: string
   downPaymentPaidAt?: string
   downPaymentConfirmedAt?: string
   contractIssuedAt?: string
@@ -69,4 +80,26 @@ export function isTerminalPostApproval(status?: string): boolean {
 
 export function isPostApprovalComplete(status?: string): boolean {
   return String(status || "").toLowerCase() === "disbursed"
+}
+
+export function normalizeWorkflowStepId(stepId: string | undefined | null): string {
+  return String(stepId || "")
+    .trim()
+    .toLowerCase()
+    .replace(/-/g, "_")
+}
+
+/** Completed-at from POST …/virtual-inspection/complete (authoritative). */
+export function virtualInspectionCompletedAt(
+  paf: PostApprovalFulfillment | null | undefined,
+): string | undefined {
+  if (!paf) return undefined
+  const nested = paf.virtualInspection?.completedAt
+  if (typeof nested === "string" && nested.trim()) return nested.trim()
+  return undefined
+}
+
+/** True when storefront virtual inspection completed (virtualInspection.completedAt only). */
+export function isVirtualInspectionComplete(paf: PostApprovalFulfillment | null | undefined): boolean {
+  return Boolean(virtualInspectionCompletedAt(paf))
 }

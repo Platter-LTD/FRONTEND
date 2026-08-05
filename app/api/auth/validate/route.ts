@@ -1,70 +1,48 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { BACKEND } from '@/lib/endpoints';
+import { NextRequest, NextResponse } from "next/server"
 
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 import { namesFromJwtPayload } from "@/lib/userNameFromClaims"
-
-const AUTH_SERVICE_URL = (getPlataApiBaseUrl()).replace(/\/+$/, '');
-const cookieOpts = (maxAge: number, httpOnly: boolean) => ({
-  httpOnly,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/',
-  maxAge,
-});
+import {
+  applyRefreshedTokens,
+  refreshTokensFromRequest,
+} from "@/lib/server/plataSessionRefresh"
 
 function userFromPayload(payload: Record<string, unknown>) {
   const { firstName, lastName } = namesFromJwtPayload(payload)
   return {
     id: (payload.userId ?? payload.sub) as string,
-    email: (payload.email ?? '') as string,
+    email: (payload.email ?? "") as string,
     firstName,
     lastName,
     role: (payload.userType ?? payload.role) as string | undefined,
-  };
+  }
 }
 
+/** 401 without wiping cookies — clearing here races concurrent refresh and logs users out. */
 function unauthorized(body: Record<string, unknown>) {
-  const response = NextResponse.json(body, { status: 401 });
-  response.cookies.set('accessToken', '', cookieOpts(0, false));
-  response.cookies.set('refreshToken', '', cookieOpts(0, true));
-  return response;
+  return NextResponse.json(body, { status: 401 })
 }
 
 /**
  * If access token is missing or expired, try to refresh using refreshToken cookie.
- * Returns a response with new access (and optionally refresh) cookie set if refresh succeeds.
  */
 async function tryRefreshAndRespond(request: NextRequest): Promise<NextResponse | null> {
-  const refreshToken = request.cookies.get('refreshToken')?.value;
-  if (!refreshToken) return null;
+  const tokens = await refreshTokensFromRequest(request)
+  if (!tokens?.accessToken) return null
 
-  const res = await fetch(`${AUTH_SERVICE_URL}${BACKEND.auth.refresh}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.success) return null;
-
-  const newAccess = data.data?.accessToken ?? data.accessToken;
-  const newRefresh = data.data?.refreshToken ?? data.refreshToken;
-  if (!newAccess) return null;
-
-  const parts = newAccess.split('.');
-  if (parts.length !== 3) return null;
-  const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8')) as Record<string, unknown>;
+  const parts = tokens.accessToken.split(".")
+  if (parts.length !== 3) return null
+  const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8")) as Record<
+    string,
+    unknown
+  >
 
   const response = NextResponse.json({
     success: true,
     valid: true,
     user: userFromPayload(payload),
-  });
-  response.cookies.set('accessToken', newAccess, cookieOpts(60 * 60, false));
-  if (newRefresh) {
-    response.cookies.set('refreshToken', newRefresh, cookieOpts(60 * 60 * 24 * 7, true));
-  }
-  return response;
+  })
+  applyRefreshedTokens(response, tokens)
+  return response
 }
 
 /**
@@ -73,43 +51,46 @@ async function tryRefreshAndRespond(request: NextRequest): Promise<NextResponse 
  */
 export async function GET(request: NextRequest) {
   try {
-    const accessToken = request.cookies.get('accessToken')?.value;
+    const accessToken = request.cookies.get("accessToken")?.value
 
     if (!accessToken) {
-      const refreshResponse = await tryRefreshAndRespond(request);
-      if (refreshResponse) return refreshResponse;
-      return unauthorized({ success: false, valid: false, error: 'No access token found' });
+      const refreshResponse = await tryRefreshAndRespond(request)
+      if (refreshResponse) return refreshResponse
+      return unauthorized({ success: false, valid: false, error: "No access token found" })
     }
 
     try {
-      const parts = accessToken.split('.');
+      const parts = accessToken.split(".")
       if (parts.length !== 3) {
-        throw new Error('Invalid token structure');
+        throw new Error("Invalid token structure")
       }
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8')) as Record<string, unknown>;
+      const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8")) as Record<
+        string,
+        unknown
+      >
 
       if (payload.exp && (payload.exp as number) * 1000 < Date.now()) {
-        const refreshResponse = await tryRefreshAndRespond(request);
-        if (refreshResponse) return refreshResponse;
-        return unauthorized({ success: false, valid: false, error: 'Token expired' });
+        const refreshResponse = await tryRefreshAndRespond(request)
+        if (refreshResponse) return refreshResponse
+        return unauthorized({ success: false, valid: false, error: "Token expired" })
       }
 
       return NextResponse.json({
         success: true,
         valid: true,
         user: userFromPayload(payload),
-      });
+      })
     } catch {
-      const refreshResponse = await tryRefreshAndRespond(request);
-      if (refreshResponse) return refreshResponse;
-      return unauthorized({ success: false, valid: false, error: 'Invalid token format' });
+      const refreshResponse = await tryRefreshAndRespond(request)
+      if (refreshResponse) return refreshResponse
+      return unauthorized({ success: false, valid: false, error: "Invalid token format" })
     }
-  } catch (error: any) {
-    console.error('Validate token error:', error);
+  } catch (error: unknown) {
+    console.error("Validate token error:", error)
     return NextResponse.json(
-      { success: false, valid: false, error: 'Token validation failed' },
-      { status: 500 }
-    );
+      { success: false, valid: false, error: "Token validation failed" },
+      { status: 500 },
+    )
   }
 }
 
@@ -119,42 +100,49 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const accessToken = request.cookies.get('accessToken')?.value;
+    const accessToken = request.cookies.get("accessToken")?.value
 
     if (!accessToken) {
-      return unauthorized({ success: false, valid: false, error: 'No access token found' });
+      const refreshResponse = await tryRefreshAndRespond(request)
+      if (refreshResponse) return refreshResponse
+      return unauthorized({ success: false, valid: false, error: "No access token found" })
     }
 
-    // Validate against auth service
+    const { getPlataApiBaseUrl } = await import("@/lib/plataApiBaseUrl")
+    const { BACKEND } = await import("@/lib/endpoints")
+    const AUTH_SERVICE_URL = getPlataApiBaseUrl().replace(/\/+$/, "")
+
     const authResponse = await fetch(`${AUTH_SERVICE_URL}${BACKEND.auth.me}`, {
-      method: 'GET',
+      method: "GET",
       headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
       },
-    });
+    })
 
     if (!authResponse.ok) {
-      const errorData = await authResponse.json().catch(() => ({}));
+      const refreshResponse = await tryRefreshAndRespond(request)
+      if (refreshResponse) return refreshResponse
+      const errorData = await authResponse.json().catch(() => ({}))
       return unauthorized({
         success: false,
         valid: false,
-        error: (errorData as any).error || 'Token validation failed',
-      });
+        error: (errorData as { error?: string }).error || "Token validation failed",
+      })
     }
 
-    const userData = await authResponse.json();
+    const userData = await authResponse.json()
 
     return NextResponse.json({
       success: true,
       valid: true,
       user: userData.data || userData.user || userData,
-    });
-  } catch (error: any) {
-    console.error('Full token validation error:', error);
+    })
+  } catch (error: unknown) {
+    console.error("Full token validation error:", error)
     return NextResponse.json(
-      { success: false, valid: false, error: 'Token validation failed' },
-      { status: 500 }
-    );
+      { success: false, valid: false, error: "Token validation failed" },
+      { status: 500 },
+    )
   }
 }

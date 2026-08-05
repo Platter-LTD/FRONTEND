@@ -1006,30 +1006,25 @@ export const applicationApi = {
 
   async confirmMortgageDownPayment(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
     const { pendingApprovedMortgageApi } = await import('@/lib/pendingApprovedMortgageApi');
-    const res = await pendingApprovedMortgageApi.confirmDownPayment(id);
-    if (res.success) return res;
-    const now = new Date().toISOString();
-    return this.updateMortgageWorkflowProgress(id, {
-      downPaymentConfirmedAt: now,
-      contractIssuedAt: now,
-    });
+    return pendingApprovedMortgageApi.confirmDownPayment(id);
   },
 
-  async approveMortgageContract(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
-    const now = new Date().toISOString();
-    return this.updateMortgageWorkflowProgress(id, {
-      contractApprovedAt: now,
-    });
+  /**
+   * Merchant contract approval after borrower signs.
+   * No loan-workflow timestamp stamp — needs a real pending-approved-mortgage route.
+   * Expected: POST …/products/applications/:id/pending-approved-mortgage/contract/approve
+   */
+  async approveMortgageContract(_id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    return {
+      success: false,
+      error:
+        'Missing backend endpoint: POST /api/v1/products/applications/:id/pending-approved-mortgage/contract/approve',
+    };
   },
 
   async triggerMortgageDisbursement(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
     const { pendingApprovedMortgageApi } = await import('@/lib/pendingApprovedMortgageApi');
-    const res = await pendingApprovedMortgageApi.disburse(id);
-    if (res.success) return res;
-    const now = new Date().toISOString();
-    return this.updateMortgageWorkflowProgress(id, {
-      disbursedAt: now,
-    });
+    return pendingApprovedMortgageApi.disburse(id);
   },
 
   async updateLoanWorkflowStatus(

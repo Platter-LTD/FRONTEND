@@ -19,6 +19,7 @@ import { extractPostApprovalFulfillment } from "@/lib/postApprovalMortgage"
 import {
   buildPlataMortgageThread,
   extractMortgageProgress,
+  isVirtualTourDone,
   plataMortgageActionForStep,
   resolvePlataMortgageStep,
   type MortgageThreadItem,
@@ -243,8 +244,10 @@ export function MortgageWorkflowDetailSheet({
         throw new Error(appRes.error || profileRes.error || "Failed to load application")
       }
 
-      if (!appRes.success && profileRes.success) {
-        console.warn("[MortgageWorkflow] application detail GET failed; using profile envelope", appRes.error)
+      if (!silent && !appRes.success && profileRes.success) {
+        toast.error(appRes.error || "Application detail GET failed", {
+          description: "Showing partial data from Spring profile envelope — fix GET …/applications/:id",
+        })
       }
     } catch (e: unknown) {
       if (!silent) {
@@ -359,18 +362,14 @@ export function MortgageWorkflowDetailSheet({
 
   const handleApproveDisbursement = () =>
     void runAction("approve_disbursement", async () => {
-      const res = pafStatus
-        ? await pendingApprovedMortgageApi.disburse(applicationId!)
-        : await applicationApi.triggerMortgageDisbursement(applicationId!)
+      const res = await pendingApprovedMortgageApi.disburse(applicationId!)
       if (res.success) toast.success("Loan disbursement triggered")
       return res
     })
 
   const handleConfirmPayment = () =>
     void runAction("confirm_payment", async () => {
-      const res = pafStatus
-        ? await pendingApprovedMortgageApi.confirmDownPayment(applicationId!)
-        : await applicationApi.confirmMortgageDownPayment(applicationId!)
+      const res = await pendingApprovedMortgageApi.confirmDownPayment(applicationId!)
       if (res.success) toast.success("Down payment confirmed — contract issued")
       return res
     })
@@ -459,9 +458,8 @@ export function MortgageWorkflowDetailSheet({
   }
 
   const renderOfferLetterAction = (stepId: PlataMortgageStepId) => {
-    // Show on virtual inspection (current after approve) and on offer letter so merchants
-    // can prepare/send the letter without marking virtual inspection done.
-    if ((stepId !== "offer_letter" && stepId !== "virtual_inspection") || !applicationId) return null
+    // Only on Offer Letter — never while Virtual Inspection is still current.
+    if (stepId !== "offer_letter" || !applicationId) return null
     return (
       <OfferLetterUploadControl
         applicationId={applicationId}
@@ -476,7 +474,9 @@ export function MortgageWorkflowDetailSheet({
 
   const renderVirtualInspectionAction = (stepId: PlataMortgageStepId) => {
     if (stepId !== "virtual_inspection") return null
-    const done = Boolean(progress.virtualTourCompletedAt)
+    const paf = detail ? extractPostApprovalFulfillment(detail) : null
+    const done =
+      isVirtualTourDone(progress, paf) || currentStep !== "virtual_inspection"
     const at = progress.virtualTourCompletedAt
     const completedLabel =
       at && at !== "completed"
@@ -484,7 +484,9 @@ export function MortgageWorkflowDetailSheet({
             dateStyle: "medium",
             timeStyle: "short",
           })}`
-        : "Completed by applicant"
+        : currentStep !== "virtual_inspection"
+          ? "Step passed — workflow moved to offer letter"
+          : "Completed by applicant"
     return (
       <p className={cn("text-xs", done ? "font-medium text-green-700" : "text-gray-500")}>
         {done

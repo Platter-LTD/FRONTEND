@@ -86,9 +86,25 @@ export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
         return data.user as AuthUser
       }
 
-      // Access/refresh are dead — clear stale cookies so we don't sit on dashboard with 401 spam.
+      // Validate already attempted cookie refresh. Prefer keeping an unexpired JWT
+      // over clearing — aggressive clears race parallel workflow refreshes.
       if (res.status === 401 || data?.valid === false) {
-        await clearSecureTokens()
+        const user = getUserFromToken()
+        const token = getAccessToken()
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number }
+            if (payload.exp && payload.exp * 1000 > Date.now() && user) {
+              return user as unknown as AuthUser
+            }
+          } catch {
+            /* fall through */
+          }
+        }
+        // Only clear when we have no usable access token left.
+        if (!getAccessToken()) {
+          await clearSecureTokens()
+        }
         return null
       }
     } catch (e) {
@@ -97,7 +113,7 @@ export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
       }
     }
 
-    // Network hiccup only: keep user if JWT is still unexpired; otherwise clear and sign out.
+    // Network hiccup: keep user if JWT is still unexpired; do not clear cookies.
     const user = getUserFromToken()
     try {
       const token = getAccessToken()
@@ -114,7 +130,6 @@ export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
       /* fall through */
     }
 
-    await clearSecureTokens()
     return null
   },
 )

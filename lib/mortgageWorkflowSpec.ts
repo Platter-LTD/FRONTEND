@@ -1,10 +1,14 @@
 /**
  * Plata Product Creator mortgage workflow (10 steps).
- * Virtual Inspection sits after approval and before Offer Letter (aligned with User-App).
+ * Drive UI from postApprovalFulfillment.currentWorkflowStepId + completedWorkflowSteps + status.
  */
 
 import {
   extractPostApprovalFulfillment,
+  isVirtualInspectionComplete,
+  normalizeWorkflowStepId,
+  virtualInspectionCompletedAt,
+  type PostApprovalFulfillment,
   type PostApprovalMortgageStatus,
 } from "@/lib/postApprovalMortgage"
 
@@ -137,66 +141,136 @@ function pickCompletedAt(...vals: unknown[]): string | undefined {
   return undefined
 }
 
+function mapBackendStepToPlata(stepId: string | undefined | null): PlataMortgageStepId | null {
+  const s = normalizeWorkflowStepId(stepId)
+  if (!s) return null
+  const map: Record<string, PlataMortgageStepId> = {
+    application_submission: "application_submission",
+    application: "application_submission",
+    review_approval: "review_approval",
+    review: "review_approval",
+    approval: "review_approval",
+    virtual_inspection: "virtual_inspection",
+    virtual_tour: "virtual_inspection",
+    offer_letter: "offer_letter",
+    offer: "offer_letter",
+    inspection_booking: "inspection_booking",
+    appointment: "inspection_booking",
+    appointment_scheduled: "inspection_booking",
+    inspection_outcome: "inspection_outcome",
+    inspection: "inspection_outcome",
+    physical_inspection: "inspection_outcome",
+    down_payment: "down_payment",
+    equity_payment: "down_payment",
+    contract_issued: "contract_issued",
+    contract_signed: "contract_signed",
+    loan_disbursement: "loan_disbursement",
+    disbursement: "loan_disbursement",
+    disburse: "loan_disbursement",
+  }
+  return map[s] ?? null
+}
+
+/** Virtual inspection done when completedAt is set, or backend already moved past that step. */
+export function isVirtualTourDone(
+  _progress: MortgageWorkflowProgress,
+  paf: PostApprovalFulfillment | null | undefined,
+): boolean {
+  if (isVirtualInspectionComplete(paf)) return true
+  const step = normalizeWorkflowStepId(paf?.currentWorkflowStepId)
+  if (!step || step === "virtual_tour" || step === "virtual_inspection") return false
+  if (step === "application_submission" || step === "review_approval") return false
+  return true
+}
+
+/**
+ * Prefer backend currentWorkflowStepId. Only hold on virtual_inspection when that is the
+ * current step (or missing completedAt while still on virtual_inspection).
+ */
+function clampUntilVirtualTourDone(
+  step: PlataMortgageStepId,
+  progress: MortgageWorkflowProgress,
+  paf: PostApprovalFulfillment | null,
+): PlataMortgageStepId {
+  const backendStep = mapBackendStepToPlata(paf?.currentWorkflowStepId)
+  if (backendStep) return backendStep
+  if (isVirtualTourDone(progress, paf)) return step
+  const stepIndex = PLATA_MORTGAGE_STEPS.findIndex((s) => s.id === step)
+  const virtualIndex = PLATA_MORTGAGE_STEPS.findIndex((s) => s.id === "virtual_inspection")
+  if (stepIndex > virtualIndex) return "virtual_inspection"
+  return step
+}
+
 export function extractMortgageProgress(raw: Record<string, unknown>): MortgageWorkflowProgress {
   const disbursement = (raw.loanDisbursement ?? {}) as Record<string, unknown>
   const nested = (disbursement.mortgageWorkflow ?? disbursement) as Record<string, unknown>
   const snapshot = (raw.contractSnapshot ?? {}) as Record<string, unknown>
-  const paf = (raw.postApprovalFulfillment ?? {}) as Record<string, unknown>
-  const pafWorkflow = (paf.mortgageWorkflow ?? paf.loanWorkflow ?? {}) as Record<string, unknown>
   const metadata = (raw.metadata ?? {}) as Record<string, unknown>
   const metaWorkflow = (metadata.mortgageWorkflow ?? metadata.loanWorkflow ?? {}) as Record<
     string,
     unknown
   >
-  const topWorkflow = (raw.mortgageWorkflow ?? {}) as Record<string, unknown>
+  const fulfillment = extractPostApprovalFulfillment(raw)
+  const tourCompletedAt = virtualInspectionCompletedAt(fulfillment)
 
   return {
-    virtualTourCompletedAt: pickCompletedAt(
-      nested.virtualTourCompletedAt,
-      nested.virtualTourCompleted,
-      snapshot.virtualTourCompletedAt,
-      snapshot.virtualTourCompleted,
-      paf.virtualTourCompletedAt,
-      paf.virtualTourCompleted,
-      pafWorkflow.virtualTourCompletedAt,
-      pafWorkflow.virtualTourCompleted,
-      metaWorkflow.virtualTourCompletedAt,
-      metaWorkflow.virtualTourCompleted,
-      disbursement.virtualTourCompletedAt,
-      disbursement.virtualTourCompleted,
-      topWorkflow.virtualTourCompletedAt,
-      topWorkflow.virtualTourCompleted,
-      raw.virtualTourCompletedAt,
-      raw.virtualTourCompleted,
-    ),
+    // Canonical: postApprovalFulfillment.virtualInspection.completedAt
+    virtualTourCompletedAt: tourCompletedAt,
     offerAcceptedAt: pickString(
       nested.offerAcceptedAt,
       snapshot.offerAcceptedAt,
       metaWorkflow.offerAcceptedAt,
+      fulfillment?.offerAcceptedAt,
+      fulfillment?.offer?.acceptedAt,
     ),
     inspectionBookedAt: pickString(
       nested.inspectionBookedAt,
       snapshot.inspectionBookedAt,
       metaWorkflow.inspectionBookedAt,
+      fulfillment?.appointmentScheduledAt,
     ),
     inspectionCompletedAt: pickString(
       nested.inspectionCompletedAt,
       snapshot.inspectionCompletedAt,
       metaWorkflow.inspectionCompletedAt,
+      fulfillment?.inspectionCompletedAt,
     ),
     inspectionDeclined: Boolean(
-      nested.inspectionDeclined ?? snapshot.inspectionDeclined ?? metaWorkflow.inspectionDeclined,
+      nested.inspectionDeclined ??
+        snapshot.inspectionDeclined ??
+        metaWorkflow.inspectionDeclined ??
+        fulfillment?.status === "inspection_declined",
     ),
-    downPaymentMadeAt: pickString(nested.downPaymentMadeAt, snapshot.downPaymentMadeAt),
+    downPaymentMadeAt: pickString(
+      nested.downPaymentMadeAt,
+      snapshot.downPaymentMadeAt,
+      fulfillment?.downPaymentPaidAt,
+    ),
     downPaymentConfirmedAt: pickString(
       nested.downPaymentConfirmedAt,
       snapshot.downPaymentConfirmedAt,
       disbursement.downPaymentConfirmedAt,
+      fulfillment?.downPaymentConfirmedAt,
     ),
-    contractIssuedAt: pickString(nested.contractIssuedAt, snapshot.contractIssuedAt),
-    contractSignedAt: pickString(nested.contractSignedAt, snapshot.contractSignedAt, raw.signedAt),
+    contractIssuedAt: pickString(
+      nested.contractIssuedAt,
+      snapshot.contractIssuedAt,
+      fulfillment?.contractIssuedAt,
+      fulfillment?.contract?.issuedAt,
+    ),
+    contractSignedAt: pickString(
+      nested.contractSignedAt,
+      snapshot.contractSignedAt,
+      raw.signedAt,
+      fulfillment?.contractSignedAt,
+    ),
     contractApprovedAt: pickString(nested.contractApprovedAt, snapshot.contractApprovedAt),
-    disbursedAt: pickString(nested.disbursedAt, disbursement.disbursedAt, snapshot.disbursedAt),
+    disbursedAt: pickString(
+      nested.disbursedAt,
+      disbursement.disbursedAt,
+      snapshot.disbursedAt,
+      fulfillment?.disbursedAt,
+    ),
   }
 }
 
@@ -210,35 +284,39 @@ export function isApprovedWorkflowStatus(status: string): boolean {
   return s === "approved" || s === "offer_sent" || s === "completed" || s === "active"
 }
 
-function resolveOfferPendingStep(progress: MortgageWorkflowProgress): PlataMortgageStepId {
-  // Virtual inspection stays in progress until the applicant completes the tour in User-App.
-  // Do not advance because an offer PDF exists or currentWorkflowStepId is already offer_letter.
-  if (!progress.virtualTourCompletedAt) return "virtual_inspection"
+function resolveOfferPendingStep(
+  progress: MortgageWorkflowProgress,
+  paf: PostApprovalFulfillment | null,
+): PlataMortgageStepId {
+  const mapped = mapBackendStepToPlata(paf?.currentWorkflowStepId)
+  if (mapped) return mapped
+  if (!isVirtualTourDone(progress, paf)) return "virtual_inspection"
   return "offer_letter"
 }
 
 function stepFromPostApprovalStatus(
   status: PostApprovalMortgageStatus,
   progress: MortgageWorkflowProgress,
+  paf: PostApprovalFulfillment | null,
 ): PlataMortgageStepId {
   switch (status) {
     case "offer_pending":
-      return resolveOfferPendingStep(progress)
+      return resolveOfferPendingStep(progress, paf)
     case "offer_accepted":
     case "appointment_scheduled":
-      return "inspection_booking"
+      return clampUntilVirtualTourDone("inspection_booking", progress, paf)
     case "inspection_in_progress":
-      return "inspection_outcome"
+      return clampUntilVirtualTourDone("inspection_outcome", progress, paf)
     case "down_payment_pending":
     case "down_payment_paid":
-      return "down_payment"
+      return clampUntilVirtualTourDone("down_payment", progress, paf)
     case "down_payment_confirmed":
-      return "contract_issued"
+      return clampUntilVirtualTourDone("contract_issued", progress, paf)
     case "contract_issued":
-      return "contract_signed"
+      return clampUntilVirtualTourDone("contract_signed", progress, paf)
     case "contract_signed":
     case "disbursed":
-      return "loan_disbursement"
+      return clampUntilVirtualTourDone("loan_disbursement", progress, paf)
     case "offer_declined":
     case "inspection_declined":
       return "review_approval"
@@ -253,26 +331,39 @@ export function resolvePlataMortgageStep(
   raw?: Record<string, unknown>,
 ): PlataMortgageStepId {
   const paf = raw ? extractPostApprovalFulfillment(raw) : null
+
+  // Primary: trust backend currentWorkflowStepId.
+  const mappedCurrent = mapBackendStepToPlata(paf?.currentWorkflowStepId)
+  if (mappedCurrent) {
+    return mappedCurrent
+  }
+
   if (paf?.status) {
-    if (paf.status === "disbursed") return "loan_disbursement"
-    return stepFromPostApprovalStatus(paf.status, progress)
+    if (paf.status === "disbursed") {
+      return clampUntilVirtualTourDone("loan_disbursement", progress, paf)
+    }
+    return stepFromPostApprovalStatus(paf.status, progress, paf)
   }
 
   const status = String(loanWorkflowStatus || "requested").toLowerCase()
 
   if (isTerminalWorkflowStatus(status)) return "review_approval"
-  if (progress.disbursedAt) return "loan_disbursement"
-  if (progress.contractApprovedAt) return "loan_disbursement"
-  if (progress.contractSignedAt) return "contract_signed"
-  if (progress.downPaymentConfirmedAt) return "contract_issued"
-  if (progress.downPaymentMadeAt) return "down_payment"
-  if (progress.inspectionCompletedAt || progress.inspectionDeclined) return "inspection_outcome"
-  if (progress.inspectionBookedAt) return "inspection_outcome"
-  if (progress.offerAcceptedAt) return "inspection_booking"
+  if (progress.disbursedAt) return clampUntilVirtualTourDone("loan_disbursement", progress, paf)
+  if (progress.contractApprovedAt) return clampUntilVirtualTourDone("loan_disbursement", progress, paf)
+  if (progress.contractSignedAt) return clampUntilVirtualTourDone("contract_signed", progress, paf)
+  if (progress.downPaymentConfirmedAt) {
+    return clampUntilVirtualTourDone("contract_issued", progress, paf)
+  }
+  if (progress.downPaymentMadeAt) return clampUntilVirtualTourDone("down_payment", progress, paf)
+  if (progress.inspectionCompletedAt || progress.inspectionDeclined) {
+    return clampUntilVirtualTourDone("inspection_outcome", progress, paf)
+  }
+  if (progress.inspectionBookedAt) {
+    return clampUntilVirtualTourDone("inspection_outcome", progress, paf)
+  }
+  if (progress.offerAcceptedAt) return clampUntilVirtualTourDone("inspection_booking", progress, paf)
   if (isApprovedWorkflowStatus(status)) {
-    // After approve: virtual inspection is current/in-progress until User-App completes the tour.
-    if (!progress.virtualTourCompletedAt) return "virtual_inspection"
-    return "offer_letter"
+    return isVirtualTourDone(progress, paf) ? "offer_letter" : "virtual_inspection"
   }
   if (status === "under_review") return "review_approval"
   return "application_submission"
@@ -298,10 +389,17 @@ export function buildPlataMortgageThread(
   const current = resolvePlataMortgageStep(loanWorkflowStatus, progress, raw)
   const currentIndex = PLATA_MORTGAGE_STEPS.findIndex((s) => s.id === current)
 
-  return PLATA_MORTGAGE_STEPS.map((step, index) => ({
-    ...step,
-    status: index < currentIndex ? "done" : index === currentIndex ? "current" : "upcoming",
-  }))
+  return PLATA_MORTGAGE_STEPS.map((step, index) => {
+    let threadStatus: MortgageThreadStatus =
+      index < currentIndex ? "done" : index === currentIndex ? "current" : "upcoming"
+
+    // When backend is past virtual inspection, mark that row done even without completedAt.
+    if (step.id === "virtual_inspection" && index < currentIndex) {
+      threadStatus = "done"
+    }
+
+    return { ...step, status: threadStatus }
+  })
 }
 
 export function plataMortgageActionForStep(

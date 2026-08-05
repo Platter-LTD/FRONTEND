@@ -69,33 +69,38 @@ export function saveMortgageWorkflow(state: MortgageWorkflowLocalState) {
   writeAll(all)
 }
 
+/**
+ * @deprecated Fire-and-forget sync hides API failures. Use `patchMortgageWorkflowAsync`.
+ */
 export function patchMortgageWorkflow(
   applicationId: string,
   patch: Partial<MortgageWorkflowLocalState>,
 ): MortgageWorkflowLocalState | null {
-  const next = applyMortgageWorkflowPatch(applicationId, patch)
-  if (next) {
-    void syncMortgageWorkflowPatchToApi(applicationId, patch, next).then((result) => {
-      if (!result.ok) {
-        console.warn('[mortgageWorkflow] API sync failed:', result.error)
-      }
-    })
-  }
-  return next
+  console.error(
+    '[mortgageWorkflow] patchMortgageWorkflow is deprecated — use patchMortgageWorkflowAsync and surface sync errors',
+  )
+  return applyMortgageWorkflowPatch(applicationId, patch)
+}
+
+export type MortgageWorkflowPatchResult = {
+  state: MortgageWorkflowLocalState
+  synced: boolean
+  syncError?: string
 }
 
 /** Persist locally and await API sync (use before navigation on critical steps). */
 export async function patchMortgageWorkflowAsync(
   applicationId: string,
   patch: Partial<MortgageWorkflowLocalState>,
-): Promise<MortgageWorkflowLocalState | null> {
+): Promise<MortgageWorkflowPatchResult | null> {
   const next = applyMortgageWorkflowPatch(applicationId, patch)
   if (!next) return null
   const result = await syncMortgageWorkflowPatchToApi(applicationId, patch, next)
   if (!result.ok) {
-    console.warn('[mortgageWorkflow] API sync failed:', result.error)
+    console.error('[mortgageWorkflow] API sync failed:', result.error)
+    return { state: next, synced: false, syncError: result.error }
   }
-  return next
+  return { state: next, synced: true }
 }
 
 function applyMortgageWorkflowPatch(
@@ -199,7 +204,7 @@ export type MortgageThreadItem = {
   actionLabel?: string
 }
 
-const THREAD_ORDER: MortgageWorkflowStep[] = [
+const THREAD_ORDER: Array<Exclude<MortgageWorkflowStep, 'declined'>> = [
   'application_submission',
   'virtual_tour',
   'offer_letter',

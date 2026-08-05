@@ -1,9 +1,10 @@
 "use client"
 
-import { createContext, useEffect, type ReactNode } from "react"
+import { createContext, useEffect, useRef, type ReactNode } from "react"
 import { usePathname } from "next/navigation"
+import { getAccessToken } from "@/lib/cookieAuth"
 import { clearSecureTokens } from "@/lib/tokenManager"
-import { handleSessionExpired, isOnAuthPage } from "@/lib/plataAuthFetch"
+import { isOnAuthPage } from "@/lib/plataAuthFetch"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { loginThunk, loadUserFromTokenThunk, logoutThunk } from "@/store/authSlice"
 import { clearComplianceState } from "@/store/complianceSlice"
@@ -31,19 +32,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch()
   const pathname = usePathname()
   const { user: authUser, loading, isAuthenticated } = useAppSelector((state) => state.auth)
+  const retriedLoadRef = useRef(false)
 
   useEffect(() => {
     dispatch(loadUserFromTokenThunk())
   }, [dispatch])
 
-  // Protected routes: once auth finishes and session is invalid, leave immediately.
+  // Protected routes: leave when auth finished and there is no session.
+  // Never call handleSessionExpired here — it races in-flight refresh and clears good cookies.
   useEffect(() => {
     if (loading) return
-    if (isAuthenticated) return
+    if (isAuthenticated) {
+      retriedLoadRef.current = false
+      return
+    }
     if (!pathname?.startsWith("/dashboard") && !pathname?.startsWith("/admin")) return
     if (isOnAuthPage()) return
-    void handleSessionExpired().catch(() => {})
-  }, [loading, isAuthenticated, pathname])
+
+    const token = typeof window !== "undefined" ? getAccessToken() : null
+    if (token && !retriedLoadRef.current) {
+      retriedLoadRef.current = true
+      void dispatch(loadUserFromTokenThunk())
+      return
+    }
+
+    // After retry (or no cookie): hard navigate so middleware doesn't bounce us back.
+    void (async () => {
+      if (token) await clearSecureTokens()
+      window.location.replace("/signin")
+    })()
+  }, [loading, isAuthenticated, pathname, dispatch])
 
   const mapAuthUserToContextUser = (user: AuthUser | null): User | null => {
     if (!user) return null
