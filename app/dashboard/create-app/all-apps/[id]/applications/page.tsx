@@ -194,6 +194,8 @@ function getStatusBadge(status: LoanWorkflowStatus) {
     approved: "bg-green-100 text-green-700",
     declined: "bg-red-100 text-red-700",
     blacklisted: "bg-gray-100 text-gray-700",
+    completed: "bg-green-200 text-green-800",
+    offer_sent: "bg-purple-100 text-purple-700",
   }
   const label =
     status === "requested"
