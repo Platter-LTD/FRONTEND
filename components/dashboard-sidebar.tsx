@@ -21,6 +21,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
 import { displayNameFromEmail, looksLikeEmailLocalOnly } from "@/lib/userNameFromClaims"
 import { ComplianceService } from "@/lib/services/complianceService"
+import { CompanyLogoMark } from "@/components/company-logo-mark"
 
 interface GlobalNavItem {
   icon: React.ReactNode
@@ -64,6 +65,12 @@ function pickCompanyLogoUrl(payload: unknown): string | null {
   return typeof url === "string" && url.trim() ? url.trim() : null
 }
 
+function pickCompanyName(payload: unknown): string | null {
+  const root = payload as { data?: { companyName?: unknown }; companyName?: unknown }
+  const name = root?.data?.companyName ?? root?.companyName
+  return typeof name === "string" && name.trim() ? name.trim() : null
+}
+
 export interface DashboardSidebarProps {
   className?: string
   /** When set (e.g. from server layout), used before pathname-derived id. */
@@ -87,6 +94,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const [isApplicationsOpen, setIsApplicationsOpen] = useState(false)
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
   const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null)
+  const [companyName, setCompanyName] = useState<string | null>(null)
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
@@ -145,9 +153,13 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
       .then((res) => {
         if (cancelled) return
         setCompanyLogoUrl(pickCompanyLogoUrl(res))
+        setCompanyName(pickCompanyName(res))
       })
       .catch(() => {
-        if (!cancelled) setCompanyLogoUrl(null)
+        if (!cancelled) {
+          setCompanyLogoUrl(null)
+          setCompanyName(null)
+        }
       })
     return () => {
       cancelled = true
@@ -245,17 +257,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   return (
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
       <div className="p-6">
-        {companyLogoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element -- KYC CDN URL is merchant-specific
-          <img
-            src={companyLogoUrl}
-            alt="Company logo"
-            className="h-10 w-auto max-w-[180px] object-contain object-left"
-            onError={() => setCompanyLogoUrl(null)}
-          />
-        ) : (
-          <span className="text-2xl font-bold text-[#9A813F]">PLATA</span>
-        )}
+        <CompanyLogoMark companyLogoUrl={companyLogoUrl} companyName={companyName} />
       </div>
 
       <nav className="flex-1 px-4">
