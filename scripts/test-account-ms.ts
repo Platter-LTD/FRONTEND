@@ -9,10 +9,9 @@
  * @created 2026-01-26
  */
 
-const ACCOUNT_API_BASE = (process.env.NEXT_PUBLIC_API_URL || 'https://account-ms-plata.fly.dev').replace(
-  /\/+$/,
-  '',
-);
+import { getPlataApiBaseUrl } from "../lib/plataApiBaseUrl"
+
+const ACCOUNT_API_BASE = getPlataApiBaseUrl()
 
 interface TestResult {
   name: string;

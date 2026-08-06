@@ -4,14 +4,16 @@
 import { fetchWithAuth, type FetchWithAuthOptions } from '@/lib/fetchWithAuth';
 import { getWalletMsRoleHeaders } from '@/lib/walletMsRoleHeaders';
 import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import {
+  buildWalletQuery,
+  legacyBundleKeyFromType,
+  normalizePlataMerchantWalletType,
+  walletAppHeaders,
+  walletMessageFromBody,
+  type PlataMerchantWalletType,
+} from '@/lib/walletApiHelpers';
 
-export function walletMessageFromBody(data: unknown): string {
-  if (!data || typeof data !== 'object') return '';
-  const d = data as Record<string, unknown>;
-  const m = d.message ?? d.error ?? d.detail;
-  if (m == null || m === '') return '';
-  return String(m);
-}
+export { walletMessageFromBody };
 
 function logWalletMsResponse(res: Response, input: string | URL, data: unknown) {
   const url = res.url || String(input);
@@ -24,12 +26,15 @@ function logWalletMsResponse(res: Response, input: string | URL, data: unknown) 
   }
 }
 
-/** All wallet-ms calls: Bearer + role hints + response logging (clone; body still readable by caller). */
-async function walletFetch(input: string | URL, init: FetchWithAuthOptions = {}): Promise<Response> {
+type WalletFetchOptions = FetchWithAuthOptions & { appId?: string };
+
+/** All wallet-ms calls: Bearer + role hints + optional x-app-id + response logging. */
+async function walletFetch(input: string | URL, init: WalletFetchOptions = {}): Promise<Response> {
+  const { appId, additionalHeaders, ...rest } = init;
   const roleHeaders = typeof window !== 'undefined' ? getWalletMsRoleHeaders() : {};
   const res = await fetchWithAuth(input, {
-    ...init,
-    additionalHeaders: { ...roleHeaders, ...init.additionalHeaders },
+    ...rest,
+    additionalHeaders: { ...roleHeaders, ...walletAppHeaders(appId), ...additionalHeaders },
   });
 
   const c = res.clone();
@@ -62,14 +67,31 @@ function walletV1WalletsBase(): string {
 
 const DEFAULT_WALLET_CURRENCY = 'NGN';
 
+function coerceWalletAmount(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
 /** Main spendable balance per wallet-ms docs (mainBalance with legacy balance fallback). */
 export function merchantWalletMainBalance(w: MerchantWallet | null | undefined): number {
   if (!w) return 0;
-  const main = w.mainBalance;
-  if (typeof main === 'number' && !Number.isNaN(main)) return main;
-  const leg = w.balance;
-  if (typeof leg === 'number' && !Number.isNaN(leg)) return leg;
+  const main = coerceWalletAmount(w.mainBalance);
+  if (main != null) return main;
+  const leg = coerceWalletAmount(w.balance);
+  if (leg != null) return leg;
   return 0;
+}
+
+/** Ledger balance when returned separately from mainBalance. */
+export function merchantWalletLedgerBalance(w: MerchantWallet | null | undefined): number {
+  if (!w) return 0;
+  const ledger = coerceWalletAmount(w.ledgerBalance);
+  if (ledger != null) return ledger;
+  return merchantWalletMainBalance(w);
 }
 
 // Types
@@ -89,13 +111,25 @@ export interface MerchantWallet {
   id: string;
   merchantId: string;
   walletType: 'MERCHANT';
-  merchantWalletType?: 'TREASURY' | 'OPERATION' | 'KYC';
+  merchantWalletType?: PlataMerchantWalletType;
   name?: string;
   balance: number;
   mainBalance?: number;
   ledgerBalance?: number;
   currency: string;
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+  appId?: string;
+  appName?: string;
+  payonusSubaccountCode?: string;
+  virtualNuban?: {
+    accountType?: string;
+    provisionStatus?: string;
+    accountNumber?: string;
+    bankName?: string;
+    bankCode?: string;
+    providerReference?: string;
+    provisionedAt?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -121,12 +155,48 @@ export interface WalletApiResponse<T> {
   error?: string;
 }
 
-/** GET /wallets/merchant/:id/all may return any subset of the three app-scoped wallets. */
+/** GET /wallets/merchant/:id/all may return legacy keys or a wallets array. */
 export type MerchantWalletsBundle = Partial<{
   treasury: MerchantWallet;
   operation: MerchantWallet;
   kyc: MerchantWallet;
+  billing: MerchantWallet;
+  settlement: MerchantWallet;
+  repayment: MerchantWallet;
 }>;
+
+function normalizeMerchantWalletsBundle(raw: unknown): MerchantWalletsBundle {
+  if (!raw || typeof raw !== 'object') return {};
+  const inner = raw as Record<string, unknown>;
+  const bundle: MerchantWalletsBundle = {};
+
+  const assign = (wallet: unknown) => {
+    if (!wallet || typeof wallet !== 'object') return;
+    const w = wallet as MerchantWallet;
+    const key = legacyBundleKeyFromType(w.merchantWalletType);
+    if (key && !bundle[key]) bundle[key] = w;
+    const norm = normalizePlataMerchantWalletType(w.merchantWalletType);
+    if (norm === 'BILLING') bundle.billing = w;
+    if (norm === 'TREASURY') bundle.treasury = bundle.treasury ?? w;
+    if (norm === 'REPAYMENT') {
+      bundle.repayment = w;
+      bundle.settlement = w;
+      bundle.kyc = w;
+    }
+  };
+
+  if (inner.treasury) assign(inner.treasury);
+  if (inner.operation) assign(inner.operation);
+  if (inner.kyc) assign(inner.kyc);
+  if (inner.billing) assign(inner.billing);
+  if (inner.settlement) assign(inner.settlement);
+  if (inner.repayment) assign(inner.repayment);
+
+  const wallets = inner.wallets;
+  if (Array.isArray(wallets)) wallets.forEach(assign);
+
+  return bundle;
+}
 
 // Merchant Wallet Operations
 export const merchantWalletApi = {
@@ -135,15 +205,18 @@ export const merchantWalletApi = {
    */
   async createMerchantWallet(
     merchantId: string,
-    walletType: 'TREASURY' | 'OPERATION' | 'KYC',
+    walletType: PlataMerchantWalletType,
     appId?: string,
     currency: string = DEFAULT_WALLET_CURRENCY,
+    name?: string,
   ) {
+    const merchantWalletType = normalizePlataMerchantWalletType(walletType);
     const response = await walletFetch(`${walletV1WalletsBase()}/merchant`, {
       method: 'POST',
+      appId,
       body: JSON.stringify({
-        merchantId,
-        merchantWalletType: walletType,
+        name: name || `${merchantWalletType} Wallet`,
+        merchantWalletType,
         currency,
         ...(appId ? { appId } : {}),
       }),
@@ -164,8 +237,8 @@ export const merchantWalletApi = {
   async createAllMerchantWallets(merchantId: string, appId?: string, currency: string = DEFAULT_WALLET_CURRENCY) {
     const response = await walletFetch(`${walletV1WalletsBase()}/merchant/all`, {
       method: 'POST',
+      appId,
       body: JSON.stringify({
-        merchantId,
         currency,
         ...(appId ? { appId } : {}),
       }),
@@ -177,7 +250,12 @@ export const merchantWalletApi = {
       throw new Error(walletMessageFromBody(data) || 'Failed to create merchant wallets');
     }
 
-    return data as WalletApiResponse<{ treasury: MerchantWallet; operation: MerchantWallet; kyc: MerchantWallet }>;
+    const bundle = normalizeMerchantWalletsBundle(data.data ?? data);
+    return {
+      success: data.success !== false,
+      data: bundle,
+      message: data.message,
+    } as WalletApiResponse<MerchantWalletsBundle>;
   },
 
   /**
@@ -185,12 +263,14 @@ export const merchantWalletApi = {
    */
   async getMerchantWallet(
     merchantId: string,
-    walletType: 'TREASURY' | 'OPERATION' | 'KYC',
+    walletType: PlataMerchantWalletType,
     appId?: string
   ) {
-    const query = appId ? `?appId=${encodeURIComponent(appId)}` : '';
+    const merchantWalletType = normalizePlataMerchantWalletType(walletType);
+    const query = buildWalletQuery(undefined, appId);
     const response = await walletFetch(
-      `${walletV1WalletsBase()}/merchant/${merchantId}/type/${walletType}${query}`
+      `${walletV1WalletsBase()}/merchant/${merchantId}/type/${merchantWalletType}${query}`,
+      { appId },
     );
 
     const data = await response.json();
@@ -216,8 +296,9 @@ export const merchantWalletApi = {
    * Get all merchant wallets
    */
   async getAllMerchantWallets(merchantId: string, appId?: string) {
-    const query = appId ? `?appId=${encodeURIComponent(appId)}` : '';
+    const query = buildWalletQuery(undefined, appId);
     const response = await walletFetch(`${walletV1WalletsBase()}/merchant/${merchantId}/all${query}`, {
+      appId,
     });
 
     const data = await response.json();
@@ -226,30 +307,21 @@ export const merchantWalletApi = {
       throw new Error(walletMessageFromBody(data) || 'Failed to fetch merchant wallets');
     }
 
-    const inner = data.data ?? data;
-    const bundle =
-      inner?.treasury || inner?.operation || inner?.kyc
-        ? inner
-        : inner?.wallets ?? inner;
-
-    if (bundle?.treasury || bundle?.operation || bundle?.kyc) {
-      return {
-        success: data.success !== false,
-        data: bundle as MerchantWalletsBundle,
-        message: data.message,
-      };
-    }
-
-    return data as WalletApiResponse<MerchantWalletsBundle>;
+    const bundle = normalizeMerchantWalletsBundle(data.data ?? data);
+    return {
+      success: data.success !== false,
+      data: bundle,
+      message: data.message,
+    } as WalletApiResponse<MerchantWalletsBundle>;
   },
 
   /**
-   * Update merchant wallet balance
+   * Update merchant wallet balance (by walletId per wallet-ms contract)
    */
-  async updateMerchantWalletBalance(merchantId: string, walletType: string, amount: number) {
+  async updateMerchantWalletBalance(walletId: string, amount: number, description?: string) {
     const response = await walletFetch(`${walletV1WalletsBase()}/merchant/balance`, {
       method: 'PUT',
-      body: JSON.stringify({ merchantId, walletType, amount }),
+      body: JSON.stringify({ walletId, amount, description }),
     });
 
     const data = await response.json();
@@ -267,10 +339,10 @@ export const userWalletApi = {
   /**
    * Create a user wallet
    */
-  async createUserWallet(userId: string, merchantId: string, description?: string) {
+  async createUserWallet(name: string, currency: string = DEFAULT_WALLET_CURRENCY) {
     const response = await walletFetch(`${walletV1WalletsBase()}/user`, {
       method: 'POST',
-      body: JSON.stringify({ userId, merchantId, description }),
+      body: JSON.stringify({ name, currency }),
     });
 
     const data = await response.json();
@@ -422,23 +494,27 @@ export const userWalletApi = {
   },
 };
 
-// Wallet Transfers (Operation <-> KYC)
+// Wallet Transfers (Billing <-> Settlement; legacy Operation <-> KYC aliases)
 export const walletTransferApi = {
-  /**
-   * Transfer from Operation wallet to KYC wallet
-   */
-  async transferOperationToKyc(merchantId: string, amount: number, description: string) {
-    const response = await walletFetch(`${walletV1WalletsBase()}/operation-to-kyc`, {
+  /** POST /billing-to-settlement (legacy: /operation-to-kyc) */
+  async transferBillingToSettlement(amount: number, description: string, appId?: string) {
+    const body = JSON.stringify({ amount, description });
+    let response = await walletFetch(`${walletV1WalletsBase()}/billing-to-settlement`, {
       method: 'POST',
-      body: JSON.stringify({ merchantId, amount, description }),
+      appId,
+      body,
     });
-
+    if (response.status === 404) {
+      response = await walletFetch(`${walletV1WalletsBase()}/operation-to-kyc`, {
+        method: 'POST',
+        appId,
+        body,
+      });
+    }
     const data = await response.json();
-    
     if (!response.ok) {
       throw new Error(walletMessageFromBody(data) || 'Failed to transfer funds');
     }
-
     return data as WalletApiResponse<{
       fromWallet: MerchantWallet;
       toWallet: MerchantWallet;
@@ -446,33 +522,118 @@ export const walletTransferApi = {
     }>;
   },
 
-  /**
-   * Transfer from KYC wallet to Operation wallet
-   */
-  async transferKycToOperation(merchantId: string, amount: number, description: string) {
-    const response = await walletFetch(`${walletV1WalletsBase()}/kyc-to-operation`, {
+  /** POST /settlement-to-billing (legacy: /kyc-to-operation) */
+  async transferSettlementToBilling(amount: number, description: string, appId?: string) {
+    const body = JSON.stringify({ amount, description });
+    let response = await walletFetch(`${walletV1WalletsBase()}/settlement-to-billing`, {
       method: 'POST',
-      body: JSON.stringify({ merchantId, amount, description }),
+      appId,
+      body,
     });
-
+    if (response.status === 404) {
+      response = await walletFetch(`${walletV1WalletsBase()}/kyc-to-operation`, {
+        method: 'POST',
+        appId,
+        body,
+      });
+    }
     const data = await response.json();
-    
     if (!response.ok) {
       throw new Error(walletMessageFromBody(data) || 'Failed to transfer funds');
     }
-
     return data as WalletApiResponse<{
       fromWallet: MerchantWallet;
       toWallet: MerchantWallet;
       transaction: Transaction;
     }>;
+  },
+
+  /** POST /treasury/transfer */
+  async transferTreasury(
+    transfer: { fromWalletId: string; toWalletId: string; amount: number; description: string },
+    appId?: string,
+  ) {
+    const response = await walletFetch(`${walletV1WalletsBase()}/treasury/transfer`, {
+      method: 'POST',
+      appId,
+      body: JSON.stringify(transfer),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(walletMessageFromBody(data) || 'Failed to transfer treasury funds');
+    }
+    return data as WalletApiResponse<{
+      fromWallet: MerchantWallet;
+      toWallet: MerchantWallet;
+      transaction: Transaction;
+    }>;
+  },
+
+  /** @deprecated Use transferBillingToSettlement */
+  async transferOperationToKyc(merchantId: string, amount: number, description: string) {
+    return walletTransferApi.transferBillingToSettlement(amount, description);
+  },
+
+  /** @deprecated Use transferSettlementToBilling */
+  async transferKycToOperation(merchantId: string, amount: number, description: string) {
+    return walletTransferApi.transferSettlementToBilling(amount, description);
   },
 };
 
 // Transaction Queries
+async function fetchMerchantWalletTransactions(
+  paths: string[],
+  merchantId: string,
+  params?: {
+    page?: number;
+    limit?: number;
+    type?: 'CREDIT' | 'DEBIT';
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    appId?: string;
+  },
+): Promise<WalletApiResponse<Transaction[]>> {
+  const query = buildWalletQuery(
+    {
+      page: params?.page,
+      limit: params?.limit,
+      type: params?.type,
+      status: params?.status,
+      startDate: params?.startDate,
+      endDate: params?.endDate,
+    },
+    params?.appId,
+  );
+
+  let lastError = 'Failed to fetch transactions';
+  for (const segment of paths) {
+    const response = await walletFetch(
+      `${walletV1WalletsBase()}/${segment}/${merchantId}/transactions${query}`,
+      { appId: params?.appId },
+    );
+    const data = await response.json();
+    if (response.status === 404) {
+      lastError = walletMessageFromBody(data) || lastError;
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(walletMessageFromBody(data) || lastError);
+    }
+    if (data.data?.transactions) {
+      return { success: data.success, data: data.data.transactions, message: data.message };
+    }
+    if (Array.isArray(data.transactions)) {
+      return { success: data.success !== false, data: data.transactions, message: data.message };
+    }
+    return data as WalletApiResponse<Transaction[]>;
+  }
+  throw new Error(lastError);
+}
+
 export const transactionApi = {
   /**
-   * Get Treasury wallet transactions
+   * Get Treasury wallet transactions (Plata disbursement wallet)
    */
   async getTreasuryTransactions(
     merchantId: string,
@@ -483,50 +644,67 @@ export const transactionApi = {
       status?: string;
       startDate?: string;
       endDate?: string;
-      /** When set, scopes results to this app’s merchant wallets (if supported by wallet-ms). */
       appId?: string;
     }
   ) {
-    const queryParams = new URLSearchParams();
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined) {
-          queryParams.append(key, value.toString());
-        }
-      });
-    }
-
-    const url = `${walletV1WalletsBase()}/treasury/${merchantId}/transactions?${queryParams.toString()}`;
-    const response = await walletFetch(url, {});
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(walletMessageFromBody(data) || 'Failed to fetch treasury transactions');
-    }
-
-    if (data.data?.transactions) {
-      return {
-        success: data.success,
-        data: data.data.transactions,
-        message: data.message,
-      } as WalletApiResponse<Transaction[]>;
-    }
-
-    if (Array.isArray(data.transactions)) {
-      return {
-        success: data.success !== false,
-        data: data.transactions,
-        message: data.message,
-      } as WalletApiResponse<Transaction[]>;
-    }
-
-    return data as WalletApiResponse<Transaction[]>;
+    return fetchMerchantWalletTransactions(['treasury'], merchantId, params);
   },
 
   /**
-   * Get Operation wallet transactions
+   * Get Billing wallet transactions (legacy Operation)
    */
+  async getBillingTransactions(
+    merchantId: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      type?: 'CREDIT' | 'DEBIT';
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+      appId?: string;
+    }
+  ) {
+    return fetchMerchantWalletTransactions(['billing', 'operation'], merchantId, params);
+  },
+
+  /**
+   * Get Repayment wallet transactions
+   * Canonical: GET /api/v1/wallets/repayment/:merchantId/transactions?appId=
+   * Legacy fallbacks: settlement, kyc (rewritten by Vercel proxy to repayment).
+   */
+  async getRepaymentTransactions(
+    merchantId: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      type?: 'CREDIT' | 'DEBIT';
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+      appId?: string;
+    }
+  ) {
+    return fetchMerchantWalletTransactions(['repayment', 'settlement', 'kyc'], merchantId, params);
+  },
+
+  /** @deprecated Use getRepaymentTransactions */
+  async getSettlementTransactions(
+    merchantId: string,
+    params?: {
+      page?: number;
+      limit?: number;
+      type?: 'CREDIT' | 'DEBIT';
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+      appId?: string;
+    }
+  ) {
+    return transactionApi.getRepaymentTransactions(merchantId, params);
+  },
+
+  /** @deprecated Use getBillingTransactions */
   async getOperationTransactions(
     merchantId: string,
     params?: {
@@ -539,48 +717,10 @@ export const transactionApi = {
       appId?: string;
     }
   ) {
-    const queryParams = new URLSearchParams();
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined) {
-          queryParams.append(key, value.toString());
-        }
-      });
-    }
-
-    const url = `${walletV1WalletsBase()}/operation/${merchantId}/transactions?${queryParams.toString()}`;
-    const response = await walletFetch(url, {});
-
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(walletMessageFromBody(data) || 'Failed to fetch operation transactions');
-    }
-
-    // Normalize response: API returns { data: { transactions: [...] } }
-    // We want to return { data: [...] } for easier consumption
-    if (data.data?.transactions) {
-      return {
-        success: data.success,
-        data: data.data.transactions,
-        message: data.message,
-      } as WalletApiResponse<Transaction[]>;
-    }
-
-    if (Array.isArray(data.transactions)) {
-      return {
-        success: data.success !== false,
-        data: data.transactions,
-        message: data.message,
-      } as WalletApiResponse<Transaction[]>;
-    }
-
-    return data as WalletApiResponse<Transaction[]>;
+    return transactionApi.getBillingTransactions(merchantId, params);
   },
 
-  /**
-   * Get KYC wallet transactions
-   */
+  /** @deprecated Use getRepaymentTransactions */
   async getKycTransactions(
     merchantId: string,
     params?: {
@@ -593,40 +733,23 @@ export const transactionApi = {
       appId?: string;
     }
   ) {
-    const queryParams = new URLSearchParams();
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined) {
-          queryParams.append(key, value.toString());
-        }
-      });
-    }
+    return transactionApi.getRepaymentTransactions(merchantId, params);
+  },
 
-    const url = `${walletV1WalletsBase()}/kyc/${merchantId}/transactions?${queryParams.toString()}`;
-    const response = await walletFetch(url, {});
-
+  /** GET /api/v1/transactions/:walletId */
+  async getByWalletId(walletId: string) {
+    const base =
+      typeof window !== 'undefined'
+        ? '/api/transactions'
+        : `${WALLET_API_BASE}/api/v1/transactions`;
+    const response = await walletFetch(`${base}/${encodeURIComponent(walletId)}`);
     const data = await response.json();
-    
     if (!response.ok) {
-      throw new Error(walletMessageFromBody(data) || 'Failed to fetch KYC transactions');
+      throw new Error(walletMessageFromBody(data) || 'Failed to fetch wallet transactions');
     }
-
     if (data.data?.transactions) {
-      return {
-        success: data.success,
-        data: data.data.transactions,
-        message: data.message,
-      } as WalletApiResponse<Transaction[]>;
+      return { success: data.success, data: data.data.transactions, message: data.message };
     }
-
-    if (Array.isArray(data.transactions)) {
-      return {
-        success: data.success !== false,
-        data: data.transactions,
-        message: data.message,
-      } as WalletApiResponse<Transaction[]>;
-    }
-
     return data as WalletApiResponse<Transaction[]>;
   },
 };
@@ -722,6 +845,49 @@ export const billingApi = {
 
     return data as WalletApiResponse<{ wallet: MerchantWallet; transaction: Transaction }>;
   },
+
+  /** POST /repayment/payout — merchant repayment withdrawal to bank (legacy: /settlement/payout) */
+  async settlementPayout(
+    payout: {
+      appId?: string;
+      accountNumber: string;
+      bankCode: string;
+      accountName: string;
+      bankName?: string;
+      amount: number;
+      currency?: string;
+      narration?: string;
+      reference?: string;
+    },
+    appId?: string,
+  ) {
+    const scopedAppId = appId ?? payout.appId;
+    const body = JSON.stringify(payout);
+    let response = await walletFetch(`${walletV1WalletsBase()}/repayment/payout`, {
+      method: 'POST',
+      appId: scopedAppId,
+      body,
+    });
+    if (response.status === 404) {
+      response = await walletFetch(`${walletV1WalletsBase()}/settlement/payout`, {
+        method: 'POST',
+        appId: scopedAppId,
+        body,
+      });
+    }
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(walletMessageFromBody(data) || 'Failed to initiate repayment payout');
+    }
+    return data as WalletApiResponse<{
+      wallet: MerchantWallet;
+      transaction: Transaction;
+      payoutReference?: string;
+      providerReference?: string;
+      providerStatus?: string;
+      duplicate?: boolean;
+    }>;
+  },
 };
 
 // Funding Operations
@@ -757,7 +923,7 @@ export const fundingApi = {
   async checkFundingStatus(transactionId: string) {
     const response = await walletFetch(
       `${walletV1WalletsBase()}/funding/status/${transactionId}`,
-      {}
+      { skipAuth: true },
     );
 
     const data = await response.json();
@@ -767,8 +933,10 @@ export const fundingApi = {
     }
 
     return data as WalletApiResponse<{
-      status: 'PENDING' | 'COMPLETED' | 'FAILED';
-      transaction: Transaction;
+      transactionId?: string;
+      status: 'PENDING' | 'COMPLETED' | 'FAILED' | string;
+      message?: string;
+      transaction?: Transaction;
     }>;
   },
 };

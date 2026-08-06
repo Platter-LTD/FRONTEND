@@ -133,12 +133,19 @@ export async function serializeOtherRequirementsForSubmit(items: OtherRequiremen
       }
 
       const row: Record<string, unknown> = {
+        requirementType: String(item.type ?? "").trim(),
         type: String(item.type ?? "").trim(),
         contentType: apiContentType,
         description: item.description,
       }
       if (apiContentType === "document_template" && templateFileUrl) {
         row.templateFileUrl = templateFileUrl
+      }
+      // document_upload drives applicant mandatory upload when true
+      if (apiContentType === "document_upload") {
+        row.uploadRequired = true
+      } else if (apiContentType === "document_template") {
+        row.uploadRequired = false
       }
       return row
     }),

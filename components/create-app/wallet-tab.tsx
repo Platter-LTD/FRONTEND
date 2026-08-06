@@ -2,28 +2,32 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { FiEyeOff, FiEye } from "react-icons/fi"
 import { Skeleton } from "@/components/ui/skeleton"
 import { getAccessToken } from "@/lib/cookieAuth"
 import { getMerchantIdFromAccessToken } from "@/lib/merchantIdFromToken"
 import { merchantWalletMainBalance } from "@/lib/services/walletService"
+import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchAppMerchantWalletsThunk, fetchTreasuryTransactionsThunk } from "@/store/walletSlice"
+import { fetchAppMerchantWalletsThunk, fetchKycTransactionsThunk } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
+import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
+import { WithdrawWalletDialog } from "@/components/wallets/withdraw-wallet-dialog"
+import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-type AppRow = { id: string; name?: string; alias?: string }
+type AppRow = { id: string; name?: string; alias?: string; merchantId?: string }
 
 export function WalletTab() {
   const dispatch = useAppDispatch()
   const walletState = useAppSelector((s) => s.wallet)
 
-  const [merchantId, setMerchantId] = useState<string | null>(null)
   const [apps, setApps] = useState<AppRow[]>([])
   const [appsLoading, setAppsLoading] = useState(true)
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [fundOpen, setFundOpen] = useState(false)
+  const [withdrawOpen, setWithdrawOpen] = useState(false)
 
   const loadApps = useCallback(async () => {
     setAppsLoading(true)
@@ -52,15 +56,12 @@ export function WalletTab() {
   }, [])
 
   useEffect(() => {
-    setMerchantId(getMerchantIdFromAccessToken())
-  }, [])
-
-  useEffect(() => {
     void loadApps()
   }, [loadApps])
 
   const appId = selectedAppId
   const selectedApp = apps.find((a) => a.id === appId)
+  const merchantId = selectedApp?.merchantId?.trim() || getMerchantIdFromAccessToken()
   const selectedAppName =
     selectedApp?.name && selectedApp.name.toLowerCase() !== "anonymous"
       ? selectedApp.name
@@ -69,22 +70,20 @@ export function WalletTab() {
   useEffect(() => {
     if (!merchantId || !appId) return
     void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
-    void dispatch(fetchTreasuryTransactionsThunk({ merchantId, appId }))
+    void dispatch(fetchKycTransactionsThunk({ merchantId, appId }))
   }, [dispatch, merchantId, appId])
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
+  const settlement = inScope ? walletState.settlement ?? walletState.kyc : null
   const treasury = inScope ? walletState.treasury : null
-  const txs = inScope ? walletState.treasuryTransactions : []
+  const txs = inScope ? walletState.kycTransactions : []
   const walletsLoading = inScope && walletState.walletsLoading
-  const txsLoading = inScope && walletState.treasuryTxLoading
+  const txsLoading = inScope && walletState.kycTxLoading
   const walletsError = inScope ? walletState.walletsError : null
-  const txsError = inScope ? walletState.treasuryTxError : null
+  const txsError = inScope ? walletState.kycTxError : null
 
-  const mainBal = merchantWalletMainBalance(treasury)
-  const formatted = mainBal.toFixed(2).split(".")
-  const dollars = Number(formatted[0]).toLocaleString()
-  const cents = formatted[1] || "00"
-  const currency = treasury?.currency || "NGN"
+  const settlementBal = merchantWalletMainBalance(settlement)
+  const currency = plataWalletDisplayCurrency(settlement?.currency ?? treasury?.currency)
 
   if (!merchantId) {
     return (
@@ -106,8 +105,8 @@ export function WalletTab() {
   if (!appId) {
     return (
       <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-        No applications found. Create an app under <span className="font-medium">All Apps</span> to view treasury
-        wallet and transactions.
+        No applications found. Create an app under <span className="font-medium">All Apps</span> to view app
+        wallets.
       </div>
     )
   }
@@ -116,7 +115,8 @@ export function WalletTab() {
     <>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-600">
-          Showing treasury wallet for <span className="font-medium text-gray-900">{selectedAppName}</span>.
+          Showing settlement & treasury wallets for{" "}
+          <span className="font-medium text-gray-900">{selectedAppName}</span>.
         </p>
         {apps.length > 1 ? (
           <div className="w-full sm:w-64">
@@ -142,47 +142,41 @@ export function WalletTab() {
         </div>
       )}
 
-      <div className="relative mb-8 overflow-hidden rounded-lg bg-black p-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="mb-2 text-sm text-white/70">Treasury — main balance</p>
-            {walletsLoading ? (
-              <div className="flex items-baseline gap-1">
-                <Skeleton className="h-12 w-32 bg-gray-600" />
-                <Skeleton className="ml-1 h-8 w-8 bg-gray-600" />
-              </div>
-            ) : (
-              <div className="flex items-baseline gap-1">
-                {showBalance ? (
-                  <>
-                    <span className="text-5xl font-semibold text-white">
-                      {currency === "NGN" ? "NGN " : ""}
-                      {dollars}
-                    </span>
-                    <span className="text-2xl text-white">.{cents}</span>
-                  </>
-                ) : (
-                  <span className="text-5xl font-semibold text-white">••••</span>
-                )}
-              </div>
-            )}
-          </div>
+      <div className="mb-4 grid gap-4 md:grid-cols-2">
+        <MerchantWalletBalanceCard
+          wallet={settlement}
+          loading={!!walletsLoading}
+          showBalance={showBalance}
+          onToggleBalance={() => setShowBalance((value) => !value)}
+          title="Repayment wallet"
+          subtitle="Loan repayments · fund & withdraw"
+        />
+        <MerchantWalletBalanceCard
+          wallet={treasury}
+          loading={!!walletsLoading}
+          showBalance={showBalance}
+          onToggleBalance={() => setShowBalance((value) => !value)}
+          title="Treasury wallet"
+          subtitle="Disbursements"
+        />
+      </div>
 
-          <div className="flex items-center gap-4">
-            {!walletsLoading && (
-              <button
-                type="button"
-                onClick={() => setShowBalance(!showBalance)}
-                className="text-white/50 transition-colors hover:text-white/70"
-              >
-                {showBalance ? <FiEyeOff size={24} /> : <FiEye size={24} />}
-              </button>
-            )}
-            <Button className="bg-[#9A813F] px-8 text-white hover:bg-[#8A7335]" disabled={walletsLoading}>
-              Withdraw
-            </Button>
-          </div>
-        </div>
+      <div className="mb-8 flex flex-wrap items-center justify-end gap-3">
+        <Button
+          className="bg-[#9A813F] px-6 font-semibold text-white hover:bg-[#7A642F]"
+          disabled={walletsLoading || !settlement}
+          onClick={() => setFundOpen(true)}
+        >
+          Fund repayment
+        </Button>
+        <Button
+          variant="outline"
+          className="border-[#9A813F] px-6 font-semibold text-[#9A813F] hover:bg-[#9A813F]/10"
+          disabled={walletsLoading || !settlement || settlementBal <= 0}
+          onClick={() => setWithdrawOpen(true)}
+        >
+          Withdraw
+        </Button>
       </div>
 
       <MerchantTransactionsTable
@@ -191,6 +185,36 @@ export function WalletTab() {
         currency={currency}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
+      />
+
+      <FundWalletDrawer
+        open={fundOpen}
+        onOpenChange={setFundOpen}
+        currency={currency}
+        virtualNuban={{
+          accountNumber: settlement?.virtualNuban?.accountNumber,
+          bankName: settlement?.virtualNuban?.bankName,
+          bankCode: settlement?.virtualNuban?.bankCode,
+          accountHolder: settlement?.name || "Repayment wallet",
+          provisionStatus: settlement?.virtualNuban?.provisionStatus,
+        }}
+        onRefreshBalance={() => {
+          if (!merchantId || !appId) return
+          void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
+          void dispatch(fetchKycTransactionsThunk({ merchantId, appId }))
+        }}
+      />
+      <WithdrawWalletDialog
+        open={withdrawOpen}
+        onOpenChange={setWithdrawOpen}
+        mode="merchant-settlement"
+        maxAmount={settlementBal}
+        currency={currency}
+        appId={appId ?? undefined}
+        onSuccess={() => {
+          if (!merchantId || !appId) return
+          void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
+        }}
       />
     </>
   )

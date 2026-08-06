@@ -12,6 +12,7 @@ import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOption
 import type { CommodityConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
 import {
+  PRODUCT_TYPE_SECTION_HELPER,
   ProductConfigInput,
   ProductConfigSelect,
   ProductConfigTabs,
@@ -25,7 +26,6 @@ import {
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
 } from "@/lib/otherRequirementPayload"
-import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 
 interface ConfigureCommodityDrawerProps {
   isOpen: boolean
@@ -121,7 +121,7 @@ export default function ConfigureCommodityDrawer({
   const [previewImage, setPreviewImage] = useState<File | null>(null)
   const [existingPreviewAssetUrl, setExistingPreviewAssetUrl] = useState("")
   const [minInvestmentAmount, setMinInvestmentAmount] = useState("")
-  const [enableUnitInvestmentPurchase, setEnableUnitInvestmentPurchase] = useState(true)
+  const [enableUnitInvestmentPurchase, setEnableUnitInvestmentPurchase] = useState(false)
   const [unitOfMeasure, setUnitOfMeasure] = useState("")
   const [compoundingFrequency, setCompoundingFrequency] = useState("")
 
@@ -236,14 +236,22 @@ export default function ConfigureCommodityDrawer({
         )
       }
       const u = structure.unitAmount
+      let resolvedUnitAmount = ""
       if (u && typeof u === "object" && !Array.isArray(u)) {
         const uo = u as Record<string, unknown>
-        setUnitAmount(formatAmountDisplayFromUnknown(uo.amount ?? ""))
+        resolvedUnitAmount = formatAmountDisplayFromUnknown(uo.amount ?? "")
         setMinQuantityPurchase(String(uo.minQuantity ?? structure.minQuantityPurchase ?? ""))
       } else {
-        setUnitAmount(formatAmountDisplayFromUnknown(structure.minInvestmentAmount ?? commodityData?.unitAmount ?? ""))
+        resolvedUnitAmount = formatAmountDisplayFromUnknown(
+          commodityData?.unitAmountPrice ??
+            structure.unitAmountPrice ??
+            commodityData?.unitAmount ??
+            structure.unitAmount ??
+            "",
+        )
         setMinQuantityPurchase(String(commodityData?.minQuantityPurchase ?? structure.minQuantityPurchase ?? ""))
       }
+      setUnitAmount(resolvedUnitAmount)
       const roi = structure.returnsOnInvestment
       if (roi != null && String(roi).trim() !== "") {
         setOfferYieldOn(true)
@@ -254,8 +262,13 @@ export default function ConfigureCommodityDrawer({
         setOfferYieldValue(String(commodityData?.offerYieldValue ?? structure?.offerYieldValue ?? ""))
       }
       setYieldMethod(String(structure.interestMethod ?? commodityData?.yieldMethod ?? structure.yieldMethod ?? ""))
+      const explicitEnableUnit =
+        commodityData?.enableUnitInvestmentPurchase ?? structure.enableUnitInvestmentPurchase
+      const hasSavedUnitPrice = Boolean(resolvedUnitAmount.replace(/,/g, "").trim())
       setEnableUnitInvestmentPurchase(
-        asBool(commodityData?.enableUnitInvestmentPurchase ?? structure.enableUnitInvestmentPurchase ?? true),
+        explicitEnableUnit !== undefined && explicitEnableUnit !== null
+          ? asBool(explicitEnableUnit)
+          : hasSavedUnitPrice,
       )
       const mor = structure.moratorium
       if (mor != null && String(mor).trim() !== "" && !Number.isNaN(Number(mor))) {
@@ -437,6 +450,11 @@ export default function ConfigureCommodityDrawer({
 
   const removeCommas = (value: string) => value.replace(/,/g, "")
 
+  const handleEnableUnitInvestmentPurchaseChange = (checked: boolean) => {
+    setEnableUnitInvestmentPurchase(checked)
+    if (!checked) setUnitAmount("")
+  }
+
   const addTypeRow = () => {
     if (!typeNameDraft.trim() || !typeDescDraft.trim()) return
     setTypeRows((prev) => [...prev, { name: typeNameDraft.trim(), description: typeDescDraft.trim() }])
@@ -576,6 +594,7 @@ export default function ConfigureCommodityDrawer({
     offerYieldValue,
     withdrawalFlexibility,
     minInvestmentAmount: removeCommas(minInvestmentAmount),
+    enableUnitInvestmentPurchase: isInvestment ? enableUnitInvestmentPurchase : undefined,
     unitAmount: removeCommas(unitAmount),
     minQuantityPurchase,
     maxAmount: removeCommas(maxAmount),
@@ -615,10 +634,12 @@ export default function ConfigureCommodityDrawer({
         previewAssetUrlSubmit = await uploadProductMediaToUrl(previewImage)
       }
 
-      const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
+      const commodityBase = { ...(commodityData || {}) }
+      delete commodityBase.otherRequirements
+      delete commodityBase.requirements
 
       const payload = {
-        ...commodityData,
+        ...commodityBase,
         name,
         description,
         duration,
@@ -632,7 +653,7 @@ export default function ConfigureCommodityDrawer({
         offerYieldEnabled: offerYieldOn,
         offerYieldValue,
         withdrawalFlexibility,
-        unitAmount: removeCommas(unitAmount),
+        unitAmount: isInvestment && !enableUnitInvestmentPurchase ? "" : removeCommas(unitAmount),
         minQuantityPurchase,
         maxAmount: removeCommas(maxAmount),
         termsAndConditions,
@@ -641,11 +662,11 @@ export default function ConfigureCommodityDrawer({
         contractId,
         airSignSecretKey,
         airSignUid,
+        requireApplicantSignature: false,
         charges,
         forcefulWithdrawal,
         chargeForForcefulWithdrawal: forcefulWithdrawal,
         penalties,
-        otherRequirements: otherRequirementsPayload,
         commodityPrices: !isInvestment ? priceRows.map((r) => ({ ...r, price: removeCommas(r.price) })) : undefined,
         unitPrices: isInvestment ? priceRows.map((r) => ({ ...r, price: removeCommas(r.price) })) : undefined,
         priceHistory: priceRows.map((r) => ({ ...r, price: removeCommas(r.price) })),
@@ -671,7 +692,7 @@ export default function ConfigureCommodityDrawer({
             additionalRequirements: [],
             minInvestmentAmount: removeCommas(minInvestmentAmount),
             maxInvestmentAmount: removeCommas(maxAmount),
-            unitAmountPrice: removeCommas(unitAmount),
+            unitAmountPrice: enableUnitInvestmentPurchase ? removeCommas(unitAmount) : "",
             enableUnitInvestmentPurchase,
             expectedReturn: offerYieldOn ? offerYieldValue : "",
           }),
@@ -760,6 +781,8 @@ export default function ConfigureCommodityDrawer({
             description={description}
             onDescriptionChange={setDescription}
             typeSectionLabel={typeSectionLabel}
+            typeSectionRequirement="optional"
+            typeSectionHelperText={PRODUCT_TYPE_SECTION_HELPER}
             typeNameDraft={typeNameDraft}
             typeDescDraft={typeDescDraft}
             onTypeNameDraftChange={setTypeNameDraft}
@@ -794,8 +817,8 @@ export default function ConfigureCommodityDrawer({
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               <ProductConfigSelect
-                label={isInvestment ? "Interest method" : "Yield Method"}
-                placeholder="Select Section"
+                label="Yield Method"
+                placeholder="Select"
                 value={yieldMethod}
                 options={yieldMethodOptions}
                 onChange={setYieldMethod}
@@ -872,27 +895,38 @@ export default function ConfigureCommodityDrawer({
               </div>
             ) : null}
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {isInvestment ? (
+              <ProductConfigToggle
+                id="enable-unit-investment-purchase"
+                label="Enable unit investment purchase"
+                checked={enableUnitInvestmentPurchase}
+                onChange={handleEnableUnitInvestmentPurchaseChange}
+                requirement="optional"
+              />
+            ) : null}
+
+            {isInvestment && enableUnitInvestmentPurchase ? (
+              <ProductConfigInput
+                label="Unit price (per unit)"
+                placeholder="e.g 1,000"
+                value={unitAmount}
+                onChange={setUnitAmount}
+                numericOnly
+                formatThousands
+                requirement="optional"
+              />
+            ) : null}
+
+            <div className={`grid grid-cols-1 gap-4 ${isInvestment ? "" : "sm:grid-cols-2"}`}>
               {isInvestment ? (
-                <>
-                  <ProductConfigInput
-                    label="Unit price (per unit)"
-                    placeholder="e.g 1,000"
-                    value={unitAmount}
-                    onChange={setUnitAmount}
-                    numericOnly
-                    formatThousands
-                    requirement="required"
-                  />
-                  <ProductConfigInput
-                    label="Min Quantity Purchase"
-                    placeholder="Min Quantity"
-                    value={minQuantityPurchase}
-                    onChange={setMinQuantityPurchase}
-                    numericOnly
-                    requirement="required"
-                  />
-                </>
+                <ProductConfigInput
+                  label="Min Quantity Purchase"
+                  placeholder="Min Quantity"
+                  value={minQuantityPurchase}
+                  onChange={setMinQuantityPurchase}
+                  numericOnly
+                  requirement={enableUnitInvestmentPurchase ? "required" : "optional"}
+                />
               ) : (
                 <>
                   <ProductConfigInput
@@ -929,16 +963,6 @@ export default function ConfigureCommodityDrawer({
               />
             </div>
 
-            {isInvestment ? (
-              <ProductConfigToggle
-                id="enable-unit-investment-purchase"
-                label="Enable unit investment purchase"
-                checked={enableUnitInvestmentPurchase}
-                onChange={setEnableUnitInvestmentPurchase}
-                requirement="optional"
-              />
-            ) : null}
-
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <ProductConfigToggle
                 id="commodity-moratorium"
@@ -960,23 +984,6 @@ export default function ConfigureCommodityDrawer({
               </div>
             </div>
 
-            <ProductConfigOtherRequirementsPanel
-              otherRequirementOptions={otherRequirementOptions}
-              contentTypeOptions={contentTypeOptions}
-              otherRequirementType={otherRequirementType}
-              otherRequirementContentType={otherRequirementContentType}
-              otherRequirementDescription={otherRequirementDescription}
-              otherRequirementFile={otherRequirementFile}
-              otherRequirements={otherRequirements}
-              uploadInputRef={otherRequirementUploadRef}
-              filePickerId={isInvestment ? "investment-other-requirement-file" : "commodity-other-requirement-file"}
-              onTypeChange={handleOtherRequirementTypeChange}
-              onContentTypeChange={handleOtherRequirementContentTypeChange}
-              onDescriptionChange={setOtherRequirementDescription}
-              onFileChange={setOtherRequirementFile}
-              onAdd={addOtherRequirement}
-              onRemoveItem={removeOtherRequirement}
-            />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <ProductConfigInput

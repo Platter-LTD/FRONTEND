@@ -1,0 +1,24 @@
+import { NextRequest } from "next/server"
+
+import { proxyLoanWorkflowRequest } from "@/lib/server/proxyLoanWorkflow"
+import { getProductApiBaseUrl } from "@/lib/plataApiBaseUrl"
+
+export const dynamic = "force-dynamic"
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ appId: string }> },
+) {
+  try {
+    const { appId } = await params
+    const queryString = request.nextUrl.searchParams.toString()
+    const base = getProductApiBaseUrl().replace(/\/+$/, "")
+    const target = `${base}/api/v1/products/app/${encodeURIComponent(appId)}/applications/loan-workflow${queryString ? `?${queryString}` : ""}`
+    return proxyLoanWorkflowRequest(request, target, "GET")
+  } catch (error: unknown) {
+    return Response.json(
+      { success: false, error: (error as Error)?.message || "Failed to fetch loan workflow" },
+      { status: 500 },
+    )
+  }
+}

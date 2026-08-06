@@ -5,6 +5,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios"
 import { getAccessToken } from "@/lib/cookieAuth"
+import { handleSessionExpired, isInvalidOrExpiredTokenError, refreshOrRedirectToSignIn } from "@/lib/plataAuthFetch"
 
 // Use relative URL so requests go through our own Next.js API proxy
 export interface ApiRequestConfig extends AxiosRequestConfig {
@@ -18,21 +19,6 @@ const api = axios.create({
   },
   withCredentials: true,
 })
-
-let refreshPromise: Promise<string | null> | null = null
-
-async function refreshAccessToken(): Promise<string | null> {
-  if (!refreshPromise) {
-    refreshPromise = axios
-      .post("/api/auth/refresh", {}, { withCredentials: true })
-      .then((res) => (res.data?.data?.accessToken ?? res.data?.accessToken ?? null) as string | null)
-      .catch(() => null)
-      .finally(() => {
-        refreshPromise = null
-      })
-  }
-  return refreshPromise
-}
 
 // Request interceptor: use cookie (or localStorage fallback) for token
 api.interceptors.request.use((config: InternalAxiosRequestConfig & { includeAuth?: boolean }) => {
@@ -61,7 +47,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig & { includeAuth
   return config
 })
 
-// Response interceptor: on 401, refresh via cookie (server reads refreshToken cookie)
+// Response interceptor: on 401, refresh once; if refresh fails → sign-in
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -75,16 +61,26 @@ api.interceptors.response.use(
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true
-      const newAccessToken = await refreshAccessToken()
-      if (newAccessToken) {
+      try {
+        const newAccessToken = await refreshOrRedirectToSignIn()
         api.defaults.headers.common.Authorization = `Bearer ${newAccessToken}`
         const retryHeaders = (originalRequest.headers ?? {}) as Record<string, string>
         retryHeaders.Authorization = `Bearer ${newAccessToken}`
         originalRequest.headers = retryHeaders as any
         return api(originalRequest)
+      } catch (sessionErr) {
+        return Promise.reject(sessionErr)
       }
-      delete api.defaults.headers.common.Authorization
     }
+
+    if (error.response?.status === 401 && isInvalidOrExpiredTokenError(error.response?.data)) {
+      try {
+        await handleSessionExpired()
+      } catch (sessionErr) {
+        return Promise.reject(sessionErr)
+      }
+    }
+
     return Promise.reject(error)
   },
 )

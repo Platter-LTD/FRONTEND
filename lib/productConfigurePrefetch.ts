@@ -1,4 +1,4 @@
-import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
+import { fetchOptionLabels, fetchProductOptionLabels, fetchProductOptions, DEFAULT_TRIGGER_DURATION_OPTIONS, type ProductOption } from "@/lib/productOptions"
 import { DEFAULT_REPAYMENT_WORKFLOWS } from "@/components/drawers/product-config-form-fields"
 
 export type LoanConfigurePrefetched = {
@@ -16,6 +16,7 @@ export type LoanConfigurePrefetched = {
   securities: string[]
   feeType: string[]
   penaltyType: string[]
+  triggerDuration: ProductOption[]
   repaymentWorkflow: string[]
 }
 
@@ -35,6 +36,7 @@ export async function prefetchLoanConfigureOptions(): Promise<LoanConfigurePrefe
     securities,
     feeType,
     penaltyType,
+    triggerDuration,
     repaymentWorkflow,
   ] = await Promise.all([
     fetchOptionLabels("loan-tenure", []),
@@ -51,6 +53,7 @@ export async function prefetchLoanConfigureOptions(): Promise<LoanConfigurePrefe
     fetchProductOptionLabels("security-requirements", [], { productType: "LOAN" }),
     fetchOptionLabels("fee-type", []),
     fetchOptionLabels("penalty-type", []),
+    fetchProductOptions("trigger-duration", DEFAULT_TRIGGER_DURATION_OPTIONS),
     fetchOptionLabels("repayment-workflow", [...DEFAULT_REPAYMENT_WORKFLOWS]),
   ])
 
@@ -69,6 +72,7 @@ export async function prefetchLoanConfigureOptions(): Promise<LoanConfigurePrefe
     securities,
     feeType,
     penaltyType,
+    triggerDuration,
     repaymentWorkflow,
   }
 }
@@ -137,7 +141,7 @@ export async function prefetchMortgageConfigureOptions(): Promise<MortgageConfig
     fetchProductOptionLabels("interest-method", MORTGAGE_DEFAULTS.interestMethods),
     fetchProductOptionLabels("moratorium", MORTGAGE_DEFAULTS.moratoriumType),
     fetchProductOptionLabels("moratorium-duration", MORTGAGE_DEFAULTS.moratoriumDuration),
-    fetchOptionLabels("repayment-schedule", MORTGAGE_DEFAULTS.repaymentSchedule),
+    fetchOptionLabels("repayment-structure", MORTGAGE_DEFAULTS.repaymentSchedule),
     fetchOptionLabels("amortization", MORTGAGE_DEFAULTS.amortizationSchedule),
     fetchOptionLabels("repayment-cycle", MORTGAGE_DEFAULTS.repaymentFrequency),
     fetchOptionLabels("acceptable-npa", MORTGAGE_DEFAULTS.acceptableNpa),

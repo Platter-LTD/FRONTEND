@@ -118,7 +118,8 @@ interface ProductConfigSelectProps {
   label: string
   placeholder: string
   value: string
-  options: string[]
+  /** String labels (value === label) or explicit `{ value, label }` from product options APIs. */
+  options: string[] | Array<{ value: string; label: string }>
   onChange: (value: string) => void
   requirement?: "required" | "optional"
   requirementMark?: "text" | "asterisk"
@@ -134,6 +135,14 @@ function normalizeOptionToken(input: string) {
     .trim()
 }
 
+function normalizeSelectOptions(
+  options: string[] | Array<{ value: string; label: string }>,
+): Array<{ value: string; label: string }> {
+  return options.map((option) =>
+    typeof option === "string" ? { value: option, label: option } : option,
+  )
+}
+
 export function ProductConfigSelect({
   label,
   placeholder,
@@ -143,12 +152,15 @@ export function ProductConfigSelect({
   requirement,
   requirementMark = "text",
 }: ProductConfigSelectProps) {
+  const normalized = normalizeSelectOptions(options)
   const resolvedValue = (() => {
     if (!value) return ""
-    if (options.includes(value)) return value
+    if (normalized.some((option) => option.value === value)) return value
     const target = normalizeOptionToken(value)
-    const match = options.find((option) => normalizeOptionToken(option) === target)
-    return match ?? ""
+    const byValue = normalized.find((option) => normalizeOptionToken(option.value) === target)
+    if (byValue) return byValue.value
+    const byLabel = normalized.find((option) => normalizeOptionToken(option.label) === target)
+    return byLabel?.value ?? ""
   })()
 
   return (
@@ -175,9 +187,9 @@ export function ProductConfigSelect({
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent className="py-4">
-          {options.map((option) => (
-            <SelectItem key={option} value={option}>
-              {option}
+          {normalized.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>
@@ -217,6 +229,24 @@ export const DEFAULT_REPAYMENT_WORKFLOWS = [
   "Charges -> Principal -> Interest",
   "Interest -> Charges -> Principal",
 ] as const
+
+/** Savings Structure — interest accrual frequency (merchant spec). */
+export const SAVINGS_INTEREST_METHOD_OPTIONS = ["Daily", "Monthly", "Quarterly", "Annually"] as const
+
+/** Repayment Structure option added per mortgage/loan merchant spec. */
+export const REPAYMENT_STRUCTURE_ANNUITY = "Annuity"
+
+/** Ensure Annuity appears in repayment structure dropdowns. */
+export function withRepaymentStructureOptions(options: string[]): string[] {
+  const merged = [...options]
+  const hasAnnuity = merged.some((o) => o.trim().toLowerCase() === "annuity")
+  if (!hasAnnuity) merged.push(REPAYMENT_STRUCTURE_ANNUITY)
+  return merged
+}
+
+/** Shown when product type on About step is optional (captured at product creation). */
+export const PRODUCT_TYPE_SECTION_HELPER =
+  "Product type is already captured when you created this product. Add types here only if you need extra variants."
 
 function formatWorkflowLabel(workflow: string) {
   return workflow.replace(/->/g, " → ")

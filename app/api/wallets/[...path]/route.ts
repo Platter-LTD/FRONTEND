@@ -27,7 +27,7 @@ function forwardHeaders(req: NextRequest): Record<string, string> {
   if (auth) out.Authorization = auth
   const ct = req.headers.get("content-type")
   if (ct) out["Content-Type"] = ct
-  for (const name of ["x-user-role", "x-user-type", "x-user-roles"]) {
+  for (const name of ["x-user-role", "x-user-type", "x-user-roles", "x-app-id", "x-selected-app-id", "x-dashboard-app-id"]) {
     const v = req.headers.get(name)
     if (v) out[name] = v
   }
@@ -36,7 +36,16 @@ function forwardHeaders(req: NextRequest): Record<string, string> {
 
 async function proxyWallet(req: NextRequest, pathSegments: string[]) {
   const base = getApiUpstreamBase()
-  const tail = pathSegments.join("/")
+  // Canonical: settlement → repayment. Legacy kyc/.../transactions → repayment/.../transactions.
+  // Do not rewrite kyc/debit|fee (those paths are unrelated fee ops if still used).
+  const rewritten = pathSegments.map((segment, index) => {
+    if (index !== 0) return segment
+    const s = segment.toLowerCase()
+    if (s === "settlement") return "repayment"
+    if (s === "kyc" && pathSegments[2]?.toLowerCase() === "transactions") return "repayment"
+    return segment
+  })
+  const tail = rewritten.join("/")
   const url = `${base}/api/v1/wallets/${tail}${req.nextUrl.search || ""}`
   const method = req.method.toUpperCase()
   const headers = forwardHeaders(req)

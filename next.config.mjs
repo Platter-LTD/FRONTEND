@@ -5,6 +5,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Helps clients detect deploy skew and request the correct asset set (Vercel).
+  deploymentId: process.env.VERCEL_DEPLOYMENT_ID || undefined,
+
   // Resolve react-redux (and Redux) from this app's node_modules only (avoids parent-repo resolution)
   webpack: (config, { isServer }) => {
     config.resolve.alias = {
@@ -24,6 +27,16 @@ const nextConfig = {
   // Security headers including Content Security Policy
   async headers() {
     return [
+      {
+        // Avoid caching HTML documents so browsers don't keep old chunk references after deploy
+        source: "/:path((?!_next/static|_next/image|favicon.ico|.*\\..*).*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-cache, no-store, must-revalidate",
+          },
+        ],
+      },
       {
         source: '/(.*)',
         headers: [
@@ -63,7 +76,7 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'", // Required for inline styles
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.fly.dev https://*.vercel.app https://restcountries.com wss:",
+              "connect-src 'self' https://*.fly.dev https://*.vercel.app wss:",
               "frame-ancestors 'self'",
               "base-uri 'self'",
               "form-action 'self'",

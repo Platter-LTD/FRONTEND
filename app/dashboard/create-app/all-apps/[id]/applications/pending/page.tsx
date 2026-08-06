@@ -6,10 +6,21 @@ import { ArrowLeft, RefreshCw, CheckCircle2, XCircle, Clock, FileText, AlertCirc
 import { Button } from "@/components/ui/button"
 import { CardListSkeleton } from "@/components/ui/app-loading-skeleton"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   accountService,
   type LoanWorkflowApplication,
   type LoanWorkflowStatus,
 } from "@/lib/services/accountService"
+import { resolveApplicationCustomerName } from "@/lib/applicationCustomer"
 import { toast } from "sonner"
 
 function workflowStatus(application: LoanWorkflowApplication): LoanWorkflowStatus {
@@ -18,6 +29,7 @@ function workflowStatus(application: LoanWorkflowApplication): LoanWorkflowStatu
 
 function getProductName(application: LoanWorkflowApplication) {
   return (
+    application.productName ||
     application.globalProductReferenceNumber ||
     application.merchantProductId ||
     application.localApplicationId ||
@@ -58,16 +70,21 @@ export default function PlataPendingApplicationsPage() {
   const appId = params.id
   const [applications, setApplications] = useState<LoanWorkflowApplication[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [processingId, setProcessingId] = useState<string | null>(null)
+  const [processing, setProcessing] = useState<{ id: string; action: "approve" | "reject" } | null>(null)
+  const [confirm, setConfirm] = useState<{ action: "approve" | "reject"; application: LoanWorkflowApplication } | null>(
+    null,
+  )
 
   const fetchApplications = async () => {
     setIsLoading(true)
     try {
       const requested = await accountService.applications.getLoanWorkflowApplications({
+        appId,
         loanWorkflowStatus: "requested",
         limit: 100,
       })
       const underReview = await accountService.applications.getLoanWorkflowApplications({
+        appId,
         loanWorkflowStatus: "under_review",
         limit: 100,
       })
@@ -98,7 +115,7 @@ export default function PlataPendingApplicationsPage() {
   }, [appId])
 
   const handleApprove = async (application: LoanWorkflowApplication) => {
-    setProcessingId(application.id)
+    setProcessing({ id: application.id, action: "approve" })
     try {
       const result = await accountService.applications.updateLoanWorkflowStatus(application.id, {
         loanWorkflowStatus: "approved",
@@ -110,12 +127,12 @@ export default function PlataPendingApplicationsPage() {
       toast.success("Application approved")
       await fetchApplications()
     } finally {
-      setProcessingId(null)
+      setProcessing(null)
     }
   }
 
   const handleReject = async (application: LoanWorkflowApplication) => {
-    setProcessingId(application.id)
+    setProcessing({ id: application.id, action: "reject" })
     try {
       const result = await accountService.applications.updateLoanWorkflowStatus(application.id, {
         loanWorkflowStatus: "declined",
@@ -127,7 +144,7 @@ export default function PlataPendingApplicationsPage() {
       toast.success("Application rejected")
       await fetchApplications()
     } finally {
-      setProcessingId(null)
+      setProcessing(null)
     }
   }
 
@@ -179,7 +196,8 @@ export default function PlataPendingApplicationsPage() {
           </div>
         ) : (
           applications.map((application) => {
-            const isProcessing = processingId === application.id
+            const isApproving = processing?.id === application.id && processing.action === "approve"
+            const isRejecting = processing?.id === application.id && processing.action === "reject"
             return (
               <div key={application.id} className="rounded-xl border border-[#E8DFD0] bg-white p-6 transition-all hover:border-[#9A813F]/40 hover:shadow-md">
                 <div className="flex items-start justify-between gap-6">
@@ -189,6 +207,9 @@ export default function PlataPendingApplicationsPage() {
                     </div>
                     <div>
                       <h3 className="mb-1 font-semibold text-gray-900">{getProductName(application)}</h3>
+                      <p className="mb-1 text-sm font-medium text-gray-800">
+                        {resolveApplicationCustomerName(application)}
+                      </p>
                       <p className="mb-2 text-sm text-gray-500">
                         Reference: <span className="font-mono">{application.id.slice(0, 8).toUpperCase()}</span>
                       </p>
@@ -203,21 +224,21 @@ export default function PlataPendingApplicationsPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => void handleReject(application)}
-                        disabled={isProcessing}
+                        onClick={() => setConfirm({ action: "reject", application })}
+                        disabled={isApproving || isRejecting}
                         className="border-red-300 text-red-600 hover:bg-red-50 hover:text-red-600"
                       >
                         <XCircle className="mr-1 h-4 w-4" />
-                        {isProcessing ? "Processing..." : "Reject"}
+                        {isRejecting ? "Processing..." : "Reject"}
                       </Button>
                       <Button
                         size="sm"
-                        onClick={() => void handleApprove(application)}
-                        disabled={isProcessing}
+                        onClick={() => setConfirm({ action: "approve", application })}
+                        disabled={isApproving || isRejecting}
                         className="bg-[#9A813F] text-white hover:bg-[#7A642F]"
                       >
                         <CheckCircle2 className="mr-1 h-4 w-4" />
-                        {isProcessing ? "Processing..." : "Approve"}
+                        {isApproving ? "Processing..." : "Approve"}
                       </Button>
                     </div>
                   </div>
@@ -227,6 +248,37 @@ export default function PlataPendingApplicationsPage() {
           })
         )}
       </div>
+
+      <AlertDialog open={!!confirm} onOpenChange={(open) => (!open ? setConfirm(null) : null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirm?.action === "approve" ? "Approve application?" : "Reject application?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm?.application
+                ? `This will ${confirm.action === "approve" ? "approve" : "reject"} the ${getProductName(confirm.application)} application for ${resolveApplicationCustomerName(confirm.application)}.`
+                : "Confirm action."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!processing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!processing || !confirm?.application}
+              onClick={async () => {
+                if (!confirm?.application) return
+                const app = confirm.application
+                const action = confirm.action
+                setConfirm(null)
+                if (action === "approve") await handleApprove(app)
+                else await handleReject(app)
+              }}
+            >
+              {confirm?.action === "approve" ? "Approve" : "Reject"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

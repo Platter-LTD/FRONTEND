@@ -4,14 +4,12 @@ import https from 'https';
 import dns from 'dns';
 import { merchantRoleHeadersFromAuthorization } from '@/lib/server/merchantRoleHeaders';
 
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import { getProductApiBaseUrl } from "@/lib/plataApiBaseUrl"
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Base URL for all APIs (account-ms). Endpoints match Product API doc:
-// POST /api/v1/products/select-type, POST /api/v1/products/create-after-type, POST /api/v1/products (legacy),
-// GET /api/v1/products (catalog). App-scoped enabled list: GET /api/v1/products/app/:appId (see app/api/v1/products/app/[appId]/route.ts).
-const PRODUCT_SERVICE_URL = (getPlataApiBaseUrl()).replace(/\/$/, '');
+// Base URL for product-ms (via Plata gateway). Set `NEXT_PUBLIC_API_URL` in `.env`.
+const PRODUCT_SERVICE_URL = getProductApiBaseUrl().replace(/\/$/, '');
 
 const agent = new https.Agent({
   keepAlive: true,

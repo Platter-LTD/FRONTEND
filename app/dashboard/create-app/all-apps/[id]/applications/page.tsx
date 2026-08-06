@@ -13,6 +13,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
 import {
@@ -21,6 +31,10 @@ import {
   type LoanWorkflowStatus,
 } from "@/lib/services/accountService"
 import { toast } from "sonner"
+import {
+  applicationCustomerInitials,
+  resolveApplicationCustomerName,
+} from "@/lib/applicationCustomer"
 
 function workflowStatus(application: LoanWorkflowApplication): LoanWorkflowStatus {
   return application.loanWorkflowStatus ?? "requested"
@@ -74,6 +88,8 @@ function getProductName(application: LoanWorkflowApplication) {
     pickString(globalProduct, ["name", "title", "productName"]) ||
     pickString(snapshot, ["productName", "product_name", "name", "title", "loanName", "mortgageName", "purpose"]) ||
     pickProductNameFromSnapshot(snapshot) ||
+    application.productName ||
+    application.globalProductReferenceNumber ||
     application.merchantProductId ||
     `${application.productType} Application`
   )
@@ -102,7 +118,8 @@ function getApplicant(application: LoanWorkflowApplication) {
     pickString(snapshot, ["applicantName", "customerName", "fullName", "name", "email", "userEmail"]) ||
     pickString(snapshotApplicant, ["name", "fullName", "firstName", "email"]) ||
     pickString(snapshotCustomer, ["name", "fullName", "firstName", "email"]) ||
-    pickString(snapshotBorrower, ["name", "fullName", "firstName", "email"])
+    pickString(snapshotBorrower, ["name", "fullName", "firstName", "email"]) ||
+    resolveApplicationCustomerName(application)
 
   const email =
     pickString(row, ["userEmail", "applicantEmail", "customerEmail", "email"]) ||
@@ -115,17 +132,18 @@ function getApplicant(application: LoanWorkflowApplication) {
     pickString(snapshotBorrower, ["email"])
 
   const label = name || email || application.userId || "Unknown customer"
-  const subtitle = email && name ? email : application.userId || "No customer id"
+  const subtitle =
+    email && name
+      ? email
+      : application.offeringMerchantName ||
+        application.merchantName ||
+        application.userId ||
+        "No customer id"
 
   return {
     label,
     subtitle,
-    initials: label
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase())
-      .join("") || "U",
+    initials: applicationCustomerInitials(label),
   }
 }
 
@@ -366,7 +384,10 @@ export default function PlataApplicationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | LoanWorkflowStatus>("all")
   const [typeFilter, setTypeFilter] = useState("all")
-  const [processingId, setProcessingId] = useState<string | null>(null)
+  const [processing, setProcessing] = useState<{ id: string; action: "approve" | "reject" } | null>(null)
+  const [confirm, setConfirm] = useState<{ action: "approve" | "reject"; application: LoanWorkflowApplication } | null>(
+    null,
+  )
   const [selectedApplication, setSelectedApplication] = useState<LoanWorkflowApplication | null>(null)
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false)
   const [isDetailLoading, setIsDetailLoading] = useState(false)
@@ -374,7 +395,7 @@ export default function PlataApplicationsPage() {
   const fetchApplications = async () => {
     setIsLoading(true)
     try {
-      const response = await accountService.applications.getLoanWorkflowApplications({ limit: 100 })
+      const response = await accountService.applications.getLoanWorkflowApplications({ appId, limit: 100 })
       if (!response.success) {
         toast.error(response.error || "Failed to load applications")
         setApplications([])
@@ -401,7 +422,9 @@ export default function PlataApplicationsPage() {
       const searchable = [
         application.id,
         application.userId,
+        application.customerName,
         application.productType,
+        application.productName,
         application.globalProductReferenceNumber,
         application.localApplicationId,
         application.merchantProductId,
@@ -427,11 +450,11 @@ export default function PlataApplicationsPage() {
     total: applications.length,
     pending: applications.filter((a) => ["requested", "under_review"].includes(workflowStatus(a))).length,
     approved: applications.filter((a) => workflowStatus(a) === "approved").length,
-    rejected: applications.filter((a) => workflowStatus(a) === "declined").length,
+    rejected: applications.filter((a) => ["declined", "blacklisted"].includes(workflowStatus(a))).length,
   }
 
   const handleApprove = async (application: LoanWorkflowApplication) => {
-    setProcessingId(application.id)
+    setProcessing({ id: application.id, action: "approve" })
     try {
       const result = await accountService.applications.updateLoanWorkflowStatus(application.id, {
         loanWorkflowStatus: "approved",
@@ -443,12 +466,12 @@ export default function PlataApplicationsPage() {
       toast.success("Application approved")
       await fetchApplications()
     } finally {
-      setProcessingId(null)
+      setProcessing(null)
     }
   }
 
   const handleReject = async (application: LoanWorkflowApplication) => {
-    setProcessingId(application.id)
+    setProcessing({ id: application.id, action: "reject" })
     try {
       const result = await accountService.applications.updateLoanWorkflowStatus(application.id, {
         loanWorkflowStatus: "declined",
@@ -460,7 +483,7 @@ export default function PlataApplicationsPage() {
       toast.success("Application rejected")
       await fetchApplications()
     } finally {
-      setProcessingId(null)
+      setProcessing(null)
     }
   }
 
@@ -578,7 +601,8 @@ export default function PlataApplicationsPage() {
                   const customer = getApplicant(application)
                   const status = workflowStatus(application)
                   const isActionable = status === "requested" || status === "under_review"
-                  const isProcessing = processingId === application.id
+                  const isApproving = processing?.id === application.id && processing.action === "approve"
+                  const isRejecting = processing?.id === application.id && processing.action === "reject"
                   return (
                     <tr
                       key={application.id}
@@ -619,14 +643,22 @@ export default function PlataApplicationsPage() {
                           <DropdownMenuContent align="end">
                             {isActionable ? (
                               <>
-                                <DropdownMenuItem disabled={isProcessing} onClick={() => void handleApprove(application)} className="text-green-700 focus:bg-green-50 focus:text-green-700">
+                                <DropdownMenuItem
+                                  disabled={isApproving || isRejecting}
+                                  onClick={() => setConfirm({ action: "approve", application })}
+                                  className="text-green-700 focus:bg-green-50 focus:text-green-700"
+                                >
                                   <CheckCircle2 className="mr-2 h-4 w-4" />
-                                  {isProcessing ? "Processing..." : "Approve"}
+                                  {isApproving ? "Processing..." : "Approve"}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem disabled={isProcessing} onClick={() => void handleReject(application)} className="text-red-600 focus:bg-red-50 focus:text-red-600">
+                                <DropdownMenuItem
+                                  disabled={isApproving || isRejecting}
+                                  onClick={() => setConfirm({ action: "reject", application })}
+                                  className="text-red-600 focus:bg-red-50 focus:text-red-600"
+                                >
                                   <XCircle className="mr-2 h-4 w-4" />
-                                  {isProcessing ? "Processing..." : "Reject"}
+                                  {isRejecting ? "Processing..." : "Reject"}
                                 </DropdownMenuItem>
                               </>
                             ) : (
@@ -652,6 +684,37 @@ export default function PlataApplicationsPage() {
           setSelectedApplication(null)
         }}
       />
+
+      <AlertDialog open={!!confirm} onOpenChange={(open) => (!open ? setConfirm(null) : null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirm?.action === "approve" ? "Approve application?" : "Reject application?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirm?.application
+                ? `This will ${confirm.action === "approve" ? "approve" : "reject"} the ${getProductName(confirm.application)} application for ${getApplicant(confirm.application).label}.`
+                : "Confirm action."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!processing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!processing || !confirm?.application}
+              onClick={async () => {
+                if (!confirm?.application) return
+                const app = confirm.application
+                const action = confirm.action
+                setConfirm(null)
+                if (action === "approve") await handleApprove(app)
+                else await handleReject(app)
+              }}
+            >
+              {confirm?.action === "approve" ? "Approve" : "Reject"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

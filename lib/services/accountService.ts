@@ -1,5 +1,10 @@
 import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 import { getAccessToken } from '@/lib/cookieAuth';
+import { plataAuthFetch } from "@/lib/plataAuthFetch";
+import {
+  normalizeSpringApplicantProfileResponse,
+  type SpringApplicantProfileResponse,
+} from "@/lib/springApplicantProfile";
 
 /** Plata account / product API origin — `NEXT_PUBLIC_API_URL` from `.env`. */
 const ACCOUNT_API_BASE = getPlataApiBaseUrl();
@@ -124,7 +129,7 @@ export interface ProductApplication {
   updatedAt: string;
 }
 
-export type LoanWorkflowStatus = 'requested' | 'under_review' | 'approved' | 'declined' | 'blacklisted';
+export type LoanWorkflowStatus = 'requested' | 'under_review' | 'approved' | 'declined' | 'blacklisted' | 'completed' | 'offer_sent';
 
 export interface LoanWorkflowApplication {
   id: string;
@@ -134,8 +139,12 @@ export interface LoanWorkflowApplication {
   offeringMerchantId?: string;
   offeringMerchantName?: string;
   userId: string;
+  customerName?: string;
+  userName?: string;
+  fullName?: string;
   productType: 'LOAN' | 'MORTGAGE' | string;
   globalProductId?: string;
+  productName?: string;
   globalProductReferenceNumber?: string;
   localApplicationId?: string;
   merchantProductId?: string;
@@ -143,6 +152,7 @@ export interface LoanWorkflowApplication {
   loanWorkflowStatus?: LoanWorkflowStatus;
   loanWorkflowCallbackUrl?: string;
   loanDisbursement?: Record<string, any> | null;
+  postApprovalFulfillment?: Record<string, any> | null;
   submittedAt?: string;
   signedAt?: string | null;
   contractSnapshot?: Record<string, any>;
@@ -702,16 +712,72 @@ export const commodityApi = {
 
 export const applicationApi = {
   /**
-   * Approve a loan/mortgage workflow application.
+   * Submit a generic product application
    */
-  async approve(id: string, approvedAmount?: number): Promise<ApiResponse<LoanWorkflowApplication>> {
+  async apply(data: {
+    product_id: string;
+    merchant_id: string;
+    user_id: string;
+    applicationType: 'loan' | 'mortgage' | 'savings' | 'commodity' | 'investment';
+    applicationData?: Record<string, any>;
+  }): Promise<ApiResponse<ProductApplication>> {
     try {
-      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+      const response = await fetch(`${ACCOUNT_API_BASE}/api/v1/applications/apply`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(data),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error || result.message || 'Failed to submit application',
+        };
+      }
+
+      return result;
+    } catch (error: any) {
+      console.error('Submit application error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to submit application',
+      };
+    }
+  },
+
+  /**
+   * Approve an application (originating merchant).
+   * Does not generate or send an offer letter — merchant chooses letter separately.
+   * Optional equityReceived / equityProviderReference attest offline equity payment.
+   */
+  async approve(
+    id: string,
+    options?: number | {
+      approvedAmount?: number
+      equityReceived?: boolean
+      equityProviderReference?: string
+    },
+  ): Promise<ApiResponse<LoanWorkflowApplication>> {
+    try {
+      const opts =
+        typeof options === "number"
+          ? { approvedAmount: options }
+          : options && typeof options === "object"
+            ? options
+            : {}
+
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           loanWorkflowStatus: 'approved',
-          ...(approvedAmount != null ? { approvedAmount } : {}),
+          ...(opts.approvedAmount != null ? { approvedAmount: opts.approvedAmount } : {}),
+          ...(opts.equityReceived === true ? { equityReceived: true } : {}),
+          ...(opts.equityProviderReference?.trim()
+            ? { equityProviderReference: opts.equityProviderReference.trim() }
+            : {}),
         }),
       });
 
@@ -737,12 +803,15 @@ export const applicationApi = {
   /**
    * Reject a loan/mortgage workflow application.
    */
-  async reject(id: string, _reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+  async reject(id: string, reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
-      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ loanWorkflowStatus: 'declined' }),
+        body: JSON.stringify({
+          loanWorkflowStatus: 'declined',
+          ...(reason?.trim() ? { rejectionReason: reason.trim() } : {}),
+        }),
       });
 
       const result = await response.json();
@@ -764,19 +833,24 @@ export const applicationApi = {
     }
   },
 
-  async getLoanWorkflowApplications(params?: {
+  async blacklist(id: string, _reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    return this.updateLoanWorkflowStatus(id, { loanWorkflowStatus: 'blacklisted' });
+  },
+
+  async getLoanWorkflowApplications(params: {
+    appId: string;
     loanWorkflowStatus?: LoanWorkflowStatus;
     limit?: number;
     skip?: number;
   }): Promise<ApiResponse<LoanWorkflowApplication[]>> {
     try {
       const queryParams = new URLSearchParams();
-      if (params?.loanWorkflowStatus) queryParams.set('loanWorkflowStatus', params.loanWorkflowStatus);
-      if (params?.limit) queryParams.set('limit', String(params.limit));
-      if (params?.skip) queryParams.set('skip', String(params.skip));
+      if (params.loanWorkflowStatus) queryParams.set('loanWorkflowStatus', params.loanWorkflowStatus);
+      if (params.limit) queryParams.set('limit', String(params.limit));
+      if (params.skip) queryParams.set('skip', String(params.skip));
 
-      const response = await fetch(
-        `/api/v1/products/applications/me/loan-workflow${queryParams.toString() ? `?${queryParams}` : ''}`,
+      const response = await plataAuthFetch(
+        `/api/v1/products/app/${encodeURIComponent(params.appId)}/applications/loan-workflow${queryParams.toString() ? `?${queryParams}` : ''}`,
         { headers: getAuthHeaders() },
       );
       const result = await response.json();
@@ -800,7 +874,7 @@ export const applicationApi = {
 
   async getWorkflowApplication(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
-      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}`, {
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}`, {
         headers: getAuthHeaders(),
       });
       const result = await response.json();
@@ -812,7 +886,30 @@ export const applicationApi = {
         };
       }
 
-      return result;
+      const envelope = result?.data ?? result;
+      const nested =
+        envelope && typeof envelope === 'object' && envelope.application && typeof envelope.application === 'object'
+          ? envelope.application
+          : null;
+      const application = (nested
+        ? {
+            ...envelope,
+            ...nested,
+            loanDisbursement: nested.loanDisbursement ?? envelope.loanDisbursement,
+            postApprovalFulfillment:
+              nested.postApprovalFulfillment ?? envelope.postApprovalFulfillment,
+            contractSnapshot: nested.contractSnapshot ?? envelope.contractSnapshot,
+            offerLetter: nested.offerLetter ?? envelope.offerLetter,
+            metadata: nested.metadata ?? envelope.metadata,
+          }
+        : envelope) as LoanWorkflowApplication;
+
+      return {
+        success: result.success !== false,
+        data: application,
+        message: result.message,
+        error: result.error,
+      };
     } catch (error: any) {
       console.error('Get workflow application error:', error);
       return {
@@ -822,12 +919,126 @@ export const applicationApi = {
     }
   },
 
-  async updateLoanWorkflowStatus(
+  async getSpringApplicantProfile(
     id: string,
-    body: { loanWorkflowStatus: LoanWorkflowStatus; approvedAmount?: number },
+  ): Promise<ApiResponse<SpringApplicantProfileResponse>> {
+    const maxAttempts = 3
+    const retryDelayMs = 1500
+    let lastError = 'Failed to load applicant profile'
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await plataAuthFetch(
+          `/api/v1/products/applications/${encodeURIComponent(id)}/spring-applicant-profile`,
+          { headers: getAuthHeaders() },
+        )
+        const result = await response.json()
+
+        if (!response.ok) {
+          lastError = result.error || result.message || lastError
+          if (/timeout/i.test(lastError) && attempt < maxAttempts - 1) {
+            await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+            continue
+          }
+          return { success: false, error: lastError }
+        }
+
+        const data = normalizeSpringApplicantProfileResponse(result)
+        const profileError = data.springApplicantProfileError
+        const hasProfile = Boolean(data.springApplicantProfile)
+
+        if (!hasProfile && profileError && /timeout/i.test(String(profileError)) && attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+          continue
+        }
+
+        return {
+          success: result.success !== false && response.ok,
+          data,
+          ...(profileError && !hasProfile && !data.application
+            ? { error: profileError }
+            : {}),
+        }
+      } catch (error: unknown) {
+        lastError = error instanceof Error ? error.message : lastError
+        if (/timeout/i.test(lastError) && attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, retryDelayMs))
+          continue
+        }
+        console.error('Get Spring applicant profile error:', error)
+        return { success: false, error: lastError }
+      }
+    }
+
+    return { success: false, error: lastError }
+  },
+
+  async updateMortgageWorkflowProgress(
+    id: string,
+    progressPatch: Record<string, unknown>,
   ): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
-      const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          loanDisbursement: {
+            mortgageWorkflow: progressPatch,
+          },
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        return {
+          success: false,
+          error: result.error || result.message || 'Failed to update mortgage workflow',
+        };
+      }
+      return result;
+    } catch (error: any) {
+      console.error('Update mortgage workflow progress error:', error);
+      return {
+        success: false,
+        error: error.message || 'Failed to update mortgage workflow',
+      };
+    }
+  },
+
+  async confirmMortgageDownPayment(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    const { pendingApprovedMortgageApi } = await import('@/lib/pendingApprovedMortgageApi');
+    return pendingApprovedMortgageApi.confirmDownPayment(id);
+  },
+
+  /**
+   * Merchant contract approval after borrower signs.
+   * No loan-workflow timestamp stamp — needs a real pending-approved-mortgage route.
+   * Expected: POST …/products/applications/:id/pending-approved-mortgage/contract/approve
+   */
+  async approveMortgageContract(_id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    return {
+      success: false,
+      error:
+        'Missing backend endpoint: POST /api/v1/products/applications/:id/pending-approved-mortgage/contract/approve',
+    };
+  },
+
+  async triggerMortgageDisbursement(id: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    const { pendingApprovedMortgageApi } = await import('@/lib/pendingApprovedMortgageApi');
+    return pendingApprovedMortgageApi.disburse(id);
+  },
+
+  async updateLoanWorkflowStatus(
+    id: string,
+    body: {
+      loanWorkflowStatus: LoanWorkflowStatus
+      approvedAmount?: number
+      equityReceived?: boolean
+      equityProviderReference?: string
+      rejectionReason?: string
+    },
+  ): Promise<ApiResponse<LoanWorkflowApplication>> {
+    try {
+      const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify(body),

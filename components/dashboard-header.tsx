@@ -141,8 +141,11 @@ export const DashboardHeader: React.FC = () => {
     : { id: "", name: "No app selected" }
 
   const handleAppSwitch = (appId: string) => {
-    const currentPath =
+    let currentPath =
       pathname?.split("/dashboard/create-app/all-apps/")[1]?.split("/").slice(1).join("/") || "wallets/treasury"
+    if (!currentPath || currentPath === "wallets") {
+      currentPath = "wallets/treasury"
+    }
     router.push(`/dashboard/create-app/all-apps/${appId}/${currentPath}`)
   }
 
@@ -215,7 +218,8 @@ export const DashboardHeader: React.FC = () => {
       {/* Divider */}
       <div className="border-b border-[#E0D8C3] mt-4" />
 
-      {/* Main header */}
+      {/* Main header — skip empty band on in-app pages that render their own page title */}
+      {isProductDetailsPage || isProductListPage || !isAppDetailsPage ? (
       <div className="px-6 py-6 flex items-center justify-between">
         {isProductDetailsPage ? (
           <div className="flex items-center gap-4">
@@ -295,8 +299,6 @@ export const DashboardHeader: React.FC = () => {
               Products
             </h1>
           </div>
-        ) : isAppDetailsPage ? (
-          <div></div>
         ) : (
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">{title}</h1>
@@ -304,6 +306,7 @@ export const DashboardHeader: React.FC = () => {
           </div>
         )}
       </div>
+      ) : null}
     </header>
   )
 }

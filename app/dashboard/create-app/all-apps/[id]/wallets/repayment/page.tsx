@@ -1,18 +1,20 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { FiEyeOff, FiEye } from "react-icons/fi"
-import { Skeleton } from "@/components/ui/skeleton"
-import { getMerchantIdFromAccessToken } from "@/lib/merchantIdFromToken"
+import { useAppMerchantId } from "@/hooks/useAppMerchantId"
 import { merchantWalletMainBalance } from "@/lib/services/walletService"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import {
   fetchAppMerchantWalletsThunk,
-  fetchOperationTransactionsThunk,
+  fetchKycTransactionsThunk,
 } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
+import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
+import { WithdrawWalletDialog } from "@/components/wallets/withdraw-wallet-dialog"
+import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
+import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
 
 export default function RepaymentWalletPage() {
   const params = useParams()
@@ -20,98 +22,78 @@ export default function RepaymentWalletPage() {
   const dispatch = useAppDispatch()
   const walletState = useAppSelector((s) => s.wallet)
 
-  const [merchantId, setMerchantId] = useState<string | null>(null)
+  const { merchantId, loading: merchantLoading, error: merchantError } = useAppMerchantId(appId)
+
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [fundOpen, setFundOpen] = useState(false)
+  const [withdrawOpen, setWithdrawOpen] = useState(false)
 
-  useEffect(() => {
-    setMerchantId(getMerchantIdFromAccessToken())
-  }, [])
-
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (!merchantId || !appId) return
     void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
-    void dispatch(fetchOperationTransactionsThunk({ merchantId, appId }))
+    void dispatch(fetchKycTransactionsThunk({ merchantId, appId }))
   }, [dispatch, merchantId, appId])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
 
-  const operation = inScope ? walletState.operation : null
-  const txs = inScope ? walletState.operationTransactions : []
-  const walletsLoading = inScope && walletState.walletsLoading
-  const txsLoading = inScope && walletState.operationTxLoading
+  const repayment = inScope ? walletState.settlement ?? walletState.kyc : null
+  const txs = inScope ? walletState.kycTransactions : []
+  const walletsLoading = merchantLoading || (inScope && walletState.walletsLoading)
+  const txsLoading = merchantLoading || (inScope && walletState.kycTxLoading)
   const walletsError = inScope ? walletState.walletsError : null
-  const txsError = inScope ? walletState.operationTxError : null
-
-  const formatBalance = (balance: number) => {
-    const formatted = balance.toFixed(2)
-    const [dollars, cents] = formatted.split(".")
-    return { dollars: Number(dollars).toLocaleString(), cents }
-  }
-
-  const mainBal = merchantWalletMainBalance(operation)
-  const balance = formatBalance(mainBal)
-  const currency = operation?.currency || "NGN"
+  const txsError = inScope ? walletState.kycTxError : null
+  const mainBal = merchantWalletMainBalance(repayment)
+  const currency = plataWalletDisplayCurrency(repayment?.currency)
 
   const bannerError = useMemo(() => {
-    if (!merchantId) return "No merchant ID found. Please sign in again."
+    if (merchantError) return merchantError
+    if (!merchantLoading && !merchantId) return "No merchant ID found for this app."
     return walletsError || txsError
-  }, [merchantId, walletsError, txsError])
+  }, [merchantError, merchantLoading, merchantId, walletsError, txsError])
 
   return (
     <div className="flex-1 bg-white p-8">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">Repayment Wallet</h1>
+      <h1 className="mb-6 text-2xl font-semibold text-gray-900">Repayment wallet</h1>
 
-      {bannerError && (
-        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg mb-6">
-          <p className="text-sm">{bannerError}</p>
+      {bannerError ? (
+        <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+          {bannerError}
         </div>
-      )}
+      ) : null}
 
-      <div className="bg-black rounded-lg p-8 mb-8 relative overflow-hidden">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-gray-400 text-sm mb-2">Operation wallet — main balance</p>
-            {walletsLoading ? (
-              <div className="flex items-baseline gap-1">
-                <Skeleton className="h-12 w-32 bg-gray-600" />
-                <Skeleton className="h-8 w-8 bg-gray-600 ml-1" />
-              </div>
-            ) : (
-              <div className="flex items-baseline gap-1">
-                {showBalance ? (
-                  <>
-                    <span className="text-white text-5xl font-semibold">
-                      {currency === "NGN" ? "NGN " : ""}
-                      {balance.dollars}
-                    </span>
-                    <span className="text-white text-2xl">.{balance.cents}</span>
-                    {currency !== "NGN" && (
-                      <span className="text-white/70 text-lg ml-2">{currency}</span>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-white text-5xl font-semibold">••••</span>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-4">
-            {!walletsLoading && (
-              <button
-                type="button"
-                onClick={() => setShowBalance(!showBalance)}
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                {showBalance ? <FiEyeOff size={24} /> : <FiEye size={24} />}
-              </button>
-            )}
-            <Button className="bg-[#8B7355] hover:bg-[#7A6449] text-white" disabled={walletsLoading}>
+      <MerchantWalletBalanceCard
+        wallet={repayment}
+        loading={!!walletsLoading}
+        showBalance={showBalance}
+        onToggleBalance={() => setShowBalance((value) => !value)}
+        title="Repayment wallet"
+        subtitle="Loan repayments collect here · fund via bank transfer · withdraw to your bank (API: REPAYMENT)"
+        className="mb-8"
+        actions={
+          <>
+            <Button
+              className="bg-[#9A813F] font-semibold text-white hover:bg-[#7A642F]"
+              disabled={walletsLoading || !repayment}
+              onClick={() => setFundOpen(true)}
+            >
+              Fund
+            </Button>
+            <Button
+              variant="outline"
+              className="border-[#9A813F] bg-transparent font-semibold text-[#9A813F] hover:bg-[#9A813F]/10"
+              disabled={walletsLoading || !repayment || mainBal <= 0}
+              onClick={() => setWithdrawOpen(true)}
+            >
               Withdraw
             </Button>
-          </div>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <MerchantTransactionsTable
         transactions={txs}
@@ -119,6 +101,29 @@ export default function RepaymentWalletPage() {
         currency={currency}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
+      />
+
+      <FundWalletDrawer
+        open={fundOpen}
+        onOpenChange={setFundOpen}
+        currency={currency}
+        virtualNuban={{
+          accountNumber: repayment?.virtualNuban?.accountNumber,
+          bankName: repayment?.virtualNuban?.bankName,
+          bankCode: repayment?.virtualNuban?.bankCode,
+          accountHolder: repayment?.name || "Repayment wallet",
+          provisionStatus: repayment?.virtualNuban?.provisionStatus,
+        }}
+        onRefreshBalance={refresh}
+      />
+      <WithdrawWalletDialog
+        open={withdrawOpen}
+        onOpenChange={setWithdrawOpen}
+        mode="merchant-settlement"
+        maxAmount={mainBal}
+        currency={currency}
+        appId={appId}
+        onSuccess={refresh}
       />
     </div>
   )

@@ -38,11 +38,43 @@ const agent = new https.Agent({
     lookup: (hostname: string, options: any, cb: any) => dns.lookup(hostname, { family: 4 }, cb)
 });
 
+/** Fly.io create-app-ms can exceed 15s under load; compliance proxy uses 30s+. */
+const UPSTREAM_TIMEOUT_MS = 45_000;
+const UPSTREAM_RETRIES = 2;
+
 const http = axios.create({
-    timeout: 15000,
+    timeout: UPSTREAM_TIMEOUT_MS,
     httpsAgent: agent,
     validateStatus: () => true,
 });
+
+function isRetryableUpstreamError(error: unknown): boolean {
+    const code = error && typeof error === 'object' && 'code' in error ? String((error as { code?: string }).code) : '';
+    const message = error instanceof Error ? error.message : '';
+    return (
+        code === 'ECONNABORTED' ||
+        code === 'ETIMEDOUT' ||
+        code === 'ECONNRESET' ||
+        code === 'ENOTFOUND' ||
+        code === 'EAI_AGAIN' ||
+        message.includes('timeout')
+    );
+}
+
+async function withUpstreamRetry<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= UPSTREAM_RETRIES; attempt++) {
+        try {
+            return await fn();
+        } catch (error: unknown) {
+            lastError = error;
+            if (!isRetryableUpstreamError(error) || attempt === UPSTREAM_RETRIES) {
+                throw error;
+            }
+        }
+    }
+    throw lastError;
+}
 
 async function resolveMerchantId(authHeader: string | null, fallback?: string): Promise<string | null> {
     if (fallback) return fallback;
@@ -262,7 +294,9 @@ export async function POST(request: NextRequest) {
         if (merchantId) upstreamPayload.merchantId = merchantId;
         if (subdomainStr) upstreamPayload.subdomain = subdomainStr;
 
-        let resp = await http.post(`${CREATE_APP_URL}/api/v1/apps`, upstreamPayload, { headers });
+        let resp = await withUpstreamRetry('POST /api/v1/apps', () =>
+            http.post(`${CREATE_APP_URL}/api/v1/apps`, upstreamPayload, { headers }),
+        );
 
         if (
             resp.status === 401 &&
@@ -282,7 +316,9 @@ export async function POST(request: NextRequest) {
                 if (browserCookie) {
                     retryHeaders['Cookie'] = browserCookie;
                 }
-                resp = await http.post(`${CREATE_APP_URL}/api/v1/apps`, upstreamPayload, { headers: retryHeaders });
+                resp = await withUpstreamRetry('POST /api/v1/apps (401 retry)', () =>
+                    http.post(`${CREATE_APP_URL}/api/v1/apps`, upstreamPayload, { headers: retryHeaders }),
+                );
             }
         }
 
@@ -333,7 +369,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(
             { success: false, error: userMessage, debug: process.env.NODE_ENV === 'development' ? details : undefined },
-            { status: 500 }
+            { status: timedOut ? 504 : 500 }
         );
     }
 }
@@ -366,7 +402,9 @@ export async function GET(request: NextRequest) {
             headers['x-user-roles'] = effectiveRole;
         }
 
-        const resp = await http.get(`${CREATE_APP_URL}/api/v1/apps`, { headers });
+        const resp = await withUpstreamRetry('GET /api/v1/apps', () =>
+            http.get(`${CREATE_APP_URL}/api/v1/apps`, { headers }),
+        );
 
         if (resp.status >= 200 && resp.status < 300) {
             return NextResponse.json({ success: true, data: resp.data?.data || resp.data });
@@ -380,7 +418,7 @@ export async function GET(request: NextRequest) {
         console.error('Create App proxy GET failed', details);
         return NextResponse.json(
             { success: false, error: timedOut ? 'Create App service timed out' : (network ? 'Network error contacting Create App service' : (error?.message || 'Internal server error')) },
-            { status: 500 }
+            { status: timedOut ? 504 : 500 }
         );
     }
 }

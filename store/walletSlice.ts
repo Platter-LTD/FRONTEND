@@ -7,14 +7,57 @@ import {
   type MerchantWalletsBundle,
   type Transaction,
 } from '@/lib/services/walletService';
+import { countCanonicalWallets, resolveCanonicalMerchantWallets } from '@/lib/merchantWalletBundle';
 
 type WalletScope = { merchantId: string; appId: string };
+type WalletTxKind = 'treasury' | 'billing' | 'settlement';
+
+async function loadTransactionsForAppWallet(
+  merchantId: string,
+  appId: string,
+  kind: WalletTxKind,
+): Promise<Transaction[]> {
+  const params = { appId };
+  const res =
+    kind === 'treasury'
+      ? await transactionApi.getTreasuryTransactions(merchantId, params)
+      : kind === 'settlement'
+        ? await transactionApi.getRepaymentTransactions(merchantId, params)
+        : await transactionApi.getBillingTransactions(merchantId, params);
+
+  const list = Array.isArray(res.data) ? res.data : [];
+
+  // Belt-and-suspenders: only show txs for this app's wallet instance when walletId is present.
+  try {
+    const walletsRes = await merchantWalletApi.getAllMerchantWallets(merchantId, appId);
+    if (walletsRes.success && walletsRes.data) {
+      const canonical = resolveCanonicalMerchantWallets(walletsRes.data);
+      const wallet =
+        kind === 'treasury'
+          ? canonical.treasury
+          : kind === 'settlement'
+            ? canonical.settlement
+            : canonical.billing;
+      if (wallet?.id) {
+        return list.filter((tx) => !tx.walletId || tx.walletId === wallet.id);
+      }
+    }
+  } catch {
+    /* merchant + appId scoped list is sufficient */
+  }
+
+  return list;
+}
 
 export interface WalletSliceState {
   merchantId: string | null;
   appId: string | null;
+  billing: MerchantWallet | null;
+  settlement: MerchantWallet | null;
   treasury: MerchantWallet | null;
+  /** @deprecated Use billing */
   operation: MerchantWallet | null;
+  /** @deprecated Use settlement */
   kyc: MerchantWallet | null;
   treasuryTransactions: Transaction[];
   operationTransactions: Transaction[];
@@ -29,15 +72,18 @@ export interface WalletSliceState {
   kycTxError: string | null;
 }
 
-function scopeChanged(
-  state: { merchantId: string | null; appId: string | null },
-  merchantId: string,
-  appId: string,
-) {
-  return state.merchantId !== merchantId || state.appId !== appId;
+function applyMerchantWalletBundle(state: WalletSliceState, wallets: MerchantWalletsBundle) {
+  const canonical = resolveCanonicalMerchantWallets(wallets);
+  state.billing = canonical.billing;
+  state.settlement = canonical.settlement;
+  state.treasury = canonical.treasury;
+  state.operation = canonical.billing;
+  state.kyc = canonical.settlement;
 }
 
 function clearScopeData(state: WalletSliceState) {
+  state.billing = null;
+  state.settlement = null;
   state.treasury = null;
   state.operation = null;
   state.kyc = null;
@@ -49,6 +95,8 @@ function clearScopeData(state: WalletSliceState) {
 const initialState: WalletSliceState = {
   merchantId: null,
   appId: null,
+  billing: null,
+  settlement: null,
   treasury: null,
   operation: null,
   kyc: null,
@@ -64,6 +112,14 @@ const initialState: WalletSliceState = {
   kycTxLoading: false,
   kycTxError: null,
 };
+
+function scopeChanged(
+  state: { merchantId: string | null; appId: string | null },
+  merchantId: string,
+  appId: string,
+) {
+  return state.merchantId !== merchantId || state.appId !== appId;
+}
 
 export const fetchAppMerchantWalletsThunk = createAsyncThunk<
   { merchantId: string; appId: string; wallets: MerchantWalletsBundle },
@@ -92,8 +148,7 @@ export const fetchTreasuryTransactionsThunk = createAsyncThunk<
   { rejectValue: string }
 >('wallet/fetchTreasuryTransactions', async ({ merchantId, appId }, { rejectWithValue }) => {
   try {
-    const res = await transactionApi.getTreasuryTransactions(merchantId, { appId });
-    const list = Array.isArray(res.data) ? res.data : [];
+    const list = await loadTransactionsForAppWallet(merchantId, appId, 'treasury');
     if (process.env.NODE_ENV === 'development') {
       console.info('[wallet] treasury transactions', { merchantId, appId, count: list.length });
     }
@@ -109,8 +164,7 @@ export const fetchOperationTransactionsThunk = createAsyncThunk<
   { rejectValue: string }
 >('wallet/fetchOperationTransactions', async ({ merchantId, appId }, { rejectWithValue }) => {
   try {
-    const res = await transactionApi.getOperationTransactions(merchantId, { appId });
-    const list = Array.isArray(res.data) ? res.data : [];
+    const list = await loadTransactionsForAppWallet(merchantId, appId, 'billing');
     if (process.env.NODE_ENV === 'development') {
       console.info('[wallet] operation transactions', { merchantId, appId, count: list.length });
     }
@@ -126,8 +180,7 @@ export const fetchKycTransactionsThunk = createAsyncThunk<
   { rejectValue: string }
 >('wallet/fetchKycTransactions', async ({ merchantId, appId }, { rejectWithValue }) => {
   try {
-    const res = await transactionApi.getKycTransactions(merchantId, { appId });
-    const list = Array.isArray(res.data) ? res.data : [];
+    const list = await loadTransactionsForAppWallet(merchantId, appId, 'settlement');
     if (process.env.NODE_ENV === 'development') {
       console.info('[wallet] KYC transactions', { merchantId, appId, count: list.length });
     }
@@ -171,10 +224,8 @@ const walletSlice = createSlice({
         const { merchantId, appId, wallets } = action.payload;
         if (scopeChanged(state, merchantId, appId)) return;
         state.walletsLoading = false;
-        state.treasury = wallets.treasury ?? null;
-        state.operation = wallets.operation ?? null;
-        state.kyc = wallets.kyc ?? null;
-        const n = [wallets.treasury, wallets.operation, wallets.kyc].filter(Boolean).length;
+        applyMerchantWalletBundle(state, wallets);
+        const n = countCanonicalWallets(resolveCanonicalMerchantWallets(wallets));
         toastApiSuccess(
           n >= 1
             ? `Wallet data loaded (${n} merchant wallet${n === 1 ? '' : 's'})`

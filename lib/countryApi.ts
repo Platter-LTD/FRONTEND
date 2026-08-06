@@ -1,66 +1,64 @@
 /**
- * Country list from REST Countries (free, no API key).
- * https://restcountries.com/
+ * Country list for Plata dropdowns.
+ * Served from a bundled ISO dataset (lib/countriesData.ts) via same-origin `/api/countries`.
+ * Do not call restcountries.com from the browser — that API is unreliable / often blocked.
  */
 
-export interface CountryOption {
-  code: string;
-  name: string;
-  /** International dial code (e.g. "+234") */
-  dialCode: string;
-                                                                                                                   }
+import { COUNTRIES_DATA, type CountryOption } from "@/lib/countriesData"
 
-// Includes IDD info so we can derive the international dial code (root like "+234")
-const REST_COUNTRIES_URL = "https://restcountries.com/v3.1/all?fields=cca2,name,idd";
+export type { CountryOption }
 
-let cached: CountryOption[] | null = null;
-let fetchPromise: Promise<CountryOption[]> | null = null;
+let cached: CountryOption[] | null = null
+let fetchPromise: Promise<CountryOption[]> | null = null
+
+function normalizeCountryRows(data: unknown): CountryOption[] {
+  if (!Array.isArray(data)) return []
+  return data
+    .map((row) => {
+      if (!row || typeof row !== "object") return null
+      const r = row as Record<string, unknown>
+      const code = String(r.code || "").trim().toLowerCase()
+      const name = String(r.name || "").trim()
+      const dialCode = String(r.dialCode || "").trim()
+      if (!code || !name) return null
+      return { code, name, dialCode }
+    })
+    .filter((c): c is CountryOption => c !== null)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+function bundledCountries(): CountryOption[] {
+  return normalizeCountryRows(COUNTRIES_DATA)
+}
 
 export async function fetchCountries(): Promise<CountryOption[]> {
-  if (cached) return cached;
+  if (cached?.length) return cached
   if (!fetchPromise) {
     fetchPromise = (async () => {
-      const res = await fetch(REST_COUNTRIES_URL);
-      if (!res.ok) throw new Error("Failed to fetch countries");
-      const data = await res.json();
-      const result: CountryOption[] = data
-        .map(
-          (c: {
-            cca2: string
-            name: { common: string }
-            idd?: { root?: string | undefined; suffixes?: string[] | undefined }
-          }) => {
-            const dialRootRaw = c.idd?.root ?? ""
-            const dialRoot = dialRootRaw
-              ? dialRootRaw.startsWith("+")
-                ? dialRootRaw
-                : `+${dialRootRaw}`
-              : ""
-
-            // REST Countries often provides "+2" as root and ["34"] as suffixes (e.g. Nigeria).
-            // We build the common dial code by combining root + first suffix.
-            const firstSuffix = c.idd?.suffixes?.[0] ?? ""
-            const dialCode = dialRoot ? `${dialRoot}${firstSuffix}` : ""
-
-            return {
-              code: (c.cca2 || "").toLowerCase(),
-              name: c.name?.common ?? c.cca2 ?? "",
-              dialCode,
-            }
+      try {
+        // Prefer same-origin BFF (works in browser without CSP/CORS issues).
+        const res = await fetch("/api/countries", { cache: "force-cache" })
+        if (res.ok) {
+          const mapped = normalizeCountryRows(await res.json())
+          if (mapped.length) {
+            cached = mapped
+            return mapped
           }
-        )
-        .filter((c: CountryOption) => c.code && c.name)
-        .sort((a: CountryOption, b: CountryOption) =>
-          a.name.localeCompare(b.name)
-        );
-      cached = result;
-      return result;
-    })();
+        }
+      } catch {
+        // Fall through to bundled dataset.
+      }
+
+      const fallback = bundledCountries()
+      if (!fallback.length) throw new Error("No countries available")
+      cached = fallback
+      return fallback
+    })()
   }
-  return fetchPromise;
+  return fetchPromise
 }
 
 /** Call early (e.g. in root layout) to start loading countries before user opens a dropdown. */
 export function preloadCountries(): void {
-  if (!cached && !fetchPromise) fetchCountries();
+  if (!cached?.length) void fetchCountries().catch(() => undefined)
 }

@@ -1,111 +1,61 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { BACKEND } from '@/lib/endpoints';
-import axios from 'axios';
-import https from 'https';
-import dns from 'dns';
+import { NextRequest, NextResponse } from "next/server"
 
-import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
-const AUTH_SERVICE_URL = getPlataApiBaseUrl();
+import { applyRefreshedTokens, plataCookieOpts } from "@/lib/server/plataSessionRefresh"
+import { singleFlightRefresh } from "@/lib/server/singleFlightRefresh"
 
-const agent = new https.Agent({
-  keepAlive: true,
-  family: 4,
-  // Force IPv4 lookup to avoid intermittent ETIMEDOUT on some hosts
-  // @ts-ignore - Node lookup signature compatibility
-  lookup: (hostname: string, options: any, cb: any) => dns.lookup(hostname, { family: 4 }, cb),
-});
-
-const http = axios.create({
-  timeout: 15_000,
-  httpsAgent: agent,
-  validateStatus: () => true,
-});
+function clearAuthCookies(response: NextResponse) {
+  response.cookies.set("accessToken", "", { ...plataCookieOpts(0, false) })
+  response.cookies.set("refreshToken", "", { ...plataCookieOpts(0, true) })
+  return response
+}
 
 /**
- * API Route to refresh tokens using httpOnly cookie
- * Forwards refresh request to auth service and updates cookies
+ * API Route to refresh tokens using httpOnly cookie.
+ * Uses single-flight so parallel mortgage/workflow/compliance calls don't rotate-race
+ * and wipe a just-refreshed session.
  */
 export async function POST(request: NextRequest) {
   try {
-    let refreshToken = request.cookies.get('refreshToken')?.value;
+    let refreshToken = request.cookies.get("refreshToken")?.value
     if (!refreshToken) {
       try {
-        const body = await request.json().catch(() => ({}));
-        refreshToken = (body as { refreshToken?: string })?.refreshToken;
+        const body = await request.json().catch(() => ({}))
+        refreshToken = (body as { refreshToken?: string })?.refreshToken
       } catch {
         /* no body */
       }
     }
     if (!refreshToken) {
+      // No refresh cookie at all — safe to clear access remnant.
+      return clearAuthCookies(
+        NextResponse.json({ success: false, error: "No refresh token found" }, { status: 401 }),
+      )
+    }
+
+    const tokens = await singleFlightRefresh(refreshToken)
+    if (!tokens?.accessToken) {
+      // Do NOT clear cookies here. A parallel request may have already rotated and
+      // set new cookies; wiping would log the user out falsely.
       return NextResponse.json(
-        { success: false, error: 'No refresh token found' },
-        { status: 401 }
-      );
+        { success: false, error: "Token refresh failed" },
+        { status: 401 },
+      )
     }
 
-    // Call auth service to refresh tokens (IPv4 agent avoids intermittent ETIMEDOUT)
-    const authResponse = await http.post(
-      `${AUTH_SERVICE_URL}${BACKEND.auth.refresh}`,
-      { refreshToken },
-      { headers: { 'Content-Type': 'application/json' } },
-    );
-
-    const data = authResponse.data as any;
-
-    if (!(authResponse.status >= 200 && authResponse.status < 300) || !data?.success) {
-      // Do not clear access/refresh cookies here. A transient or endpoint-specific
-      // 401 should not wipe the current session unexpectedly.
-      const errorResponse = NextResponse.json(
-        { success: false, error: data?.error || 'Token refresh failed' },
-        { status: 401 }
-      );
-      return errorResponse;
-    }
-
-    // Extract new tokens
-    const newAccessToken = data.data?.accessToken || data.accessToken;
-    const newRefreshToken = data.data?.refreshToken || data.refreshToken;
-
-    if (!newAccessToken) {
-      return NextResponse.json(
-        { success: false, error: 'No access token in refresh response' },
-        { status: 500 }
-      );
-    }
-
-    // Return tokens in body so client can update localStorage; also set cookies
     const response = NextResponse.json({
       success: true,
-      data: { accessToken: newAccessToken, refreshToken: newRefreshToken },
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken,
-    });
-
-    // Access token: readable so client can use it after refresh
-    response.cookies.set('accessToken', newAccessToken, {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60, // 1 hour
-    });
-
-    if (newRefreshToken) {
-      response.cookies.set('refreshToken', newRefreshToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 60 * 60 * 24 * 7, // 7 days
-      });
-    }
-
-    return response;
-  } catch (error: any) {
-    console.error('Refresh token error:', error);
+      data: { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken },
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+    })
+    applyRefreshedTokens(response, tokens)
+    return response
+  } catch (error: unknown) {
+    console.error("Refresh token error:", error)
+    // Transient upstream/network — keep cookies so the client can retry.
     return NextResponse.json(
-      { success: false, error: 'Failed to refresh token' },
-      { status: 500 }
-    );
+      { success: false, error: "Failed to refresh token" },
+      { status: 500 },
+    )
   }
 }

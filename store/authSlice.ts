@@ -2,6 +2,7 @@ import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/tool
 import api from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { setSecureTokens, clearSecureTokens, getUserFromToken } from "@/lib/tokenManager"
+import { getAccessToken } from "@/lib/cookieAuth"
 import type {
   AuthUser,
   LoginRequestDto,
@@ -74,7 +75,7 @@ export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
   async () => {
     try {
       const res = await fetch("/api/auth/validate", { method: "GET", credentials: "include" })
-      const data = await res.json()
+      const data = await res.json().catch(() => ({} as any))
       if (process.env.NODE_ENV === "development") {
         console.log("[auth] GET /api/auth/validate → status", res.status, "body", data)
       }
@@ -84,16 +85,52 @@ export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
         }
         return data.user as AuthUser
       }
+
+      // Validate already attempted cookie refresh. Prefer keeping an unexpired JWT
+      // over clearing — aggressive clears race parallel workflow refreshes.
+      if (res.status === 401 || data?.valid === false) {
+        const user = getUserFromToken()
+        const token = getAccessToken()
+        if (token) {
+          try {
+            const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number }
+            if (payload.exp && payload.exp * 1000 > Date.now() && user) {
+              return user as unknown as AuthUser
+            }
+          } catch {
+            /* fall through */
+          }
+        }
+        // Only clear when we have no usable access token left.
+        if (!getAccessToken()) {
+          await clearSecureTokens()
+        }
+        return null
+      }
     } catch (e) {
       if (process.env.NODE_ENV === "development") {
         console.warn("[auth] GET /api/auth/validate request failed", e)
       }
     }
+
+    // Network hiccup: keep user if JWT is still unexpired; do not clear cookies.
     const user = getUserFromToken()
-    if (process.env.NODE_ENV === "development") {
-      console.log("[auth] validate had no user; using getUserFromToken()", user)
+    try {
+      const token = getAccessToken()
+      if (token) {
+        const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number }
+        if (payload.exp && payload.exp * 1000 > Date.now()) {
+          if (process.env.NODE_ENV === "development") {
+            console.log("[auth] validate unreachable; using unexpired JWT claims", user)
+          }
+          return (user as any) || null
+        }
+      }
+    } catch {
+      /* fall through */
     }
-    return (user as any) || null
+
+    return null
   },
 )
 

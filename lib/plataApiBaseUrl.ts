@@ -5,22 +5,25 @@ function stripTrailingApiPath(origin: string): string {
   return u.replace(/\/+$/, "")
 }
 
+function readEnvApiUrl(): string {
+  const fromEnv = (process.env.NEXT_PUBLIC_API_URL || "").trim()
+  if (!fromEnv) {
+    throw new Error(
+      "NEXT_PUBLIC_API_URL is required. Set it in .env / .env.local (see README §12).",
+    )
+  }
+  return stripTrailingApiPath(fromEnv.replace(/\/+$/, ""))
+}
+
 /**
- * `NEXT_PUBLIC_API_URL` with Plata gateway default when unset.
- * If env is exactly Spring’s `https://account-ms.fly.dev`, use Plata’s gateway instead.
+ * Plata gateway origin from `.env` (`NEXT_PUBLIC_API_URL`).
+ * Product-ms, create-app-ms, and auth routes are reached through this host.
  */
 export function getPlataApiBaseUrl(): string {
-  const fromEnv = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/+$/, "")
+  return readEnvApiUrl()
+}
 
-  let raw = fromEnv
-  if (!raw) {
-    raw = "https://account-ms-plata.fly.dev"
-  } else {
-    const normalized = stripTrailingApiPath(fromEnv)
-    if (/^https?:\/\/(www\.)?account-ms\.fly\.dev$/i.test(normalized)) {
-      raw = "https://account-ms-plata.fly.dev"
-    }
-  }
-
-  return stripTrailingApiPath(raw)
+/** Product-ms API origin — proxied via the Plata gateway (`NEXT_PUBLIC_API_URL`). */
+export function getProductApiBaseUrl(): string {
+  return getPlataApiBaseUrl()
 }

@@ -1,14 +1,11 @@
- "use client"
+"use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Trash2, AlertTriangle, Loader2, Copy, Eye, EyeOff, Plus, Download } from "lucide-react"
+import { Trash2, AlertTriangle, Loader2 } from "lucide-react"
 import { getAccessToken } from "@/lib/cookieAuth"
-import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
-
-type AppRecord = Record<string, unknown>
 
 interface App {
   id: string
@@ -19,153 +16,11 @@ interface App {
   [key: string]: unknown
 }
 
-const LABEL_FOR_FIELD: Record<string, string> = {
-  clientSecret: "Client secret",
-  client_secret: "Client secret",
-  secretKey: "Secret key",
-  secret_key: "Secret key",
-  apiSecret: "API secret",
-  api_secret: "API secret",
-  apiKey: "API key",
-  api_key: "API key",
-  springAppSecret: "Spring app secret",
-  webhookSecret: "Webhook secret",
-  webhook_secret: "Webhook secret",
-  privateKey: "Private key",
-  publicKey: "Public key",
-}
-
-function humanizeFieldKey(key: string) {
-  return key
-    .replace(/([A-Z])/g, " $1")
-    .replace(/_/g, " ")
-    .trim()
-    .replace(/^\w/, (c) => c.toUpperCase())
-}
-
-const MASK = "••••••••••"
-
-/** Private key column: signing secret material (API: secretKey, clientSecret, …). */
-function pickSecretKeyValue(app: App | null): string {
-  if (!app) return ""
-  const a = app as AppRecord
-  const keys = [
-    "secretKey",
-    "secret_key",
-    "clientSecret",
-    "client_secret",
-    "apiSecret",
-    "api_secret",
-    "springAppSecret",
-    "webhookSecret",
-    "webhook_secret",
-    "privateKey",
-    "private_key",
-  ]
-  for (const k of keys) {
-    const v = a[k]
-    if (v != null && String(v).trim()) return String(v).trim()
-  }
-  const creds = a.credentials
-  if (creds && typeof creds === "object") {
-    const nested = creds as AppRecord
-    for (const k of keys) {
-      const v = nested[k]
-      if (v != null && String(v).trim()) return String(v).trim()
-    }
-  }
-  return ""
-}
-
-/** Public key column: publishable key material (API: publicKey, publishable apiKey, …). */
-function pickPublicKeyValue(app: App | null): string {
-  if (!app) return ""
-  const a = app as AppRecord
-  const keys = ["publicKey", "public_key", "apiKey", "api_key", "publishableKey", "publishable_key"]
-  for (const k of keys) {
-    const v = a[k]
-    if (v != null && String(v).trim()) return String(v).trim()
-  }
-  const creds = a.credentials
-  if (creds && typeof creds === "object") {
-    const nested = creds as AppRecord
-    for (const k of keys) {
-      const v = nested[k]
-      if (v != null && String(v).trim()) return String(v).trim()
-    }
-  }
-  return ""
-}
-
-function formatCredentialDate(raw: unknown): string {
-  if (raw == null || raw === "") return "—"
-  const d = new Date(String(raw))
-  if (Number.isNaN(d.getTime())) return String(raw)
-  return d.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit", year: "numeric" })
-}
-
-function collectExtraCredentialRows(app: App | null): { id: string; label: string; value: string }[] {
-  if (!app) return []
-  const rows: { id: string; label: string; value: string }[] = []
-  const seen = new Set<string>()
-  const secretVal = pickSecretKeyValue(app)
-  const publicVal = pickPublicKeyValue(app)
-
-  const pushValue = (id: string, label: string, raw: unknown) => {
-    if (raw === undefined || raw === null) return
-    const value = String(raw).trim()
-    if (!value || seen.has(id) || value === secretVal || value === publicVal) return
-    seen.add(id)
-    rows.push({ id, label, value })
-  }
-
-  const skip = new Set([
-    "secretKey",
-    "secret_key",
-    "clientSecret",
-    "client_secret",
-    "apiSecret",
-    "api_secret",
-    "springAppSecret",
-    "webhookSecret",
-    "webhook_secret",
-    "publicKey",
-    "public_key",
-    "apiKey",
-    "api_key",
-    "publishableKey",
-    "publishable_key",
-    "credentials",
-  ])
-
-  for (const key of Object.keys(app)) {
-    if (skip.has(key)) continue
-    const v = (app as AppRecord)[key]
-    if (typeof v === "string" && v.length > 8 && /secret|key|token/i.test(key)) {
-      pushValue(`extra-${key}`, LABEL_FOR_FIELD[key] ?? humanizeFieldKey(key), v)
-    }
-  }
-
-  const pk = (app as AppRecord).productKeys ?? (app as AppRecord).product_keys
-  if (Array.isArray(pk)) {
-    pk.forEach((item, i) => {
-      pushValue(
-        `productKey-${i}`,
-        `Product key ${i + 1}`,
-        typeof item === "object" && item !== null ? JSON.stringify(item) : item,
-      )
-    })
-  }
-
-  return rows
-}
-
-// Helper to get token (cookie or localStorage)
 const getAuthHeaders = () => {
-  const token = typeof window !== 'undefined' ? getAccessToken() : null
+  const token = typeof window !== "undefined" ? getAccessToken() : null
   return {
-    'Content-Type': 'application/json',
-    ...(token && { 'Authorization': `Bearer ${token}` }),
+    "Content-Type": "application/json",
+    ...(token && { Authorization: `Bearer ${token}` }),
   }
 }
 
@@ -174,20 +29,17 @@ export default function SettingsPage() {
   const appId = params.id as string
   const router = useRouter()
   const [app, setApp] = useState<App | null>(null)
-  const [keysBundle, setKeysBundle] = useState<App | null>(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [confirmText, setConfirmText] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [generatingKey, setGeneratingKey] = useState(false)
-  const [loadingKeys, setLoadingKeys] = useState(true)
 
   useEffect(() => {
     const fetchApp = async () => {
       try {
         const response = await fetch(`/api/apps/${appId}`, {
-          credentials: 'include',
+          credentials: "include",
           headers: getAuthHeaders(),
         })
         const data = await response.json()
@@ -195,185 +47,20 @@ export default function SettingsPage() {
           setApp(data.data)
         }
       } catch (err) {
-        console.error('Failed to fetch app:', err)
+        console.error("Failed to fetch app:", err)
       } finally {
         setLoading(false)
       }
     }
 
     if (appId) {
-      fetchApp()
+      void fetchApp()
     }
   }, [appId])
-
-  useEffect(() => {
-    const loadKeys = async () => {
-      try {
-        setLoadingKeys(true)
-        const res = await fetch("/api/v1/keys", {
-          method: "GET",
-          credentials: "include",
-          headers: getAuthHeaders(),
-          cache: "no-store",
-        })
-        const json = await res.json().catch(() => ({} as any))
-
-        if (!res.ok) return
-
-        // Handle the new API response structure: { success: true, data: { apiKeys: [...] } }
-        if (json.success && json.data && json.data.apiKeys) {
-          const apiKeysData = json.data.apiKeys
-          setApiKeys(apiKeysData)
-          // Set the first key as the current keysBundle for backward compatibility
-          setKeysBundle(apiKeysData.length > 0 ? apiKeysData[0] : null)
-        } else if (json.data && json.data.apiKeys) {
-          // Fallback for different response structure
-          const apiKeysData = json.data.apiKeys
-          setApiKeys(apiKeysData)
-          setKeysBundle(apiKeysData.length > 0 ? apiKeysData[0] : null)
-        } else {
-          // Handle legacy structure or empty response
-          const payload = (json?.data ?? json) as unknown
-          if (Array.isArray(payload)) {
-            setApiKeys(payload)
-            setKeysBundle(payload.length > 0 ? payload[0] : null)
-          } else if (payload) {
-            setApiKeys([payload])
-            setKeysBundle(payload as any)
-          } else {
-            setApiKeys([])
-            setKeysBundle(null)
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch /api/v1/keys:", err)
-        setApiKeys([])
-        setKeysBundle(null)
-      } finally {
-        setLoadingKeys(false)
-      }
-    }
-
-    void loadKeys()
-  }, [appId])
-
-  const secretKeyValue = useMemo(() => pickSecretKeyValue(keysBundle ?? app), [keysBundle, app])
-  const publicKeyValue = useMemo(() => pickPublicKeyValue(keysBundle ?? app), [keysBundle, app])
-  const extraCredentialRows = useMemo(() => collectExtraCredentialRows(keysBundle ?? app), [keysBundle, app])
-
-  const [showSecretKey, setShowSecretKey] = useState<Record<string, boolean>>({})
-  const [showPublicKey, setShowPublicKey] = useState<Record<string, boolean>>({})
-  const [apiKeys, setApiKeys] = useState<any[]>([]) // Store multiple API keys
-
-  const merchantOrAppId = useMemo(() => {
-    const source = keysBundle ?? app
-    if (!source) return appId
-    const m = (source as AppRecord).merchantId ?? (source as AppRecord).merchant_id
-    return m != null && String(m).trim() ? String(m).trim() : appId
-  }, [keysBundle, app, appId])
-
-  const generatedOn = useMemo(() => {
-    const source = keysBundle ?? app
-    if (!source) return "—"
-    const a = source as AppRecord
-    return formatCredentialDate(
-      a.generatedOn ??
-        a.generated_on ??
-        a.keysGeneratedAt ??
-        a.createdAt ??
-        a.dateCreated ??
-        a.created_at,
-    )
-  }, [keysBundle, app])
-
-  const expiresOn = useMemo(() => {
-    const source = keysBundle ?? app
-    if (!source) return "—"
-    const a = source as AppRecord
-    return formatCredentialDate(
-      a.expiresOn ??
-        a.expires_on ??
-        a.keyExpiresAt ??
-        a.keysExpiresAt ??
-        a.credentialsExpireAt ??
-        a.expiresAt ??
-        a.expires_at,
-    )
-  }, [keysBundle, app])
-
-  const copyToClipboard = async (text: string, label: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success(`${label} copied`)
-    } catch {
-      toast.error("Could not copy to clipboard")
-    }
-  }
-
-  const handleGenerateNewKey = async () => {
-    try {
-      setGeneratingKey(true)
-      
-      const response = await fetch("/api/v1/keys", {
-        method: "POST",
-        credentials: "include",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          appId: appId, // Pass the app ID to associate the key with this app
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to generate key: ${response.status}`)
-      }
-
-      const data = await response.json()
-      
-      if (data.success) {
-        toast.success("API Key created successfully! Store the secret key safely, it will not be shown again.")
-        
-        // Refresh keys to show the new key - call the updated loadKeys logic
-        try {
-          setLoadingKeys(true)
-          const res = await fetch("/api/v1/keys", {
-            method: "GET",
-            credentials: "include",
-            headers: getAuthHeaders(),
-            cache: "no-store",
-          })
-          const json = await res.json().catch(() => ({} as any))
-
-          if (!res.ok) return
-
-          // Handle the new API response structure
-          if (json.success && json.data && json.data.apiKeys) {
-            const apiKeysData = json.data.apiKeys
-            setApiKeys(apiKeysData)
-            setKeysBundle(apiKeysData.length > 0 ? apiKeysData[0] : null)
-          } else if (json.data && json.data.apiKeys) {
-            const apiKeysData = json.data.apiKeys
-            setApiKeys(apiKeysData)
-            setKeysBundle(apiKeysData.length > 0 ? apiKeysData[0] : null)
-          }
-        } catch (err) {
-          console.error("Failed to refresh keys:", err)
-        } finally {
-          setLoadingKeys(false)
-        }
-      } else {
-        toast.error(data.message || "Failed to generate API key")
-      }
-    } catch (error) {
-      console.error("Failed to generate key:", error)
-      toast.error("Failed to generate new API key")
-    } finally {
-      setGeneratingKey(false)
-    }
-  }
 
   const handleDeleteApp = async () => {
     if (confirmText !== app?.name) {
-      setError('Please type the app name correctly to confirm deletion')
+      setError("Please type the app name correctly to confirm deletion")
       return
     }
 
@@ -382,22 +69,21 @@ export default function SettingsPage() {
       setError(null)
 
       const response = await fetch(`/api/apps/${appId}`, {
-        method: 'DELETE',
-        credentials: 'include',
+        method: "DELETE",
+        credentials: "include",
         headers: getAuthHeaders(),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete app')
+        throw new Error(data.error || "Failed to delete app")
       }
 
-      // Redirect to apps list
-      router.push('/dashboard/create-app/all-apps')
+      router.push("/dashboard/create-app/all-apps")
     } catch (err) {
-      console.error('Failed to delete app:', err)
-      setError(err instanceof Error ? err.message : 'Failed to delete app')
+      console.error("Failed to delete app:", err)
+      setError(err instanceof Error ? err.message : "Failed to delete app")
     } finally {
       setDeleting(false)
     }
@@ -406,10 +92,10 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="flex-1 bg-white p-8">
-        <Skeleton className="h-8 w-28 mb-6" />
-
-        <div className="border border-gray-200 rounded-lg p-6 mb-8">
-          <Skeleton className="h-5 w-40 mb-4" />
+        <Skeleton className="mb-2 h-8 w-28" />
+        <Skeleton className="mb-6 h-4 w-48" />
+        <div className="mb-8 rounded-lg border border-gray-200 p-6">
+          <Skeleton className="mb-4 h-5 w-40" />
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Skeleton className="h-4 w-24" />
@@ -419,46 +105,6 @@ export default function SettingsPage() {
               <Skeleton className="h-4 w-16" />
               <Skeleton className="h-5 w-28" />
             </div>
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-16" />
-              <Skeleton className="h-6 w-24 rounded-full" />
-            </div>
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-14" />
-              <Skeleton className="h-5 w-32" />
-            </div>
-          </div>
-        </div>
-
-        <div className="border border-gray-200 rounded-lg p-6 mb-8">
-          <div className="space-y-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
-              <div className="space-y-2">
-                <Skeleton className="h-6 w-56" />
-                <Skeleton className="h-4 w-80" />
-              </div>
-              <Skeleton className="h-10 w-56 rounded-md" />
-            </div>
-
-            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-              <div className="min-w-[720px]">
-                <div className="grid grid-cols-6 gap-4 p-4 bg-gray-50 border-b border-gray-200">
-                  {Array.from({ length: 6 }).map((_, idx) => (
-                    <Skeleton key={idx} className="h-4 w-24" />
-                  ))}
-                </div>
-                {Array.from({ length: 2 }).map((_, rowIdx) => (
-                  <div key={rowIdx} className="grid grid-cols-6 gap-4 p-4 border-b border-gray-100 last:border-b-0 items-center">
-                    <Skeleton className="h-5 w-28 font-mono" />
-                    <Skeleton className="h-5 w-44" />
-                    <Skeleton className="h-5 w-44" />
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-4 w-24" />
-                    <Skeleton className="h-9 w-28 rounded-md" />
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -467,216 +113,54 @@ export default function SettingsPage() {
 
   return (
     <div className="flex-1 bg-white p-8">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-6">Settings</h1>
-      
-      {/* App Info Section */}
-      <div className="border border-gray-200 rounded-lg p-6 mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">App Information</h2>
+      <h1 className="text-2xl font-semibold text-gray-900">Settings</h1>
+      <p className="mb-6 text-sm text-gray-500">Adjust your preferences.</p>
+
+      <div className="mb-8 rounded-lg border border-gray-200 p-6">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">App Information</h2>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-sm text-gray-500">App Name</p>
-            <p className="text-gray-900 font-medium">{app?.name || 'N/A'}</p>
+            <p className="font-medium text-gray-900">{app?.name || "N/A"}</p>
           </div>
           <div>
             <p className="text-sm text-gray-500">App ID</p>
-            <p className="text-gray-900 font-mono text-sm">{appId}</p>
+            <p className="font-mono text-sm text-gray-900">{appId}</p>
           </div>
           <div>
             <p className="text-sm text-gray-500">Status</p>
-            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-              app?.status === 'approved' ? 'bg-green-100 text-green-800' :
-              app?.status === 'submitted' ? 'bg-blue-100 text-blue-800' :
-              app?.status === 'rejected' ? 'bg-red-100 text-red-800' :
-              'bg-gray-100 text-gray-800'
-            }`}>
-              {app?.status || 'draft'}
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                app?.status === "approved" || app?.status === "active"
+                  ? "bg-green-100 text-green-800"
+                  : app?.status === "submitted"
+                    ? "bg-blue-100 text-blue-800"
+                    : app?.status === "rejected"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-gray-100 text-gray-800"
+              }`}
+            >
+              {app?.status || "draft"}
             </span>
           </div>
-          {app?.alias && (
+          {app?.alias ? (
             <div>
               <p className="text-sm text-gray-500">Alias</p>
               <p className="text-gray-900">{app.alias}</p>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* API keys — CredentialsTab-style table (Secret key + Private key columns) */}
-      <div className="border border-gray-200 rounded-lg p-6 mb-8">
-        <div className="space-y-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-center">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">API keys &amp; credentials</h2>
-              <p className="text-sm text-gray-500">Same layout as Developer credentials: show or hide keys, then copy.</p>
-            </div>
-            <Button 
-              type="button" 
-              className="bg-black text-white hover:bg-gray-800 shrink-0" 
-              onClick={handleGenerateNewKey}
-              disabled={generatingKey}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              {generatingKey ? "Generating..." : "Generate New Key"}
-            </Button>
-          </div>
-
-          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-            <div className="min-w-[720px]">
-              <div className="grid grid-cols-6 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
-                <div>Merchant ID</div>
-                <div>Private key</div>
-                <div>Public key</div>
-                <div>Generated On</div>
-                <div>Expires on</div>
-                <div>Download</div>
-              </div>
-              {loadingKeys ? (
-                // Skeleton loaders for loading state
-                Array.from({ length: 2 }).map((_, index) => (
-                  <div key={`skeleton-${index}`} className="grid grid-cols-6 gap-4 p-4 border-b border-gray-100">
-                    <Skeleton className="h-4 w-24 font-mono" />
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-8 w-20 rounded-md" />
-                  </div>
-                ))
-              ) : apiKeys.length === 0 ? (
-                <div className="p-8 text-center text-gray-500 border-b border-gray-100">
-                  No API keys found. Generate your first key to get started.
-                </div>
-              ) : (
-                apiKeys.map((key) => {
-                  const keyId = key.id || key._id || key.merchant_id || Math.random().toString()
-                  const secretValue = key.secret_key_hash || key.secret_key || key.secretKey // Handle the hash from API
-                  const publicValue = key.public_key || key.publicKey
-                  const merchantId = key.merchant_id || key.merchantId || merchantOrAppId
-                  const generatedDate = formatCredentialDate(
-                    key.created_at || key.createdAt || key.generatedOn || key.generated_at
-                  )
-                  const expiresDate = formatCredentialDate(
-                    key.expires_at || key.expiresAt || key.expires_on || key.expires_at
-                  )
-
-                  return (
-                    <div key={keyId} className="grid grid-cols-6 gap-4 p-4 border-b border-gray-100 last:border-b-0 text-sm items-center">
-                      <div className="font-medium font-mono text-xs break-all">{merchantId}</div>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="truncate font-mono text-xs" title={secretValue || undefined}>
-                          {!secretValue ? "—" : showSecretKey[keyId] ? secretValue : MASK}
-                        </span>
-                        {secretValue ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setShowSecretKey((prev) => ({ ...prev, [keyId]: !prev[keyId] }))}
-                              className="shrink-0 text-gray-400 hover:text-gray-600"
-                              aria-label={showSecretKey[keyId] ? "Hide private key" : "Show private key"}
-                            >
-                              {showSecretKey[keyId] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void copyToClipboard(secretValue, "Private key")}
-                              className="shrink-0 text-gray-400 hover:text-gray-600"
-                              aria-label="Copy private key"
-                            >
-                              <Copy className="w-4 h-4" />
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="truncate font-mono text-xs" title={publicValue || undefined}>
-                          {!publicValue ? "—" : showPublicKey[keyId] ? publicValue : MASK}
-                        </span>
-                        {publicValue ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setShowPublicKey((prev) => ({ ...prev, [keyId]: !prev[keyId] }))}
-                              className="shrink-0 text-gray-400 hover:text-gray-600"
-                              aria-label={showPublicKey[keyId] ? "Hide public key" : "Show public key"}
-                            >
-                              {showPublicKey[keyId] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void copyToClipboard(publicValue, "Public key")}
-                              className="shrink-0 text-gray-400 hover:text-gray-600"
-                              aria-label="Copy public key"
-                            >
-                              <Copy className="w-4 h-4" />
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                      <div className="text-gray-700">{generatedDate}</div>
-                      <div className="text-gray-700">{expiresDate}</div>
-                      <div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="gap-1"
-                          onClick={() => toast.info("Key bundle download will be available when your backend exposes a download URL.")}
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          Download
-                        </Button>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
-          </div>
-
-          {extraCredentialRows.length > 0 ? (
-            <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4">
-              <p className="text-sm font-medium text-gray-800">Additional credentials</p>
-              {extraCredentialRows.map((row) => (
-                <div
-                  key={row.id}
-                  className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start bg-white p-4 rounded-md shadow-sm"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-gray-900">{row.label}</p>
-                    <p className="text-sm text-gray-600 break-all font-mono">{row.value}</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void copyToClipboard(row.value, row.label)}
-                    className="shrink-0 inline-flex items-center justify-center rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-                    aria-label={`Copy ${row.label}`}
-                  >
-                    <Copy className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {!secretKeyValue && !publicKeyValue ? (
-            <p className="text-sm text-gray-500">
-              No private or public key on this app record yet. When the API returns fields such as{" "}
-              <code className="text-xs">secretKey</code>, <code className="text-xs">clientSecret</code>, <code className="text-xs">publicKey</code>, or{" "}
-              <code className="text-xs">apiKey</code>, they will appear in the table above.
-            </p>
           ) : null}
         </div>
       </div>
 
-      {/* Danger Zone */}
-      <div className="border border-red-200 rounded-lg p-6 bg-red-50">
-        <div className="flex items-center gap-2 mb-4">
+      <div className="rounded-lg border border-red-200 bg-red-50 p-6">
+        <div className="mb-4 flex items-center gap-2">
           <AlertTriangle className="text-red-600" size={20} />
           <h2 className="text-lg font-semibold text-red-900">Danger Zone</h2>
         </div>
-        
-        <p className="text-sm text-red-700 mb-4">
-          Deleting this app is permanent and cannot be undone. All associated data including products and configurations will be removed.
+
+        <p className="mb-4 text-sm text-red-700">
+          Deleting this app is permanent and cannot be undone. All associated data including
+          products and configurations will be removed.
         </p>
 
         {!showDeleteConfirm ? (
@@ -690,8 +174,8 @@ export default function SettingsPage() {
           </Button>
         ) : (
           <div className="space-y-4">
-            <div className="bg-white border border-red-300 rounded-lg p-4">
-              <p className="text-sm text-gray-700 mb-3">
+            <div className="rounded-lg border border-red-300 bg-white p-4">
+              <p className="mb-3 text-sm text-gray-700">
                 To confirm deletion, please type the app name: <strong>{app?.name}</strong>
               </p>
               <input
@@ -699,16 +183,14 @@ export default function SettingsPage() {
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
                 placeholder="Type app name to confirm"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-red-500"
               />
-              {error && (
-                <p className="text-red-600 text-sm mt-2">{error}</p>
-              )}
+              {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
             </div>
             <div className="flex gap-3">
               <Button
                 variant="destructive"
-                onClick={handleDeleteApp}
+                onClick={() => void handleDeleteApp()}
                 disabled={deleting || confirmText !== app?.name}
                 className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
               >

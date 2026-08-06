@@ -424,8 +424,16 @@ export default function SettingsPage() {
                             </div>
                         </section>
 
-                        {/* API Keys — integration keys (per-app keys live under each app's Settings) */}
-                        <APIKeysSection className="w-full" />
+                        <APIKeysSection
+                            className="w-full"
+                            footerNote={
+                                <>
+                                    Account-wide keys for your merchant on the Plata gateway. Prefer no
+                                    expiry for integrator keys; rotate by create → update consumers →
+                                    revoke old.
+                                </>
+                            }
+                        />
                     </div>
                 )}
 

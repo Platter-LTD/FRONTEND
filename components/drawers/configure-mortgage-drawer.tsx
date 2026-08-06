@@ -20,6 +20,7 @@ import {
 import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
 import type { MortgageConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
+import { ProductConfigDocumentRequirementsPanel } from "@/components/drawers/product-config-document-requirements"
 import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 import {
   DEFAULT_REPAYMENT_WORKFLOWS,
@@ -28,6 +29,7 @@ import {
   ProductConfigSelect,
   ProductConfigTabs,
   ProductConfigToggle,
+  withRepaymentStructureOptions,
 } from "@/components/drawers/product-config-form-fields"
 import { validateAllMortgageSteps, validateMortgageStep } from "@/lib/productConfigureStepValidation"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
@@ -47,7 +49,7 @@ interface ConfigureMortgageDrawerProps {
   prefetchedOptions?: MortgageConfigurePrefetched | null
 }
 
-const STEPS = ["About Product", "Structure", "Requirements", "Fees & Charges", "Properties"]
+const STEPS = ["About Product", "Structure", "Requirements", "Fees & Charges", "Properties", "Inspection Dates"]
 
 const DEFAULT_TENURE_OPTIONS: string[] = []
 const DEFAULT_INTEREST_METHOD_OPTIONS: string[] = []
@@ -100,7 +102,47 @@ interface PropertyItem {
   previewObjectUrls: string[]
 }
 
+interface InspectionDateItem {
+  id: string
+  /** Value for `<input type="datetime-local" />` (local wall time). */
+  scheduledForLocal: string
+  label: string
+  location: string
+  notes: string
+}
+
 type DocumentRequirementUpload = { name: string; file?: File; fileUrl?: string }
+
+function toDatetimeLocalValue(isoOrLocal: string): string {
+  const raw = String(isoOrLocal || "").trim()
+  if (!raw) return ""
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw)) return raw
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function datetimeLocalToIso(local: string): string | null {
+  const raw = String(local || "").trim()
+  if (!raw) return null
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toISOString()
+}
+
+function formatInspectionSlotLabel(local: string): string {
+  const d = new Date(local)
+  if (Number.isNaN(d.getTime())) return local || "—"
+  return d.toLocaleString("en-NG", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
 
 function classifyEquityRequirementMode(selected: string): "zero" | "fixed" | "percentage" | "none" {
   const s = selected.trim().toLowerCase().replace(/\s+/g, " ")
@@ -230,6 +272,7 @@ export default function ConfigureMortgageDrawer({
   const [contractId, setContractId] = useState("")
   const [airSignSecretKey, setAirSignSecretKey] = useState("")
   const [airSignUid, setAirSignUid] = useState("")
+  const [requireApplicantSignature, setRequireApplicantSignature] = useState(false)
 
   const [chargeName, setChargeName] = useState("")
   const [chargeFeeType, setChargeFeeType] = useState("")
@@ -302,6 +345,12 @@ export default function ConfigureMortgageDrawer({
   const [propertyFormError, setPropertyFormError] = useState("")
   const propertyPreviewInputRef = useRef<HTMLInputElement>(null)
   const [properties, setProperties] = useState<PropertyItem[]>([])
+  const [inspectionDates, setInspectionDates] = useState<InspectionDateItem[]>([])
+  const [inspectionScheduledForLocal, setInspectionScheduledForLocal] = useState("")
+  const [inspectionLabel, setInspectionLabel] = useState("")
+  const [inspectionLocation, setInspectionLocation] = useState("")
+  const [inspectionNotes, setInspectionNotes] = useState("")
+  const [inspectionFormError, setInspectionFormError] = useState("")
 
   useEffect(() => {
     if (!isOpen) return
@@ -310,7 +359,7 @@ export default function ConfigureMortgageDrawer({
       setInterestMethodOptions(prefetchedOptions.interestMethods)
       setMoratoriumTypeOptions(prefetchedOptions.moratoriumType)
       setMoratoriumDurationOptions(prefetchedOptions.moratoriumDuration)
-      setRepaymentScheduleOptions(prefetchedOptions.repaymentSchedule)
+      setRepaymentScheduleOptions(withRepaymentStructureOptions(prefetchedOptions.repaymentSchedule))
       setAmortizationScheduleOptions(prefetchedOptions.amortizationSchedule)
       setRepaymentFrequencyOptions(prefetchedOptions.repaymentFrequency)
       setAcceptableNpaOptions(prefetchedOptions.acceptableNpa)
@@ -351,7 +400,7 @@ export default function ConfigureMortgageDrawer({
         fetchProductOptionLabels("interest-method", DEFAULT_INTEREST_METHOD_OPTIONS),
         fetchProductOptionLabels("moratorium", DEFAULT_MORATORIUM_TYPE_OPTIONS),
         fetchProductOptionLabels("moratorium-duration", DEFAULT_MORATORIUM_DURATION_OPTIONS),
-        fetchOptionLabels("repayment-schedule", DEFAULT_TENURE_OPTIONS),
+        fetchOptionLabels("repayment-structure", DEFAULT_TENURE_OPTIONS),
         fetchOptionLabels("amortization", DEFAULT_AMORTIZATION_SCHEDULE_OPTIONS),
         fetchOptionLabels("repayment-cycle", DEFAULT_REPAYMENT_FREQUENCY_OPTIONS),
         fetchOptionLabels("acceptable-npa", DEFAULT_ACCEPTABLE_NPA_OPTIONS),
@@ -371,7 +420,7 @@ export default function ConfigureMortgageDrawer({
       setInterestMethodOptions(interestMethods)
       setMoratoriumTypeOptions(moratoriumType)
       setMoratoriumDurationOptions(moratoriumDuration)
-      setRepaymentScheduleOptions(repaymentSchedule)
+      setRepaymentScheduleOptions(withRepaymentStructureOptions(repaymentSchedule))
       setAmortizationScheduleOptions(amortizationSchedule)
       setRepaymentFrequencyOptions(repaymentFrequency)
       setAcceptableNpaOptions(acceptableNpa)
@@ -481,7 +530,11 @@ export default function ConfigureMortgageDrawer({
     )
     setRepaymentSchedule(
       resolveOptionLabel(
-        mortgageData.repaymentSchedule ?? structure.repaymentSchedule ?? "",
+        mortgageData.repaymentStructure ??
+          structure.repaymentStructure ??
+          mortgageData.repaymentSchedule ??
+          structure.repaymentSchedule ??
+          "",
         repaymentScheduleOptions,
       ),
     )
@@ -563,13 +616,37 @@ export default function ConfigureMortgageDrawer({
       }
     }
 
+    const rawInspectionDates = mortgageData.inspectionDates
+    if (Array.isArray(rawInspectionDates) && rawInspectionDates.length) {
+      setInspectionDates(
+        rawInspectionDates.map((slot: Record<string, unknown>, idx: number) => ({
+          id: String(slot.id ?? `insp-${idx}-${String(slot.scheduledFor ?? idx)}`),
+          scheduledForLocal: toDatetimeLocalValue(String(slot.scheduledFor ?? "")),
+          label: String(slot.label ?? "").slice(0, 200),
+          location: String(slot.location ?? "").slice(0, 300),
+          notes: String(slot.notes ?? "").slice(0, 500),
+        })),
+      )
+    } else {
+      setInspectionDates([])
+    }
+
     const otherReqRaw = mortgageData.otherRequirements ?? requirements.otherRequirements
     setOtherRequirements(
       Array.isArray(otherReqRaw) ? otherReqRaw.map((row: unknown) => normalizeOtherRequirementRowFromApi(row)) : [],
     )
-    setContractId(String(mortgageData.contractId ?? structure.contractId ?? ""))
-    setAirSignSecretKey(String(mortgageData.airSignSecretKey ?? structure.airSignSecretKey ?? ""))
-    setAirSignUid(String(mortgageData.airSignUid ?? structure.airSignUid ?? ""))
+    setContractId(
+      String(mortgageData.contractId ?? structure.contractId ?? requirements.contractId ?? ""),
+    )
+    setAirSignSecretKey(
+      String(
+        mortgageData.airSignSecretKey ?? structure.airSignSecretKey ?? requirements.airSignSecretKey ?? "",
+      ),
+    )
+    setAirSignUid(
+      String(mortgageData.airSignUid ?? structure.airSignUid ?? requirements.airSignUid ?? ""),
+    )
+    setRequireApplicantSignature(asBool(mortgageData.requireApplicantSignature))
     setCharges(
       Array.isArray(mortgageData.charges ?? fees.charges ?? fees.fees)
         ? (mortgageData.charges ?? fees.charges ?? fees.fees)
@@ -579,8 +656,21 @@ export default function ConfigureMortgageDrawer({
     setCustomerPayChargesBeforeDisbursement(
       asBool(mortgageData.customerPayChargesBeforeDisbursement ?? fees.customerPayChargesBeforeDisbursement),
     )
-    setEnableLateRepaymentCharges(asBool(mortgageData.enableLateRepaymentCharges ?? fees.enableLateRepaymentCharges))
-    setPenalties(Array.isArray(mortgageData.penalties ?? fees.penalties) ? (mortgageData.penalties ?? fees.penalties) : [])
+    setEnableLateRepaymentCharges(
+      asBool(
+        mortgageData.enableLateRepaymentCharges ??
+          (fees.lateRepayment as Record<string, unknown> | undefined)?.enabled ??
+          fees.enableLateRepaymentCharges,
+      ),
+    )
+    const latePenList = Array.isArray((fees.lateRepayment as Record<string, unknown> | undefined)?.penalties)
+      ? ((fees.lateRepayment as Record<string, unknown>).penalties as unknown[])
+      : []
+    setPenalties(
+      Array.isArray(mortgageData.penalties ?? fees.penalties ?? latePenList)
+        ? (mortgageData.penalties ?? fees.penalties ?? latePenList)
+        : [],
+    )
   }, [
     isOpen,
     mortgageData,
@@ -827,6 +917,10 @@ export default function ConfigureMortgageDrawer({
       setPropertyFormError("Fill name, type, value and location before adding.")
       return
     }
+    if (!propertyVideoUrl.trim()) {
+      setPropertyFormError("Property video URL is required before adding.")
+      return
+    }
     setPropertyFormError("")
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     const previewFiles = [...propertyPreviewFiles]
@@ -935,7 +1029,65 @@ export default function ConfigureMortgageDrawer({
       previewFiles: p.previewFiles,
       videoUrl: p.videoUrl,
     })),
+    inspectionDates: inspectionDates
+      .map((slot) => {
+        const scheduledFor = datetimeLocalToIso(slot.scheduledForLocal)
+        if (!scheduledFor) return null
+        return {
+          scheduledFor,
+          label: slot.label.trim() || undefined,
+          location: slot.location.trim() || undefined,
+          notes: slot.notes.trim() || undefined,
+        }
+      })
+      .filter((slot): slot is NonNullable<typeof slot> => !!slot),
   })
+
+  const addInspectionDate = () => {
+    setInspectionFormError("")
+    const scheduledFor = datetimeLocalToIso(inspectionScheduledForLocal)
+    if (!scheduledFor) {
+      setInspectionFormError("Choose a date and time for the inspection slot.")
+      return
+    }
+    if (inspectionLabel.trim().length > 200) {
+      setInspectionFormError("Label must be 200 characters or fewer.")
+      return
+    }
+    if (inspectionLocation.trim().length > 300) {
+      setInspectionFormError("Location must be 300 characters or fewer.")
+      return
+    }
+    if (inspectionNotes.trim().length > 500) {
+      setInspectionFormError("Notes must be 500 characters or fewer.")
+      return
+    }
+    const duplicate = inspectionDates.some(
+      (slot) => datetimeLocalToIso(slot.scheduledForLocal) === scheduledFor,
+    )
+    if (duplicate) {
+      setInspectionFormError("That date and time is already added.")
+      return
+    }
+    setInspectionDates((prev) => [
+      ...prev,
+      {
+        id: `insp-${Date.now()}`,
+        scheduledForLocal: toDatetimeLocalValue(inspectionScheduledForLocal),
+        label: inspectionLabel.trim().slice(0, 200),
+        location: inspectionLocation.trim().slice(0, 300),
+        notes: inspectionNotes.trim().slice(0, 500),
+      },
+    ])
+    setInspectionScheduledForLocal("")
+    setInspectionLabel("")
+    setInspectionLocation("")
+    setInspectionNotes("")
+  }
+
+  const removeInspectionDate = (id: string) => {
+    setInspectionDates((prev) => prev.filter((slot) => slot.id !== id))
+  }
 
   const handleNext = async () => {
     if (step < STEPS.length) {
@@ -1007,13 +1159,18 @@ export default function ConfigureMortgageDrawer({
       const otherRequirementsPayload = await serializeOtherRequirementsForSubmit(otherRequirements)
 
       let equityContributionSubmit: number | undefined
-      if (equityRequirementMode === "percentage") {
+      if (equityRequirementMode === "fixed") {
+        const amount = Number.parseFloat(removeCommas(equityFixedAmount))
+        equityContributionSubmit = Number.isFinite(amount) ? amount : undefined
+      } else if (equityRequirementMode === "percentage") {
         const pct = Number.parseFloat(equityPercentage.replace(/%/g, "").trim())
         equityContributionSubmit = Number.isFinite(pct)
           ? pct
           : typeof mortgageData?.equityContribution === "number"
             ? mortgageData.equityContribution
             : undefined
+      } else if (equityRequirementMode === "zero") {
+        equityContributionSubmit = 0
       } else if (typeof mortgageData?.equityContribution === "number") {
         equityContributionSubmit = mortgageData.equityContribution
       }
@@ -1058,6 +1215,7 @@ export default function ConfigureMortgageDrawer({
           repaymentWorkflow,
           minLoanAmount,
           maxLoanAmount,
+          repaymentStructure: repaymentSchedule,
           repaymentSchedule,
           amortizationSchedule,
           repaymentFrequency,
@@ -1071,12 +1229,25 @@ export default function ConfigureMortgageDrawer({
           contractId,
           airSignSecretKey,
           airSignUid,
+          requireApplicantSignature,
           charges,
           deductChargesOnLoan,
           customerPayChargesBeforeDisbursement,
           enableLateRepaymentCharges,
           penalties,
           properties: propertiesPayload,
+          inspectionDates: inspectionDates
+            .map((slot) => {
+              const scheduledFor = datetimeLocalToIso(slot.scheduledForLocal)
+              if (!scheduledFor) return null
+              return {
+                scheduledFor,
+                ...(slot.label.trim() ? { label: slot.label.trim().slice(0, 200) } : {}),
+                ...(slot.location.trim() ? { location: slot.location.trim().slice(0, 300) } : {}),
+                ...(slot.notes.trim() ? { notes: slot.notes.trim().slice(0, 500) } : {}),
+              }
+            })
+            .filter((slot): slot is NonNullable<typeof slot> => !!slot),
         }),
       )
       toast.success("Mortgage product configuration saved successfully.")
@@ -1134,6 +1305,8 @@ export default function ConfigureMortgageDrawer({
             description={description}
             onDescriptionChange={setDescription}
             typeSectionLabel="Mortgage Type"
+            typeSectionRequirement="optional"
+            typeSectionHelperText="Product type is already captured when you created this mortgage. Select a type here only if you need to specify it again."
             typeNameDraft=""
             typeDescDraft=""
             onTypeNameDraftChange={() => {}}
@@ -1242,7 +1415,7 @@ export default function ConfigureMortgageDrawer({
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <ProductConfigSelect
-                label="Repayment Schedule"
+                label="Repayment Structure"
                 placeholder="Select Section"
                 value={repaymentSchedule}
                 options={repaymentScheduleOptions}
@@ -1333,60 +1506,16 @@ export default function ConfigureMortgageDrawer({
             ) : null}
           </div>
 
-            <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
-              <p className="text-sm font-medium text-gray-700">
-                Document Requirements{" "}
-                <span className="font-normal text-gray-500">(Required) Requires customer to download fill the form</span>
-              </p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-                <ProductConfigInput
-                  label="Name Document"
-                  placeholder="Name document"
-                  value={documentName}
-                  onChange={setDocumentName}
-                  requirement="required"
-                />
-                <div className="flex flex-col gap-2 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center">
-                  <Upload className="shrink-0 text-gray-500" size={18} />
-                  <div className="min-w-0 flex-1 text-xs text-gray-600">
-                    Add image <span className="text-gray-400">PDF format • Max. 5MB</span>
-                  </div>
-              <Button 
-                type="button"
-                    onClick={() => documentsInputRef.current?.click()}
-                    className="h-10 shrink-0 bg-[#9A813F] text-white hover:bg-[#8A7335]"
-              >
-                    Upload
-              </Button>
-                  <input
-                    ref={documentsInputRef}
-                    type="file"
-                    onChange={handleDocumentUpload}
-                    accept=".pdf,application/pdf"
-                    className="hidden"
-                  />
-                </div>
-              </div>
-              {documents.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {documents.map((doc, index) => (
-                    <span
-                      key={`${doc.file?.name ?? doc.fileUrl ?? doc.name}-${index}`}
-                      className="inline-flex items-center gap-2 rounded-md bg-[#9A813F] px-3 py-2 text-xs text-white"
-                    >
-                      {doc.name}
-                      <button
-                        type="button"
-                        onClick={() => setDocuments((prev) => prev.filter((_, current) => current !== index))}
-                        className="text-white/90 hover:text-white"
-                      >
-                        <X size={14} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ProductConfigDocumentRequirementsPanel
+              documentName={documentName}
+              onDocumentNameChange={setDocumentName}
+              documents={documents}
+              onDocumentsChange={setDocuments}
+              uploadInputRef={documentsInputRef}
+              onUpload={handleDocumentUpload}
+              helperText="Requires customer to download and fill the form"
+              uploadVariant="card"
+            />
 
             <ProductConfigOtherRequirementsPanel
               otherRequirementOptions={otherRequirementOptions}
@@ -1405,6 +1534,14 @@ export default function ConfigureMortgageDrawer({
               onAdd={addOtherRequirement}
               onRemoveItem={removeOtherRequirement}
               summarizeItem={otherRequirementSummary}
+            />
+
+            <ProductConfigToggle
+              id="mortgage-require-applicant-signature"
+              label="Require applicant signature on submit"
+              checked={requireApplicantSignature}
+              onChange={setRequireApplicantSignature}
+              requirement="optional"
             />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -1680,7 +1817,7 @@ export default function ConfigureMortgageDrawer({
               placeholder="https://…"
               value={propertyVideoUrl}
               onChange={setPropertyVideoUrl}
-              requirement="optional"
+              requirement="required"
             />
 
             <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
@@ -1811,6 +1948,98 @@ export default function ConfigureMortgageDrawer({
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        )}
+
+        {step === 6 && (
+          <div className="mt-4 space-y-4">
+            <div className="rounded-md border border-[#E8DFC3] bg-[#FBF8EF] px-4 py-3 text-sm text-gray-700">
+              Set the bookable inspection slots for this mortgage product. Borrowers pick one of these
+              dates after they accept the offer. Saving replaces the full list.
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className="flex flex-col gap-1.5 text-sm text-gray-700">
+                <span className="font-medium">
+                  Date &amp; time <span className="text-red-600">*</span>
+                </span>
+                <input
+                  type="datetime-local"
+                  value={inspectionScheduledForLocal}
+                  onChange={(e) => setInspectionScheduledForLocal(e.target.value)}
+                  className="h-10 rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[#9A813F]"
+                />
+              </label>
+              <ProductConfigInput
+                label="Label"
+                placeholder="Morning slot"
+                value={inspectionLabel}
+                onChange={(value) => setInspectionLabel(value.slice(0, 200))}
+                requirement="optional"
+              />
+              <ProductConfigInput
+                label="Location"
+                placeholder="Lagos HQ"
+                value={inspectionLocation}
+                onChange={(value) => setInspectionLocation(value.slice(0, 300))}
+                requirement="optional"
+              />
+              <ProductConfigInput
+                label="Notes"
+                placeholder="Bring ID"
+                value={inspectionNotes}
+                onChange={(value) => setInspectionNotes(value.slice(0, 500))}
+                requirement="optional"
+              />
+            </div>
+
+            <Button
+              type="button"
+              onClick={addInspectionDate}
+              className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]"
+            >
+              Add slot
+            </Button>
+            {inspectionFormError ? <p className="text-xs text-red-600">{inspectionFormError}</p> : null}
+
+            {inspectionDates.length > 0 ? (
+              <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
+                <div className="hidden gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500 md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]">
+                  <span>When</span>
+                  <span>Label</span>
+                  <span>Location</span>
+                  <span>Notes</span>
+                  <span className="text-right" />
+                </div>
+                {inspectionDates.map((slot) => (
+                  <div
+                    key={slot.id}
+                    className="grid grid-cols-1 gap-2 border-b border-gray-100 py-3 text-sm last:border-0 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] md:items-start md:py-2"
+                  >
+                    <div className="min-w-0">
+                      <span className="font-medium text-gray-900">
+                        {formatInspectionSlotLabel(slot.scheduledForLocal)}
+                      </span>
+                    </div>
+                    <span className="min-w-0 break-words text-gray-700">{slot.label || "—"}</span>
+                    <span className="min-w-0 break-words text-gray-700">{slot.location || "—"}</span>
+                    <span className="min-w-0 break-words text-gray-600">{slot.notes || "—"}</span>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => removeInspectionDate(slot.id)}
+                        className="text-red-600 hover:text-red-700"
+                        aria-label="Remove inspection slot"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No inspection slots yet. Add at least one before saving.</p>
             )}
           </div>
         )}

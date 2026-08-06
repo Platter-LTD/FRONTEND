@@ -17,9 +17,10 @@ import {
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
 } from "@/lib/otherRequirementPayload"
-import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
+import { fetchOptionLabels, fetchProductOptionLabels, fetchProductOptions, DEFAULT_TRIGGER_DURATION_OPTIONS, type ProductOption } from "@/lib/productOptions"
 import type { LoanConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
+import { ProductConfigDocumentRequirementsPanel } from "@/components/drawers/product-config-document-requirements"
 import { ProductConfigOtherRequirementsPanel } from "@/components/drawers/product-config-other-requirements"
 import {
   DEFAULT_REPAYMENT_WORKFLOWS,
@@ -28,6 +29,7 @@ import {
   ProductConfigSelect,
   ProductConfigTabs,
   ProductConfigToggle,
+  withRepaymentStructureOptions,
 } from "@/components/drawers/product-config-form-fields"
 import { validateAllLoanSteps, validateLoanStep } from "@/lib/productConfigureStepValidation"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
@@ -70,7 +72,8 @@ interface PenaltyItem {
   name: string
   type: string
   value: string
-  triggerDuration: string
+  /** Numeric days from options API `value`; submitted as triggerDurationDays. */
+  triggerDurationDays: number
 }
 
 type DocumentRequirementUpload = { name: string; file?: File; fileUrl?: string }
@@ -217,6 +220,9 @@ export default function ConfigureLoanDrawer({
   const [securityOptions, setSecurityOptions] = useState<string[]>([])
   const [feeTypeOptions, setFeeTypeOptions] = useState<string[]>([])
   const [penaltyTypeOptions, setPenaltyTypeOptions] = useState<string[]>([])
+  const [triggerDurationOptions, setTriggerDurationOptions] = useState<ProductOption[]>(
+    DEFAULT_TRIGGER_DURATION_OPTIONS,
+  )
   const [repaymentWorkflowOptions, setRepaymentWorkflowOptions] = useState<string[]>([...DEFAULT_REPAYMENT_WORKFLOWS])
 
   const [name, setName] = useState(loanData?.name || "")
@@ -231,6 +237,11 @@ export default function ConfigureLoanDrawer({
   const [interestRate, setInterestRate] = useState("")
   const [interestMethod, setInterestMethod] = useState("")
   const [allowMoratorium, setAllowMoratorium] = useState(false)
+  const [autoApproveLoans, setAutoApproveLoans] = useState(false)
+  const [requireApplicantSignature, setRequireApplicantSignature] = useState(false)
+  const [contractId, setContractId] = useState("")
+  const [airSignSecretKey, setAirSignSecretKey] = useState("")
+  const [airSignUid, setAirSignUid] = useState("")
   const [moratoriumSelectDuration, setMoratoriumSelectDuration] = useState("")
   const [moratoriumDurationOf, setMoratoriumDurationOf] = useState("")
   const [moratoriumType, setMoratoriumType] = useState("")
@@ -333,7 +344,7 @@ export default function ConfigureLoanDrawer({
       setInterestMethodOptions(prefetchedOptions.interestMethods)
       setMoratoriumTypeOptions(prefetchedOptions.moratoriumType)
       setMoratoriumDurationOptions(prefetchedOptions.moratoriumDuration)
-      setRepaymentScheduleOptions(prefetchedOptions.repaymentSchedule)
+      setRepaymentScheduleOptions(withRepaymentStructureOptions(prefetchedOptions.repaymentSchedule))
       setAmortizationScheduleOptions(prefetchedOptions.amortizationSchedule)
       setRepaymentFrequencyOptions(prefetchedOptions.repaymentFrequency)
       setAcceptableNpaOptions(prefetchedOptions.acceptableNpa)
@@ -343,6 +354,11 @@ export default function ConfigureLoanDrawer({
       setSecurityOptions(prefetchedOptions.securities)
       setFeeTypeOptions(prefetchedOptions.feeType)
       setPenaltyTypeOptions(prefetchedOptions.penaltyType)
+      setTriggerDurationOptions(
+        prefetchedOptions.triggerDuration?.length
+          ? prefetchedOptions.triggerDuration
+          : DEFAULT_TRIGGER_DURATION_OPTIONS,
+      )
       setRepaymentWorkflowOptions(prefetchedOptions.repaymentWorkflow)
       return
     }
@@ -362,6 +378,7 @@ export default function ConfigureLoanDrawer({
         securities,
         feeType,
         penaltyType,
+        triggerDuration,
         repaymentWorkflow,
       ] = await Promise.all([
         fetchOptionLabels("loan-tenure", []),
@@ -378,14 +395,14 @@ export default function ConfigureLoanDrawer({
         fetchProductOptionLabels("security-requirements", [], { productType: "LOAN" }),
         fetchOptionLabels("fee-type", []),
         fetchOptionLabels("penalty-type", []),
+        fetchProductOptions("trigger-duration", DEFAULT_TRIGGER_DURATION_OPTIONS),
         fetchOptionLabels("repayment-workflow", [...DEFAULT_REPAYMENT_WORKFLOWS]),
       ])
-
       setTenureOptions(tenure)
       setInterestMethodOptions(interestMethods)
       setMoratoriumTypeOptions(moratoriumType)
       setMoratoriumDurationOptions(moratoriumDuration)
-      setRepaymentScheduleOptions(repaymentSchedule)
+      setRepaymentScheduleOptions(withRepaymentStructureOptions(repaymentSchedule))
       setAmortizationScheduleOptions(amortizationSchedule)
       setRepaymentFrequencyOptions(repaymentFrequency)
       setAcceptableNpaOptions(acceptableNpa)
@@ -395,6 +412,7 @@ export default function ConfigureLoanDrawer({
       setSecurityOptions(securities)
       setFeeTypeOptions(feeType)
       setPenaltyTypeOptions(penaltyType)
+      setTriggerDurationOptions(triggerDuration)
       setRepaymentWorkflowOptions(repaymentWorkflow)
     }
     loadOptions()
@@ -450,6 +468,37 @@ export default function ConfigureLoanDrawer({
       ),
     )
     setInterestMethod(String(loanData.interestMethod ?? structure.interestMethod ?? ""))
+    setAutoApproveLoans(asBool(loanData.autoApproveLoans ?? structure.autoApproveLoans))
+    setRequireApplicantSignature(
+      asBool(
+        loanData.requireApplicantSignature ??
+          (loanData as Record<string, unknown>).requireApplicantSignature,
+      ),
+    )
+    setContractId(
+      String(
+        loanData.contractId ??
+          structure.contractId ??
+          (requirements as Record<string, unknown>).contractId ??
+          "",
+      ),
+    )
+    setAirSignSecretKey(
+      String(
+        loanData.airSignSecretKey ??
+          structure.airSignSecretKey ??
+          (requirements as Record<string, unknown>).airSignSecretKey ??
+          "",
+      ),
+    )
+    setAirSignUid(
+      String(
+        loanData.airSignUid ??
+          structure.airSignUid ??
+          (requirements as Record<string, unknown>).airSignUid ??
+          "",
+      ),
+    )
     const allowMoratoriumValue = asBool(loanData.allowMoratorium ?? structure.allowMoratorium)
     const morStr = extractMoratoriumPrefill(
       loanData.moratorium ??
@@ -571,10 +620,12 @@ export default function ConfigureLoanDrawer({
               name: String(r?.name ?? ""),
               type: String(r?.type ?? r?.penaltyType ?? ""),
               value: String(r?.value ?? ""),
-              triggerDuration: String(
-                r?.triggerDuration ??
-                  (r?.triggerDurationDays != null ? `${r.triggerDurationDays}` : ""),
-              ),
+              triggerDurationDays: (() => {
+                const raw = r?.triggerDurationDays ?? r?.triggerDuration
+                if (typeof raw === "number" && Number.isFinite(raw)) return Math.round(raw)
+                const m = String(raw ?? "").match(/(\d+)/)
+                return m ? parseInt(m[1], 10) : 0
+              })(),
             }
           })
         : [],
@@ -789,20 +840,31 @@ export default function ConfigureLoanDrawer({
   }
 
   const addPenalty = () => {
-    if (!penaltyName.trim() || !penaltyType || !penaltyValue.trim() || !penaltyTriggerDuration.trim()) return
+    const days = Number(penaltyTriggerDuration)
+    if (!penaltyName.trim() || !penaltyType || !penaltyValue.trim() || !Number.isFinite(days) || days <= 0) {
+      return
+    }
     setPenalties((prev) => [
       ...prev,
       {
         name: penaltyName.trim(),
         type: penaltyType,
         value: penaltyValue.trim(),
-        triggerDuration: penaltyTriggerDuration.trim(),
+        triggerDurationDays: Math.round(days),
       },
     ])
     setPenaltyName("")
     setPenaltyType("")
     setPenaltyValue("")
     setPenaltyTriggerDuration("")
+  }
+
+  const removeCharge = (index: number) => {
+    setCharges((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const removePenalty = (index: number) => {
+    setPenalties((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleDocumentUpload = (event: ChangeEvent<HTMLInputElement>) => {
@@ -858,6 +920,9 @@ export default function ConfigureLoanDrawer({
     charges,
     enableLateRepaymentCharges,
     penalties,
+    contractId,
+    airSignSecretKey,
+    airSignUid,
   })
 
   const handleNext = async () => {
@@ -901,6 +966,32 @@ export default function ConfigureLoanDrawer({
       delete loanPayload.moratoriumDuration
       delete loanPayload.moratoriumDays
 
+      let equityContribution: number | undefined
+      if (equityRequirementMode === "fixed") {
+        const cleaned = cleanNumeric(equityFixedAmount)
+        const amount = cleaned ? Number(cleaned) : NaN
+        equityContribution = Number.isFinite(amount) ? amount : undefined
+      } else if (equityRequirementMode === "percentage") {
+        const cleaned = cleanNumeric(equityPercentage.replace(/%/g, ""))
+        const pct = cleaned ? Number(cleaned) : NaN
+        equityContribution = Number.isFinite(pct) ? pct : undefined
+      } else if (equityRequirementMode === "zero") {
+        equityContribution = 0
+      } else {
+        // Fallback if option label classification misses a fixed/percentage variant.
+        const fixedCleaned = cleanNumeric(equityFixedAmount)
+        if (fixedCleaned) {
+          const amount = Number(fixedCleaned)
+          if (Number.isFinite(amount)) equityContribution = amount
+        } else {
+          const pctCleaned = cleanNumeric(equityPercentage.replace(/%/g, ""))
+          if (pctCleaned) {
+            const pct = Number(pctCleaned)
+            if (Number.isFinite(pct)) equityContribution = pct
+          }
+        }
+      }
+
       await Promise.resolve(
         onSubmit({
           ...loanPayload,
@@ -913,6 +1004,8 @@ export default function ConfigureLoanDrawer({
           interestRate,
           interestMethod,
           allowMoratorium,
+          autoApproveLoans,
+          requireApplicantSignature,
           moratoriumSelectDuration: allowMoratorium ? moratoriumSelectDuration : "",
           moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
           moratoriumType: allowMoratorium ? moratoriumType : "",
@@ -925,11 +1018,15 @@ export default function ConfigureLoanDrawer({
           acceptableNpa,
           acceptableNPA: acceptableNpa,
           equityRequirement,
+          equityContribution,
           equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
           equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
           securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
+          contractId,
+          airSignSecretKey,
+          airSignUid,
           charges,
           chargePaymentMode,
           deductAllChargesOnLoan: chargePaymentMode === "deduct",
@@ -986,6 +1083,8 @@ export default function ConfigureLoanDrawer({
           description={description}
           onDescriptionChange={setDescription}
           typeSectionLabel="Loan Type"
+          typeSectionRequirement="optional"
+          typeSectionHelperText="Product type is already captured when you created this loan. Add types here only if you need extra variants."
           typeNameDraft={loanTypeName}
           typeDescDraft={loanTypeDescription}
           onTypeNameDraftChange={setLoanTypeName}
@@ -1045,6 +1144,13 @@ export default function ConfigureLoanDrawer({
               onChange={setAllowMoratorium}
               requirement="optional"
             />
+            <ProductConfigToggle
+              id="auto-approve-loans"
+              label="Auto-approve loans (treasury disburses on submit)"
+              checked={autoApproveLoans}
+              onChange={setAutoApproveLoans}
+              requirement="optional"
+            />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <ProductConfigSelect
                 label="Select Duration"
@@ -1090,7 +1196,7 @@ export default function ConfigureLoanDrawer({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <ProductConfigSelect
-              label="Repayment Schedule"
+              label="Repayment Structure"
               placeholder="Select Section"
               value={repaymentSchedule}
               options={repaymentScheduleOptions}
@@ -1181,54 +1287,15 @@ export default function ConfigureLoanDrawer({
             ) : null}
           </div>
 
-          <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
-            <p className="text-sm font-medium text-gray-700">
-              Document Requirements{" "}
-              <span className="font-normal text-gray-500">(Required) Requires customer to fill the form</span>
-            </p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] items-end">
-              <ProductConfigInput
-                label="Name Document"
-                placeholder="Name document"
-                value={documentName}
-                onChange={setDocumentName}
-                requirement="required"
-              />
-              <Button
-                type="button"
-                onClick={() => documentsInputRef.current?.click()}
-                className="h-10 bg-[#9A813F] text-white hover:bg-[#8A7335]"
-              >
-                Upload
-              </Button>
-              <input
-                ref={documentsInputRef}
-                type="file"
-                accept=".pdf,application/pdf"
-                onChange={handleDocumentUpload}
-                className="hidden"
-              />
-            </div>
-            {documents.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {documents.map((doc, index) => (
-                  <span
-                    key={`${doc.file?.name ?? doc.fileUrl ?? doc.name}-${index}`}
-                    className="inline-flex items-center gap-2 rounded-md bg-[#9A813F] px-3 py-2 text-xs text-white"
-                  >
-                    {doc.name}
-                    <button
-                      type="button"
-                      onClick={() => setDocuments((prev) => prev.filter((_, current) => current !== index))}
-                      className="text-white/90 hover:text-white"
-                    >
-                      <X size={14} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          <ProductConfigDocumentRequirementsPanel
+            documentName={documentName}
+            onDocumentNameChange={setDocumentName}
+            documents={documents}
+            onDocumentsChange={setDocuments}
+            uploadInputRef={documentsInputRef}
+            onUpload={handleDocumentUpload}
+            helperText="Requires customer to fill the form"
+          />
 
           <ProductConfigOtherRequirementsPanel
             otherRequirementOptions={otherRequirementOptions}
@@ -1247,6 +1314,38 @@ export default function ConfigureLoanDrawer({
             onAdd={addOtherRequirement}
             onRemoveItem={removeOtherRequirement}
           />
+
+          <ProductConfigToggle
+            id="require-applicant-signature"
+            label="Require applicant signature on submit"
+            checked={requireApplicantSignature}
+            onChange={setRequireApplicantSignature}
+            requirement="optional"
+          />
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <ProductConfigInput
+              label="Contract ID"
+              placeholder="Enter Contract ID"
+              value={contractId}
+              onChange={setContractId}
+              requirement="required"
+            />
+            <ProductConfigInput
+              label="AirSign Secret Key"
+              placeholder="Enter secret key"
+              value={airSignSecretKey}
+              onChange={setAirSignSecretKey}
+              requirement="required"
+            />
+            <ProductConfigInput
+              label="AirSign UID"
+              placeholder="Enter UID"
+              value={airSignUid}
+              onChange={setAirSignUid}
+              requirement="required"
+            />
+          </div>
         </div>
       )}
 
@@ -1283,16 +1382,30 @@ export default function ConfigureLoanDrawer({
 
           {charges.length > 0 && (
             <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-              <div className="grid grid-cols-3 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
                 <span>Name</span>
                 <span>Type</span>
                 <span>Value</span>
+                <span className="text-right" />
               </div>
               {charges.map((charge, index) => (
-                <div key={`${charge.name}-${index}`} className="grid grid-cols-3 border-b border-gray-100 py-2 text-sm last:border-0">
+                <div
+                  key={`${charge.name}-${index}`}
+                  className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                >
                   <span className="pr-2">{charge.name}</span>
                   <span>{charge.feeType}</span>
                   <span>{charge.value}</span>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removeCharge(index)}
+                      className="text-red-600 hover:text-red-700"
+                      aria-label={`Remove ${charge.name}`}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1349,12 +1462,12 @@ export default function ConfigureLoanDrawer({
               requirement="required"
               requirementMark="asterisk"
             />
-            <ProductConfigInput
-              label="Trigger Duration"
+            <ProductConfigSelect
+              label="Trigger Duration (Days)"
               placeholder="Select Section"
               value={penaltyTriggerDuration}
+              options={triggerDurationOptions}
               onChange={setPenaltyTriggerDuration}
-              numericOnly
               requirement="required"
               requirementMark="asterisk"
             />
@@ -1365,18 +1478,35 @@ export default function ConfigureLoanDrawer({
 
           {penalties.length > 0 && (
             <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-              <div className="grid grid-cols-4 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+              <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
                 <span>Name</span>
                 <span>Type</span>
                 <span>Value</span>
-                <span>Trigger Duration</span>
+                <span>Trigger Duration (Days)</span>
+                <span className="text-right" />
               </div>
               {penalties.map((penalty, index) => (
-                <div key={`${penalty.name}-${index}`} className="grid grid-cols-4 border-b border-gray-100 py-2 text-sm last:border-0">
+                <div
+                  key={`${penalty.name}-${index}`}
+                  className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                >
                   <span className="pr-2">{penalty.name}</span>
                   <span>{penalty.type}</span>
                   <span>{penalty.value}</span>
-                  <span>{penalty.triggerDuration}</span>
+                  <span>
+                    {triggerDurationOptions.find((o) => o.value === String(penalty.triggerDurationDays))
+                      ?.label ?? `${penalty.triggerDurationDays} days`}
+                  </span>
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removePenalty(index)}
+                      className="text-red-600 hover:text-red-700"
+                      aria-label={`Remove ${penalty.name}`}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

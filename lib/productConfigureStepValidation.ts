@@ -3,7 +3,6 @@
  * Returns human-readable messages for UI.
  */
 
-import { isDocumentTemplateContentType, isDocumentUploadContentType } from "@/lib/otherRequirementPayload"
 import { isOtherSecuritySelected } from "@/lib/securityRequirementOptions"
 
 const t = (s: string) => s.trim()
@@ -31,37 +30,6 @@ export type LoanLikeStructureInput = {
   equityPercentage: string
 }
 
-function isDocumentTemplateApiOrLabel(contentType: string): boolean {
-  const s = String(contentType ?? "").trim().toLowerCase()
-  if (s === "document_template") return true
-  return isDocumentTemplateContentType(contentType)
-}
-
-type OtherRequirementRowForDocCoverage = {
-  contentType?: string
-  description?: string
-  file?: File | null
-  templateFileUrl?: string | null
-}
-
-/** Document-to-download section filled, or equivalent under Other Requirements: template (file/URL) or document upload with description. */
-function hasLoanDocumentRequirementCoverage(
-  documents: unknown[],
-  otherRequirements?: OtherRequirementRowForDocCoverage[],
-): boolean {
-  if (documents.length > 0) return true
-  return (otherRequirements ?? []).some((row) => {
-    const ct = String(row?.contentType ?? "")
-    if (isDocumentTemplateApiOrLabel(ct)) {
-      const hasFile = !!row?.file
-      const hasUrl = typeof row?.templateFileUrl === "string" && row.templateFileUrl.trim().length > 0
-      return hasFile || hasUrl
-    }
-    if (isDocumentUploadContentType(ct) && has(String(row?.description ?? ""))) return true
-    return false
-  })
-}
-
 function pushLoanLikeStructureErrors(prefix: string, s: LoanLikeStructureInput, errors: string[]) {
   if (!has(s.interestRate)) errors.push(`${prefix}Interest Rate is required.`)
   if (!has(s.interestMethod)) errors.push(`${prefix}Interest Method is required.`)
@@ -73,7 +41,7 @@ function pushLoanLikeStructureErrors(prefix: string, s: LoanLikeStructureInput, 
   if (has(s.minAmount) && has(s.maxAmount) && Number.isFinite(minN) && Number.isFinite(maxN) && maxN < minN) {
     errors.push(`${prefix}Maximum loan amount must be greater than or equal to the minimum.`)
   }
-  if (!has(s.repaymentSchedule)) errors.push(`${prefix}Repayment Schedule is required.`)
+  if (!has(s.repaymentSchedule)) errors.push(`${prefix}Repayment Structure is required.`)
   if (!has(s.amortizationSchedule)) errors.push(`${prefix}Amortization Schedule is required.`)
   if (!has(s.repaymentFrequency)) errors.push(`${prefix}Repayment Frequency is required.`)
   if (!has(s.acceptableNpa)) errors.push(`${prefix}Acceptable NPA is required.`)
@@ -99,11 +67,12 @@ export type LoanStepCtx = {
   /** Free text when “Other” security is selected; required in that case. */
   securityOtherSpecification: string
   documents: unknown[]
-  /** Optional rows from “Other Requirements”; document template (file/URL) or document upload (non-empty description) counts toward document coverage. */
-  otherRequirements?: OtherRequirementRowForDocCoverage[]
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
-  penalties: { name?: string; type?: string; value?: string; triggerDuration?: string }[]
+  penalties: { name?: string; type?: string; value?: string; triggerDurationDays?: number; triggerDuration?: string }[]
+  contractId: string
+  airSignSecretKey: string
+  airSignUid: string
 }
 
 export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: string[] } {
@@ -114,13 +83,7 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
     if (!has(ctx.name)) errors.push("About Product: Product name is required.")
     if (!has(ctx.tenure)) errors.push("About Product: Tenure is required.")
     if (!has(ctx.description)) errors.push("About Product: Product description is required.")
-    if (!ctx.loanTypes.length) errors.push("About Product: Add at least one loan type (name and description).")
-    else {
-      ctx.loanTypes.forEach((row, i) => {
-        if (!has(row.name)) errors.push(`About Product: Loan type #${i + 1} name is required.`)
-        if (!has(row.description)) errors.push(`About Product: Loan type #${i + 1} description is required.`)
-      })
-    }
+    // Loan type rows are optional — product type is captured at product creation.
     if (!ctx.previewImage && !ctx.hasPreviewAsset) errors.push("About Product: Preview file upload is required.")
   }
 
@@ -134,11 +97,10 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
     if (isOtherSecuritySelected(ctx.selectedSecurities) && !has(ctx.securityOtherSpecification)) {
       errors.push('Requirements: Describe the “Other” security requirement (text field below).')
     }
-    if (!hasLoanDocumentRequirementCoverage(ctx.documents, ctx.otherRequirements)) {
-      errors.push(
-        "Requirements: Add at least one document under Document Requirements (name + upload), or under Other Requirements add “Document upload” (with description) or “Document template” (with file), then click Add.",
-      )
-    }
+    // Document requirements are optional — customers may satisfy docs via Other Requirements instead.
+    if (!has(ctx.contractId)) errors.push("Requirements: Contract ID is required.")
+    if (!has(ctx.airSignSecretKey)) errors.push("Requirements: AirSign Secret Key is required.")
+    if (!has(ctx.airSignUid)) errors.push("Requirements: AirSign UID is required.")
   }
 
   if (step === 4) {
@@ -170,10 +132,9 @@ export type MortgageStepCtx = {
   selectedSecurities: string[]
   securityOtherSpecification: string
   documents: unknown[]
-  otherRequirements?: OtherRequirementRowForDocCoverage[]
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
-  penalties: { name?: string; type?: string; value?: string; triggerDuration?: string }[]
+  penalties: { name?: string; type?: string; value?: string; triggerDurationDays?: number; triggerDuration?: string }[]
   contractId: string
   airSignSecretKey: string
   airSignUid: string
@@ -187,6 +148,12 @@ export type MortgageStepCtx = {
     previewFiles: unknown[]
     videoUrl: string
   }[]
+  inspectionDates: {
+    scheduledFor: string
+    label?: string
+    location?: string
+    notes?: string
+  }[]
 }
 
 export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; errors: string[] } {
@@ -197,7 +164,7 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
     if (!has(ctx.name)) errors.push("About Product: Product name is required.")
     if (!has(ctx.tenure)) errors.push("About Product: Tenure is required.")
     if (!has(ctx.description)) errors.push("About Product: Product description is required.")
-    if (!has(ctx.mortgageTypeSelected)) errors.push("About Product: Mortgage type is required.")
+    // Mortgage type is optional — product type is captured at product creation.
     if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
   }
 
@@ -210,11 +177,7 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
     if (isOtherSecuritySelected(ctx.selectedSecurities) && !has(ctx.securityOtherSpecification)) {
       errors.push('Requirements: Describe the “Other” security requirement (text field below).')
     }
-    if (!hasLoanDocumentRequirementCoverage(ctx.documents, ctx.otherRequirements)) {
-      errors.push(
-        "Requirements: Add at least one document under Document Requirements (name + upload), or under Other Requirements add “Document upload” (with description) or “Document template” (with file), then click Add.",
-      )
-    }
+    // Document requirements are optional.
     if (!has(ctx.contractId)) errors.push("Requirements: Contract ID is required.")
     if (!has(ctx.airSignSecretKey)) errors.push("Requirements: AirSign Secret Key is required.")
     if (!has(ctx.airSignUid)) errors.push("Requirements: AirSign UID is required.")
@@ -238,7 +201,33 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
         errors.push(`Properties: Property #${n} — Select at least one facility.`)
       }
       if (!p.previewFiles?.length) errors.push(`Properties: Property #${n} — At least one property image is required.`)
-      // videoUrl optional
+      if (!has(p.videoUrl)) errors.push(`Properties: Property #${n} — Property video URL is required.`)
+    })
+  }
+
+  if (step === 6) {
+    if (!ctx.inspectionDates.length) {
+      errors.push("Inspection Dates: Add at least one bookable inspection slot for borrowers.")
+    }
+    ctx.inspectionDates.forEach((slot, i) => {
+      const n = i + 1
+      if (!has(slot.scheduledFor)) {
+        errors.push(`Inspection Dates: Slot #${n} — Date & time is required.`)
+        return
+      }
+      const when = new Date(slot.scheduledFor)
+      if (Number.isNaN(when.getTime())) {
+        errors.push(`Inspection Dates: Slot #${n} — Invalid date & time.`)
+      }
+      if (slot.label && slot.label.length > 200) {
+        errors.push(`Inspection Dates: Slot #${n} — Label must be 200 characters or fewer.`)
+      }
+      if (slot.location && slot.location.length > 300) {
+        errors.push(`Inspection Dates: Slot #${n} — Location must be 300 characters or fewer.`)
+      }
+      if (slot.notes && slot.notes.length > 500) {
+        errors.push(`Inspection Dates: Slot #${n} — Notes must be 500 characters or fewer.`)
+      }
     })
   }
 
@@ -247,7 +236,7 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
 
 export function validateAllMortgageSteps(base: Omit<MortgageStepCtx, "step">): { ok: boolean; errors: string[] } {
   const all: string[] = []
-  for (let s = 1; s <= 5; s += 1) {
+  for (let s = 1; s <= 6; s += 1) {
     all.push(...validateMortgageStep({ ...base, step: s }).errors)
   }
   return { ok: all.length === 0, errors: all }
@@ -281,18 +270,12 @@ export function validateSavingsStep(ctx: SavingsStepCtx): { ok: boolean; errors:
     if (!has(ctx.name)) errors.push("About Product: Product name is required.")
     if (!has(ctx.duration)) errors.push("About Product: Duration is required.")
     if (!has(ctx.description)) errors.push("About Product: Product description is required.")
-    if (!ctx.savingsTypes.length) errors.push("About Product: Add at least one savings type.")
-    else {
-      ctx.savingsTypes.forEach((row, i) => {
-        if (!has(row.name)) errors.push(`About Product: Savings type #${i + 1} name is required.`)
-        if (!has(row.description)) errors.push(`About Product: Savings type #${i + 1} description is required.`)
-      })
-    }
+    // Savings type rows are optional — product type is captured at product creation.
     if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
   }
   if (ctx.step === 2) {
     if (!has(ctx.interestRate)) errors.push("Structure: Interest rate is required.")
-    if (!has(ctx.interestMethod)) errors.push("Structure: Interest method is required.")
+    if (!has(ctx.interestMethod)) errors.push("Structure: Yield method is required.")
     if (!has(ctx.savingsType)) errors.push("Structure: Savings type is required.")
     if (!has(ctx.withdrawalFlexibility)) errors.push("Structure: Withdrawal flexibility is required.")
     if (!has(ctx.minSavingsAmount)) errors.push("Structure: Minimum savings amount is required.")
@@ -357,18 +340,12 @@ export function validateInvestmentStep(ctx: InvestmentStepCtx): { ok: boolean; e
     if (!has(ctx.name)) errors.push("About Product: Investment name is required.")
     if (!has(ctx.duration)) errors.push("About Product: Duration is required.")
     if (!has(ctx.description)) errors.push("About Product: Description is required.")
-    if (!ctx.investmentTypes.length) errors.push("About Product: Add at least one investment type.")
-    else {
-      ctx.investmentTypes.forEach((row, i) => {
-        if (!has(row.name)) errors.push(`About Product: Investment type #${i + 1} name is required.`)
-        if (!has(row.description)) errors.push(`About Product: Investment type #${i + 1} description is required.`)
-      })
-    }
+    // Investment type rows are optional — product type is captured at product creation.
     if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
   }
   if (ctx.step === 2) {
     if (!has(ctx.roi)) errors.push("Structure: Returns on Investment (ROI) is required.")
-    if (!has(ctx.interestMethod)) errors.push("Structure: Interest method is required.")
+    if (!has(ctx.interestMethod)) errors.push("Structure: Yield method is required.")
     if (!has(ctx.investmentType)) errors.push("Structure: Investment type is required.")
     if (!has(ctx.withdrawalFlexibility)) errors.push("Structure: Withdrawal flexibility is required.")
     if (!has(ctx.minAmount)) errors.push("Structure: Minimum investment amount is required.")
@@ -380,7 +357,6 @@ export function validateInvestmentStep(ctx: InvestmentStepCtx): { ok: boolean; e
     }
     if (!has(ctx.termsAndConditions)) errors.push("Structure: Terms and conditions are required.")
     if (ctx.enableUnitInvestment) {
-      if (!has(ctx.unitAmount)) errors.push("Unit: Unit amount is required when unit investment is enabled.")
       if (!has(ctx.minQuantity)) errors.push("Unit: Minimum quantity is required when unit investment is enabled.")
     }
   }
@@ -416,6 +392,7 @@ export type CommodityStepCtx = {
   offerYieldValue: string
   withdrawalFlexibility: string
   minInvestmentAmount: string
+  enableUnitInvestmentPurchase?: boolean
   unitAmount: string
   minQuantityPurchase: string
   maxAmount: string
@@ -437,13 +414,7 @@ export function validateCommodityStep(ctx: CommodityStepCtx): { ok: boolean; err
     if (!has(ctx.name)) errors.push(`${aboutLabel}: Product name is required.`)
     if (!has(ctx.duration)) errors.push(`${aboutLabel}: Duration is required.`)
     if (!has(ctx.description)) errors.push(`${aboutLabel}: Description is required.`)
-    if (!ctx.typeRows.length) errors.push(`${aboutLabel}: Add at least one ${ctx.isInvestment ? "investment" : "commodity"} type.`)
-    else {
-      ctx.typeRows.forEach((row, i) => {
-        if (!has(row.name)) errors.push(`${aboutLabel}: Type #${i + 1} name is required.`)
-        if (!has(row.description)) errors.push(`${aboutLabel}: Type #${i + 1} description is required.`)
-      })
-    }
+    // Commodity / investment type rows are optional — product type is captured at product creation.
     if (!ctx.previewImage && !ctx.hasPreviewAsset) errors.push(`${aboutLabel}: Preview file upload is required.`)
   }
 
@@ -453,8 +424,19 @@ export function validateCommodityStep(ctx: CommodityStepCtx): { ok: boolean; err
     if (!has(ctx.withdrawalFlexibility)) errors.push("Structure: Withdrawal flexibility is required.")
     if (ctx.isInvestment && !has(ctx.minInvestmentAmount))
       errors.push("Structure: Minimum investment amount is required.")
-    if (!has(ctx.unitAmount)) errors.push(ctx.isInvestment ? "Structure: Unit price is required." : "Structure: Unit amount is required.")
-    if (!has(ctx.minQuantityPurchase)) errors.push("Structure: Minimum quantity purchase is required.")
+    if (!ctx.isInvestment && !has(ctx.unitAmount)) {
+      errors.push("Structure: Unit amount is required.")
+    }
+    if (ctx.isInvestment && ctx.enableUnitInvestmentPurchase && !has(ctx.unitAmount)) {
+      /* Unit price optional when unit investment is enabled */
+    }
+    if (ctx.isInvestment) {
+      if (ctx.enableUnitInvestmentPurchase && !has(ctx.minQuantityPurchase)) {
+        errors.push("Structure: Minimum quantity purchase is required when unit investment is enabled.")
+      }
+    } else if (!has(ctx.minQuantityPurchase)) {
+      errors.push("Structure: Minimum quantity purchase is required.")
+    }
     if (!has(ctx.maxAmount))
       errors.push(ctx.isInvestment ? "Structure: Maximum investment amount is required." : "Structure: Max amount is required.")
     if (!has(ctx.termsAndConditions)) errors.push("Structure: Terms and conditions are required.")

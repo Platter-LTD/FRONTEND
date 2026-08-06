@@ -8,7 +8,7 @@ import { IoMdCube } from "react-icons/io"
 import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { FaWallet } from "react-icons/fa"
-import { GitBranch, ChevronDown, ChevronUp, FileText, ShieldCheck } from "lucide-react"
+import { BarChart3, GitBranch, ChevronDown, ChevronUp, FileText, ShieldCheck } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
@@ -20,6 +20,8 @@ import { fetchMerchantProfileThunk } from "@/store/merchantSettingsSlice"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
 import { displayNameFromEmail, looksLikeEmailLocalOnly } from "@/lib/userNameFromClaims"
+import { ComplianceService } from "@/lib/services/complianceService"
+import { CompanyLogoMark } from "@/components/company-logo-mark"
 
 interface GlobalNavItem {
   icon: React.ReactNode
@@ -57,6 +59,18 @@ function appIdFromPathname(pathname: string | null): string | null {
   return m?.[1] ?? null
 }
 
+function pickCompanyLogoUrl(payload: unknown): string | null {
+  const root = payload as { data?: { companyLogoUrl?: unknown }; companyLogoUrl?: unknown }
+  const url = root?.data?.companyLogoUrl ?? root?.companyLogoUrl
+  return typeof url === "string" && url.trim() ? url.trim() : null
+}
+
+function pickCompanyName(payload: unknown): string | null {
+  const root = payload as { data?: { companyName?: unknown }; companyName?: unknown }
+  const name = root?.data?.companyName ?? root?.companyName
+  return typeof name === "string" && name.trim() ? name.trim() : null
+}
+
 export interface DashboardSidebarProps {
   className?: string
   /** When set (e.g. from server layout), used before pathname-derived id. */
@@ -79,6 +93,8 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const [isProductsOpen, setIsProductsOpen] = useState(false)
   const [isApplicationsOpen, setIsApplicationsOpen] = useState(false)
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
+  const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null)
+  const [companyName, setCompanyName] = useState<string | null>(null)
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
@@ -131,6 +147,26 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   }, [pathname, dispatch])
 
   useEffect(() => {
+    if (!pathname?.startsWith("/dashboard")) return
+    let cancelled = false
+    void ComplianceService.getBusinessInfo()
+      .then((res) => {
+        if (cancelled) return
+        setCompanyLogoUrl(pickCompanyLogoUrl(res))
+        setCompanyName(pickCompanyName(res))
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCompanyLogoUrl(null)
+          setCompanyName(null)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [pathname])
+
+  useEffect(() => {
     if (nameFromUser) return
     if (!effectiveUser?.email) return
     if (!pathname?.startsWith("/dashboard")) return
@@ -164,18 +200,18 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const appNavItems: AppNavItem[] = appId
     ? [
         {
-          icon: <ShieldCheck size={20} />,
-          label: "Admin",
-          href: `/dashboard/create-app/all-apps/${appId}/admin`,
+          icon: <BarChart3 size={20} />,
+          label: "Analytics",
+          href: `/dashboard/create-app/all-apps/${appId}/admin/analytics`,
         },
         {
           icon: <FaWallet size={20} />,
           label: "Wallets",
-          href: `/dashboard/create-app/all-apps/${appId}/wallets`,
+          href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury`,
           subItems: [
             { label: "Treasury wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury` },
+            { label: "Billing wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/billing` },
             { label: "Repayment wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/repayment` },
-            { label: "KYC wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/kyc` },
           ],
         },
         {
@@ -211,10 +247,17 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
       ]
     : []
 
+  const teamHref = appId ? `/dashboard/create-app/all-apps/${appId}/admin` : ""
+  const analyticsHref = appId ? `/dashboard/create-app/all-apps/${appId}/admin/analytics` : ""
+  const isTeamActive =
+    Boolean(appId) &&
+    (pathname === teamHref ||
+      (pathname.startsWith(`${teamHref}/`) && !pathname.startsWith(analyticsHref)))
+
   return (
     <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
       <div className="p-6">
-        <span className="text-2xl font-bold text-[#9A813F]">PLATA</span>
+        <CompanyLogoMark companyLogoUrl={companyLogoUrl} companyName={companyName} />
       </div>
 
       <nav className="flex-1 px-4">
@@ -338,7 +381,20 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
           <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">Section Title</h3>
         </div>
 
-        <ul>
+        <ul className="space-y-4">
+          {inAppContext && appId ? (
+            <li>
+              <Link
+                href={teamHref}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                  isTeamActive ? ACTIVE_ROW : INACTIVE_ROW
+                }`}
+              >
+                <ShieldCheck size={20} />
+                <span>Team</span>
+              </Link>
+            </li>
+          ) : null}
           <li>
             {inAppContext && appId ? (
               <Link
