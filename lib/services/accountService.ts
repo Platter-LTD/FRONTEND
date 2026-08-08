@@ -801,7 +801,7 @@ export const applicationApi = {
   },
 
   /**
-   * Reject an application (Admin only)
+   * Reject a loan/mortgage workflow application.
    */
   async reject(id: string, reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
@@ -1062,133 +1062,6 @@ export const applicationApi = {
     }
   },
 
-  /**
-   * Get all applications (Admin only)
-   */
-  async getAll(params?: {
-    page?: number;
-    limit?: number;
-    status?: string;
-    type?: string;
-    appId?: string;
-  }): Promise<ApiResponse<ProductApplication[]>> {
-    try {
-      const queryParams = new URLSearchParams();
-      if (params?.page) queryParams.append('page', params.page.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
-      if (params?.status) queryParams.append('status', params.status);
-      if (params?.type) queryParams.append('type', params.type);
-      if (params?.appId) queryParams.append('appId', params.appId);
-
-      const url = `/api/v1/applications${queryParams.toString() ? `?${queryParams}` : ''}`;
-      const response = await fetch(url, {
-        headers: getAuthHeaders(),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: result.error || result.message || 'Failed to get applications',
-        };
-      }
-
-      return result;
-    } catch (error: any) {
-      console.error('Get all applications error:', error);
-      return {
-        success: false,
-        error: error.message || 'Failed to get applications',
-      };
-    }
-  },
-
-  /**
-   * Get pending applications (Admin only)
-   */
-  async getPending(params?: { appId?: string }): Promise<ApiResponse<ProductApplication[]>> {
-    try {
-      const queryParams = new URLSearchParams();
-      if (params?.appId) queryParams.append('appId', params.appId);
-      const response = await fetch(`/api/v1/applications/pending${queryParams.toString() ? `?${queryParams}` : ''}`, {
-        headers: getAuthHeaders(),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: result.error || result.message || 'Failed to get pending applications',
-        };
-      }
-
-      return result;
-    } catch (error: any) {
-      console.error('Get pending applications error:', error);
-      return {
-        success: false,
-        error: error.message || 'Failed to get pending applications',
-      };
-    }
-  },
-
-  /**
-   * Get applications by user ID
-   */
-  async getByUser(userId: string): Promise<ApiResponse<ProductApplication[]>> {
-    try {
-      const response = await fetch(`${ACCOUNT_API_BASE}/api/v1/applications/user/${userId}`, {
-        headers: getAuthHeaders(),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: result.error || result.message || 'Failed to get user applications',
-        };
-      }
-
-      return result;
-    } catch (error: any) {
-      console.error('Get user applications error:', error);
-      return {
-        success: false,
-        error: error.message || 'Failed to get user applications',
-      };
-    }
-  },
-
-  /**
-   * Get application by ID
-   */
-  async getById(id: string): Promise<ApiResponse<ProductApplication>> {
-    try {
-      const response = await fetch(`${ACCOUNT_API_BASE}/api/v1/applications/${id}`, {
-        headers: getAuthHeaders(),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: result.error || result.message || 'Failed to get application',
-        };
-      }
-
-      return result;
-    } catch (error: any) {
-      console.error('Get application error:', error);
-      return {
-        success: false,
-        error: error.message || 'Failed to get application',
-      };
-    }
-  },
 };
 
 // ============================================================================
@@ -1397,45 +1270,6 @@ export const customersApi = {
     }
   },
 
-  /**
-   * Get customer applications
-   */
-  async getApplications(customerId: string, params?: {
-    page?: number;
-    limit?: number;
-    type?: 'loan' | 'mortgage' | 'savings' | 'commodity';
-    status?: 'pending' | 'under_review' | 'approved' | 'rejected';
-  }): Promise<ApiResponse<ProductApplication[]>> {
-    try {
-      const queryParams = new URLSearchParams();
-      if (params?.page) queryParams.append('page', params.page.toString());
-      if (params?.limit) queryParams.append('limit', params.limit.toString());
-      if (params?.type) queryParams.append('type', params.type);
-      if (params?.status) queryParams.append('status', params.status);
-
-      const url = `${ACCOUNT_API_BASE}/api/v1/applications/user/${customerId}${queryParams.toString() ? `?${queryParams}` : ''}`;
-      const response = await fetch(url, {
-        headers: getAuthHeaders(),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: result.error || result.message || 'Failed to get customer applications',
-        };
-      }
-
-      return result;
-    } catch (error: any) {
-      console.error('Get customer applications error:', error);
-      return {
-        success: false,
-        error: error.message || 'Failed to get customer applications',
-      };
-    }
-  },
 };
 
 // ============================================================================

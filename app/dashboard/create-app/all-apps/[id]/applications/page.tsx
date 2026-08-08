@@ -1,8 +1,9 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Search, RefreshCw, Clock, CheckCircle2, XCircle, FileText, MoreVertical } from "lucide-react"
+import { Search, RefreshCw, Clock, CheckCircle2, XCircle, FileText, MoreVertical, DollarSign, Building2, Calendar, Loader2, ExternalLink, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -39,26 +40,109 @@ function workflowStatus(application: LoanWorkflowApplication): LoanWorkflowStatu
   return application.loanWorkflowStatus ?? "requested"
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+}
+
+function pickString(source: Record<string, unknown>, keys: string[], fallback = "") {
+  for (const key of keys) {
+    const value = source[key]
+    if (typeof value === "string" && value.trim()) return value.trim()
+    if (typeof value === "number" && Number.isFinite(value)) return String(value)
+  }
+  return fallback
+}
+
+function pickNumber(source: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = source[key]
+    const numeric = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN
+    if (Number.isFinite(numeric) && numeric > 0) return numeric
+  }
+  return 0
+}
+
+function pickProductNameFromSnapshot(snapshot: Record<string, unknown>) {
+  const about = asRecord(snapshot.about)
+  const loanTypes = Array.isArray(about.loanTypes) ? about.loanTypes : []
+  const mortgageTypes = Array.isArray(about.mortgageTypes) ? about.mortgageTypes : []
+  const productTypes = [...loanTypes, ...mortgageTypes]
+
+  for (const productType of productTypes) {
+    const name = pickString(asRecord(productType), ["name", "title"])
+    if (name) return name
+  }
+
+  return ""
+}
+
 function getProductName(application: LoanWorkflowApplication) {
+  const row = application as LoanWorkflowApplication & Record<string, unknown>
+  const snapshot = asRecord(application.contractSnapshot)
+  const product = asRecord(row.product)
+  const globalProduct = asRecord(row.globalProduct)
+
   return (
+    pickString(row, ["productName", "globalProductName", "merchantProductName", "loanName", "mortgageName"]) ||
+    pickString(product, ["name", "title", "productName"]) ||
+    pickString(globalProduct, ["name", "title", "productName"]) ||
+    pickString(snapshot, ["productName", "product_name", "name", "title", "loanName", "mortgageName", "purpose"]) ||
+    pickProductNameFromSnapshot(snapshot) ||
     application.productName ||
     application.globalProductReferenceNumber ||
     application.merchantProductId ||
-    application.localApplicationId ||
     `${application.productType} Application`
   )
 }
 
+function getProductType(application: LoanWorkflowApplication) {
+  const type = String(application.productType || "APPLICATION").toUpperCase()
+  return type === "MORTGAGE" ? "Mortgage" : type === "LOAN" ? "Loan" : type.replace(/_/g, " ")
+}
+
 function getApplicant(application: LoanWorkflowApplication) {
-  const label = resolveApplicationCustomerName(application)
+  const row = application as LoanWorkflowApplication & Record<string, unknown>
+  const snapshot = asRecord(application.contractSnapshot)
+  const user = asRecord(row.user)
+  const externalUser = asRecord(row.externalUser)
+  const applicant = asRecord(row.applicant)
+  const snapshotApplicant = asRecord(snapshot.applicant)
+  const snapshotCustomer = asRecord(snapshot.customer)
+  const snapshotBorrower = asRecord(snapshot.borrower)
+
+  const name =
+    pickString(row, ["userName", "applicantName", "customerName", "fullName", "name"]) ||
+    pickString(user, ["name", "fullName", "firstName", "email"]) ||
+    pickString(externalUser, ["name", "fullName", "firstName", "email"]) ||
+    pickString(applicant, ["name", "fullName", "firstName", "email"]) ||
+    pickString(snapshot, ["applicantName", "customerName", "fullName", "name", "email", "userEmail"]) ||
+    pickString(snapshotApplicant, ["name", "fullName", "firstName", "email"]) ||
+    pickString(snapshotCustomer, ["name", "fullName", "firstName", "email"]) ||
+    pickString(snapshotBorrower, ["name", "fullName", "firstName", "email"]) ||
+    resolveApplicationCustomerName(application)
+
+  const email =
+    pickString(row, ["userEmail", "applicantEmail", "customerEmail", "email"]) ||
+    pickString(user, ["email"]) ||
+    pickString(externalUser, ["email"]) ||
+    pickString(applicant, ["email"]) ||
+    pickString(snapshot, ["email", "userEmail", "applicantEmail", "customerEmail"]) ||
+    pickString(snapshotApplicant, ["email"]) ||
+    pickString(snapshotCustomer, ["email"]) ||
+    pickString(snapshotBorrower, ["email"])
+
+  const label = name || email || application.userId || "Unknown customer"
+  const subtitle =
+    email && name
+      ? email
+      : application.offeringMerchantName ||
+        application.merchantName ||
+        application.userId ||
+        "No customer id"
+
   return {
     label,
-    subtitle:
-      application.offeringMerchantName ||
-      application.merchantName ||
-      application.offeringMerchantId ||
-      application.userId ||
-      "No merchant",
+    subtitle,
     initials: applicationCustomerInitials(label),
   }
 }
@@ -73,7 +157,8 @@ function numericSnapshotValue(snapshot: Record<string, unknown> | undefined, key
 }
 
 function getAmount(application: LoanWorkflowApplication) {
-  const amount = numericSnapshotValue(application.contractSnapshot, [
+  const row = application as LoanWorkflowApplication & Record<string, unknown>
+  const amount = pickNumber(row, ["approvedAmount", "amount", "principalAmount", "requestedAmount", "loanAmount", "propertyValue"]) || numericSnapshotValue(application.contractSnapshot, [
     "approvedAmount",
     "approvedPrincipal",
     "principal",
@@ -86,6 +171,22 @@ function getAmount(application: LoanWorkflowApplication) {
   return `${currency}${amount.toLocaleString("en-NG")}`
 }
 
+function getReference(application: LoanWorkflowApplication) {
+  return application.id.slice(0, 8).toUpperCase()
+}
+
+function formatSubmittedDate(application: LoanWorkflowApplication) {
+  const value = application.submittedAt || application.createdAt
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "N/A"
+  return (
+    <span className="inline-flex flex-col leading-tight">
+      <span>{date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+      <span className="text-[10px] text-gray-400">{date.getFullYear()}</span>
+    </span>
+  )
+}
+
 function getStatusBadge(status: LoanWorkflowStatus) {
   const styles: Record<LoanWorkflowStatus, string> = {
     requested: "bg-[#FFF3CF] text-[#9A813F]",
@@ -93,9 +194,187 @@ function getStatusBadge(status: LoanWorkflowStatus) {
     approved: "bg-green-100 text-green-700",
     declined: "bg-red-100 text-red-700",
     blacklisted: "bg-gray-100 text-gray-700",
+    completed: "bg-green-200 text-green-800",
+    offer_sent: "bg-purple-100 text-purple-700",
   }
-  const label = status === "declined" ? "rejected" : status.replace("_", " ")
+  const label =
+    status === "requested"
+      ? "Pending"
+      : status === "declined"
+        ? "Rejected"
+        : status.replace("_", " ")
   return <span className={`rounded-full px-2 py-1 text-xs font-medium ${styles[status]}`}>{label}</span>
+}
+
+function DetailField({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">{label}</p>
+      <div className="text-sm font-medium text-gray-900">{value || "N/A"}</div>
+    </div>
+  )
+}
+
+function formatFullDate(value?: string | null) {
+  if (!value) return "N/A"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "N/A"
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+function WorkflowApplicationDrawer({
+  application,
+  isOpen,
+  isLoading,
+  onClose,
+}: {
+  application: LoanWorkflowApplication | null
+  isOpen: boolean
+  isLoading: boolean
+  onClose: () => void
+}) {
+  if (!isOpen) return null
+
+  const snapshot = asRecord(application?.contractSnapshot)
+  const structure = asRecord(snapshot.structure)
+  const about = asRecord(snapshot.about)
+  const finalSubmission = asRecord(snapshot.finalSubmission)
+  const applicationRecord = asRecord(application)
+  const guarantors = Array.isArray(applicationRecord.guarantorKyc)
+    ? (applicationRecord.guarantorKyc as Record<string, unknown>[])
+    : []
+  const documents = Array.isArray(application?.submittedRequirements) ? application.submittedRequirements : []
+  const customer = application ? getApplicant(application) : { label: "Loading...", subtitle: "", initials: "..." }
+  const status = application ? workflowStatus(application) : "requested"
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button type="button" aria-label="Close details" className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <aside className="relative z-10 flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-gray-100 px-6 py-5">
+          <div>
+            <p className="text-sm font-medium uppercase tracking-wide text-[#9A813F]">Overview</p>
+            <h2 className="text-2xl font-bold text-gray-900">Application & Customer Details</h2>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose} className="h-9 w-9 p-0">
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
+
+        {isLoading ? (
+          <div className="flex flex-1 items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-[#9A813F]" />
+          </div>
+        ) : !application ? (
+          <div className="flex flex-1 items-center justify-center text-gray-500">No application selected</div>
+        ) : (
+          <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+            <div className="flex items-start justify-between rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#111827] text-lg font-bold text-white">
+                  {customer.initials}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">{customer.label}</h3>
+                  <p className="mt-1 text-sm text-gray-500">{customer.subtitle}</p>
+                </div>
+              </div>
+              {getStatusBadge(status)}
+            </div>
+
+            <div className="rounded-xl bg-gradient-to-r from-gray-900 to-black p-6 text-white">
+              <div className="mb-4 flex items-center gap-3">
+                {String(application.productType).toUpperCase() === "MORTGAGE" ? <Building2 className="h-5 w-5" /> : <DollarSign className="h-5 w-5" />}
+                <div>
+                  <p className="text-lg font-semibold">{getProductName(application)}</p>
+                  <p className="text-xs uppercase tracking-wide text-gray-300">{getProductType(application)}</p>
+                </div>
+              </div>
+              <p className="text-3xl font-bold">{getAmount(application)}</p>
+              <p className="mt-2 flex items-center gap-2 text-sm text-gray-300">
+                Reference: <span className="rounded bg-white/10 px-2 py-0.5 font-mono">{getReference(application)}</span>
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <h3 className="mb-4 border-b border-gray-100 pb-2 font-semibold text-gray-900">Application Details</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <DetailField label="Product Name" value={getProductName(application)} />
+                <DetailField label="Product Type" value={getProductType(application)} />
+                <DetailField label="Application ID" value={<span className="font-mono">{application.id}</span>} />
+                <DetailField label="Local Application ID" value={<span className="font-mono">{application.localApplicationId || "N/A"}</span>} />
+                <DetailField label="Global Product Reference" value={<span className="font-mono">{application.globalProductReferenceNumber || "N/A"}</span>} />
+                <DetailField label="Submitted Date" value={<span className="flex items-center gap-2"><Calendar className="h-4 w-4 text-gray-400" />{formatFullDate(application.submittedAt || application.createdAt)}</span>} />
+                <DetailField label="Creator Merchant" value={application.merchantName || application.merchantId} />
+                <DetailField label="Offering Merchant" value={application.offeringMerchantName || application.offeringMerchantId || "N/A"} />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <h3 className="mb-4 border-b border-gray-100 pb-2 font-semibold text-gray-900">Contract Snapshot</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <DetailField label="Principal" value={getAmount(application)} />
+                <DetailField label="Currency" value={String(snapshot.currency ?? "NGN")} />
+                <DetailField label="Tenure" value={String(about.tenure ?? "N/A")} />
+                <DetailField label="Interest Rate" value={structure.interestRate != null ? `${String(structure.interestRate)}%` : "N/A"} />
+                <DetailField label="Repayment Schedule" value={String(structure.repaymentSchedule ?? "N/A").replace(/_/g, " ")} />
+                <DetailField label="Repayment Frequency" value={String(structure.repaymentFrequency ?? "N/A")} />
+                <DetailField label="Accepted Terms" value={finalSubmission.acceptedTerms === true ? "Yes" : finalSubmission.acceptedTerms === false ? "No" : "N/A"} />
+                <DetailField label="Snapshot Version" value={application.snapshotVersion ?? "N/A"} />
+              </div>
+            </div>
+
+            {guarantors.length > 0 ? (
+              <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                <h3 className="mb-4 border-b border-gray-100 pb-2 font-semibold text-gray-900">Guarantor KYC</h3>
+                <div className="space-y-3">
+                  {guarantors.map((guarantor, index) => (
+                    <div key={`${String(guarantor.id ?? index)}`} className="rounded-lg bg-gray-50 p-4">
+                      <p className="font-semibold text-gray-900">{pickString(guarantor, ["fullName", "name"], "N/A")}</p>
+                      <p className="text-sm text-gray-500">{pickString(guarantor, ["email"], "No email")} · {pickString(guarantor, ["phone"], "No phone")}</p>
+                      <p className="mt-1 text-sm capitalize text-gray-600">Status: {pickString(guarantor, ["status"], "N/A")}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+              <h3 className="mb-4 border-b border-gray-100 pb-2 font-semibold text-gray-900">Submitted Documents</h3>
+              {documents.length === 0 ? (
+                <p className="text-sm text-gray-500">No submitted documents available.</p>
+              ) : (
+                <div className="space-y-3">
+                  {documents.map((document, index) => {
+                    const url = pickString(document, ["submittedFileUrl", "templateFileUrl"])
+                    return (
+                      <div key={`${pickString(document, ["fileName"], "document")}-${index}`} className="flex items-center justify-between rounded-lg bg-gray-50 p-3">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{pickString(document, ["fileName", "requirementType"], `Document ${index + 1}`)}</p>
+                          <p className="text-xs text-gray-500">{pickString(document, ["contentType", "fileType"], "Document")}</p>
+                        </div>
+                        {url ? (
+                          <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm font-medium text-[#9A813F] hover:underline">
+                            View <ExternalLink className="h-3.5 w-3.5" />
+                          </a>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </aside>
+    </div>
+  )
 }
 
 export default function PlataApplicationsPage() {
@@ -111,6 +390,9 @@ export default function PlataApplicationsPage() {
   const [confirm, setConfirm] = useState<{ action: "approve" | "reject"; application: LoanWorkflowApplication } | null>(
     null,
   )
+  const [selectedApplication, setSelectedApplication] = useState<LoanWorkflowApplication | null>(null)
+  const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false)
+  const [isDetailLoading, setIsDetailLoading] = useState(false)
 
   const fetchApplications = async () => {
     setIsLoading(true)
@@ -148,7 +430,9 @@ export default function PlataApplicationsPage() {
         application.globalProductReferenceNumber,
         application.localApplicationId,
         application.merchantProductId,
+        getReference(application),
         getProductName(application),
+        getProductType(application),
         getApplicant(application).label,
         getApplicant(application).subtitle,
       ]
@@ -202,6 +486,26 @@ export default function PlataApplicationsPage() {
       await fetchApplications()
     } finally {
       setProcessing(null)
+    }
+  }
+
+  const handleOpenApplication = async (application: LoanWorkflowApplication) => {
+    setSelectedApplication(application)
+    setIsDetailDrawerOpen(true)
+    setIsDetailLoading(true)
+
+    try {
+      const response = await accountService.applications.getWorkflowApplication(application.id)
+      if (response.success && response.data) {
+        setSelectedApplication(response.data)
+      } else if (!response.success) {
+        toast.error(response.error || "Failed to load application details")
+      }
+    } catch (error) {
+      console.error("Failed to load Plata application details:", error)
+      toast.error("Failed to load application details")
+    } finally {
+      setIsDetailLoading(false)
     }
   }
 
@@ -287,7 +591,7 @@ export default function PlataApplicationsPage() {
             <table className="w-full">
               <thead className="border-b border-[#E8DFD0] bg-[#FFF9EB]">
                 <tr>
-                  {["Customer", "Product", "Reference", "Amount", "Workflow", "Submitted", "Actions"].map((heading) => (
+                  {["Customer", "Type", "Reference", "Amount", "Status", "Submitted", "Actions"].map((heading) => (
                     <th key={heading} className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#7A642F]">
                       {heading}
                     </th>
@@ -302,7 +606,11 @@ export default function PlataApplicationsPage() {
                   const isApproving = processing?.id === application.id && processing.action === "approve"
                   const isRejecting = processing?.id === application.id && processing.action === "reject"
                   return (
-                    <tr key={application.id} className="hover:bg-[#FFF9EB]/40">
+                    <tr
+                      key={application.id}
+                      onClick={() => void handleOpenApplication(application)}
+                      className="cursor-pointer hover:bg-[#FFF9EB]/40"
+                    >
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-4">
                           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#9A813F] text-sm font-bold text-white">
@@ -314,12 +622,22 @@ export default function PlataApplicationsPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-5 text-sm font-medium text-gray-700">{getProductName(application)}</td>
-                      <td className="px-6 py-5 font-mono text-sm text-gray-500">{application.id.slice(0, 8).toUpperCase()}</td>
+                      <td className="px-6 py-5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#FFF9EB] text-[#9A813F]">
+                            {String(application.productType).toUpperCase() === "MORTGAGE" ? <Building2 className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{getProductName(application)}</p>
+                            <p className="text-xs uppercase tracking-wide text-gray-400">{getProductType(application)}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5 font-mono text-sm text-gray-500">{getReference(application)}</td>
                       <td className="px-6 py-5 text-sm font-bold text-gray-900">{getAmount(application)}</td>
                       <td className="px-6 py-5">{getStatusBadge(status)}</td>
-                      <td className="px-6 py-5 text-sm text-gray-600">{new Date(application.submittedAt || application.createdAt).toLocaleDateString()}</td>
-                      <td className="px-6 py-5 text-right">
+                      <td className="px-6 py-5 text-sm text-gray-600">{formatSubmittedDate(application)}</td>
+                      <td className="px-6 py-5 text-right" onClick={(event) => event.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
@@ -359,6 +677,15 @@ export default function PlataApplicationsPage() {
           </div>
         )}
       </div>
+      <WorkflowApplicationDrawer
+        application={selectedApplication}
+        isOpen={isDetailDrawerOpen}
+        isLoading={isDetailLoading}
+        onClose={() => {
+          setIsDetailDrawerOpen(false)
+          setSelectedApplication(null)
+        }}
+      />
 
       <AlertDialog open={!!confirm} onOpenChange={(open) => (!open ? setConfirm(null) : null)}>
         <AlertDialogContent>

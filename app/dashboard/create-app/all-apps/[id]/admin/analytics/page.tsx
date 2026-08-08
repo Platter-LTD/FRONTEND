@@ -1,15 +1,8 @@
 "use client"
 
-import ProductOverviewDashboard from "@/components/analytics/ProductOverviewDashboard"
+import PlataAnalyticsDashboard from "@/components/analytics/PlataAnalyticsDashboard"
 
-/**
- * Analytics route now surfaces the Product overview experience
- * (per-product KPIs, repayments, mortgage savings review).
- */
+/** Per-app Admin → Analytics */
 export default function AppAdminAnalyticsPage() {
-  return (
-    <div className="min-h-full w-full bg-[#FAFAF9]">
-      <ProductOverviewDashboard />
-    </div>
-  )
+  return <PlataAnalyticsDashboard />
 }
