@@ -1,6 +1,7 @@
 // Product API helper functions with authentication
 
 import { getAccessToken } from '@/lib/cookieAuth';
+import { plataAuthFetch } from '@/lib/plataAuthFetch';
 import {
   extractProductFromResponse,
   mapProductToConfigurationView,
@@ -910,11 +911,11 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
 };
 
 export const productApi = {
-  async getProductOverview(appId: string) {
-    const response = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}/product-overview`, {
-      headers: getAuthHeaders(),
-      credentials: 'include',
-    });
+  async getProductOverview(appId: string, signal?: AbortSignal) {
+    const response = await plataAuthFetch(
+      `/api/v1/products/app/${encodeURIComponent(appId)}/product-overview`,
+      { headers: getAuthHeaders(), signal },
+    );
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -923,13 +924,11 @@ export const productApi = {
     return data;
   },
 
-  async getProductOverviewByType(appId: string, productType: string) {
-    const response = await fetch(
-      `/api/v1/products/app/${encodeURIComponent(appId)}/product-overview/by-type/${encodeURIComponent(productType)}`,
-      {
-        headers: getAuthHeaders(),
-        credentials: 'include',
-      },
+  async getProductOverviewByType(appId: string, productType: string, signal?: AbortSignal) {
+    const type = encodeURIComponent(String(productType || '').trim().toUpperCase());
+    const response = await plataAuthFetch(
+      `/api/v1/products/app/${encodeURIComponent(appId)}/product-overview/by-type/${type}`,
+      { headers: getAuthHeaders(), signal },
     );
 
     const data = await response.json().catch(() => ({}));

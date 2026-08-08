@@ -8,7 +8,7 @@ import { IoMdCube } from "react-icons/io"
 import { RiSettings3Fill } from "react-icons/ri"
 import { FiLogOut } from "react-icons/fi"
 import { FaWallet } from "react-icons/fa"
-import { BarChart3, GitBranch, ChevronDown, ChevronUp, FileText, ShieldCheck } from "lucide-react"
+import { BarChart3, GitBranch, ChevronDown, ChevronUp, FileText, ShieldCheck, PanelLeftClose, PanelLeftOpen } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
@@ -95,6 +95,33 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
   const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState(false)
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem("plata-dashboard-sidebar-collapsed") === "1")
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem("plata-dashboard-sidebar-collapsed", next ? "1" : "0")
+      } catch {
+        /* ignore */
+      }
+      if (next) {
+        setIsWalletsOpen(false)
+        setIsProductsOpen(false)
+        setIsApplicationsOpen(false)
+        setIsWorkflowOpen(false)
+      }
+      return next
+    })
+  }
 
   const tokenUser = typeof window !== "undefined" ? getUserFromToken() : null
   const effectiveUser = user ?? tokenUser
@@ -255,14 +282,34 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
       (pathname.startsWith(`${teamHref}/`) && !pathname.startsWith(analyticsHref)))
 
   return (
-    <div className={`w-64 bg-white border-r border-gray-200 h-screen flex flex-col ${className}`}>
-      <div className="p-6">
-        <CompanyLogoMark companyLogoUrl={companyLogoUrl} companyName={companyName} />
+    <div
+      className={`${collapsed ? "w-[72px]" : "w-64"} bg-white border-r border-gray-200 h-screen flex flex-col transition-[width] duration-200 ease-in-out shrink-0 ${className}`}
+    >
+      <div className={`flex items-center gap-2 border-b border-gray-100 ${collapsed ? "justify-center p-3" : "justify-between p-4"}`}>
+        {!collapsed ? (
+          <div className="min-w-0 flex-1">
+            <CompanyLogoMark companyLogoUrl={companyLogoUrl} companyName={companyName} />
+          </div>
+        ) : (
+          <Tippy content={companyName || "PLATA"} placement="right" arrow theme="sidebar-light">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#FFF9EB] text-sm font-bold text-[#9A813F]">
+              {(companyName || "PLATA").charAt(0).toUpperCase()}
+            </div>
+          </Tippy>
+        )}
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="shrink-0 rounded-md p-1.5 text-slate-500 hover:bg-[#FFF9EB] hover:text-[#9A813F]"
+        >
+          {collapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        </button>
       </div>
 
-      <nav className="flex-1 px-4">
+      <nav className={`flex-1 overflow-y-auto ${collapsed ? "px-2" : "px-4"} pt-3`}>
         {inAppContext && appId ? (
-          <ul className="space-y-4">
+          <ul className="space-y-2">
             {appNavItems.map((item, index) => {
               const hasSubItems = item.subItems && item.subItems.length > 0
               const activeSubHref = hasSubItems && item.subItems ? getActiveSubHref(pathname, item.subItems) : null
@@ -289,6 +336,45 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
                       : item.label === "Operation Workflow"
                         ? setIsWorkflowOpen
                         : () => {}
+
+              if (hasSubItems && collapsed) {
+                return (
+                  <li key={index}>
+                    <Tippy
+                      placement="right"
+                      interactive
+                      arrow
+                      theme="sidebar-light"
+                      content={
+                        <div className="flex min-w-[160px] flex-col gap-1 p-1">
+                          <p className="px-2 py-1 text-xs font-semibold text-slate-500">{item.label}</p>
+                          {item.subItems?.map((sub) => (
+                            <Link
+                              key={sub.href}
+                              href={sub.href}
+                              className={`rounded-md px-2 py-1.5 text-sm hover:bg-[#FFF9EB] ${
+                                activeSubHref === sub.href ? "text-[#9A813F] font-medium" : "text-slate-700"
+                              }`}
+                            >
+                              {sub.label}
+                            </Link>
+                          ))}
+                        </div>
+                      }
+                    >
+                      <button
+                        type="button"
+                        className={`flex w-full items-center justify-center rounded-lg px-2 py-2.5 transition-colors [&_svg]:shrink-0 ${
+                          isActive ? ACTIVE_ROW : INACTIVE_ROW
+                        }`}
+                        aria-label={item.label}
+                      >
+                        {item.icon}
+                      </button>
+                    </Tippy>
+                  </li>
+                )
+              }
 
               return (
                 <li key={index}>
@@ -329,6 +415,18 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
                         </ul>
                       )}
                     </div>
+                  ) : collapsed ? (
+                    <Tippy content={item.label} placement="right" arrow theme="sidebar-light">
+                      <Link
+                        href={item.href}
+                        aria-label={item.label}
+                        className={`flex items-center justify-center rounded-lg px-2 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                          isActive ? ACTIVE_ROW : INACTIVE_ROW
+                        }`}
+                      >
+                        {item.icon}
+                      </Link>
+                    </Tippy>
                   ) : (
                     <Link
                       href={item.href}
@@ -345,30 +443,43 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
             })}
           </ul>
         ) : (
-          <ul className="space-y-4">
+          <ul className="space-y-2">
             {globalNavItems.map((item, index) => {
               const isActive =
                 pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`))
               const disabled = !!(item.requiresCompliance && !complianceComplete)
-              const linkClass = `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
-                isActive ? ACTIVE_ROW : INACTIVE_ROW
-              } ${disabled ? "pointer-events-none cursor-not-allowed opacity-60" : ""}`
+              const linkClass = collapsed
+                ? `flex items-center justify-center rounded-lg px-2 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                    isActive ? ACTIVE_ROW : INACTIVE_ROW
+                  } ${disabled ? "pointer-events-none cursor-not-allowed opacity-60" : ""}`
+                : `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                    isActive ? ACTIVE_ROW : INACTIVE_ROW
+                  } ${disabled ? "pointer-events-none cursor-not-allowed opacity-60" : ""}`
+
+              const inner = (
+                <>
+                  {item.icon}
+                  {!collapsed && <span className="text-sm">{item.label}</span>}
+                </>
+              )
 
               return (
                 <li key={index}>
                   {disabled ? (
-                    <Tippy content={COMPLIANCE_MESSAGE} placement="top" arrow theme="sidebar-light">
+                    <Tippy content={COMPLIANCE_MESSAGE} placement={collapsed ? "right" : "top"} arrow theme="sidebar-light">
                       <span className="flex w-full cursor-not-allowed">
-                        <span className={`${linkClass} pointer-events-none w-full`}>
-                          {item.icon}
-                          <span className="text-sm">{item.label}</span>
-                        </span>
+                        <span className={`${linkClass} pointer-events-none w-full`}>{inner}</span>
                       </span>
+                    </Tippy>
+                  ) : collapsed ? (
+                    <Tippy content={item.label} placement="right" arrow theme="sidebar-light">
+                      <Link href={item.href} className={linkClass} aria-label={item.label}>
+                        {inner}
+                      </Link>
                     </Tippy>
                   ) : (
                     <Link href={item.href} className={linkClass}>
-                      {item.icon}
-                      <span className="text-sm">{item.label}</span>
+                      {inner}
                     </Link>
                   )}
                 </li>
@@ -377,41 +488,87 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
           </ul>
         )}
 
-        <div className="mt-8 mb-2 px-3">
-          <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">Section Title</h3>
-        </div>
+        {!collapsed && (
+          <div className="mt-8 mb-2 px-3">
+            <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">Section Title</h3>
+          </div>
+        )}
 
-        <ul className="space-y-4">
+        <ul className={`space-y-2 ${collapsed ? "mt-4" : ""}`}>
           {inAppContext && appId ? (
             <li>
-              <Link
-                href={teamHref}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
-                  isTeamActive ? ACTIVE_ROW : INACTIVE_ROW
-                }`}
-              >
-                <ShieldCheck size={20} />
-                <span>Team</span>
-              </Link>
+              {collapsed ? (
+                <Tippy content="Team" placement="right" arrow theme="sidebar-light">
+                  <Link
+                    href={teamHref}
+                    aria-label="Team"
+                    className={`flex items-center justify-center rounded-lg px-2 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                      isTeamActive ? ACTIVE_ROW : INACTIVE_ROW
+                    }`}
+                  >
+                    <ShieldCheck size={20} />
+                  </Link>
+                </Tippy>
+              ) : (
+                <Link
+                  href={teamHref}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                    isTeamActive ? ACTIVE_ROW : INACTIVE_ROW
+                  }`}
+                >
+                  <ShieldCheck size={20} />
+                  <span>Team</span>
+                </Link>
+              )}
             </li>
           ) : null}
           <li>
             {inAppContext && appId ? (
-              <Link
-                href={`/dashboard/create-app/all-apps/${appId}/settings`}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
-                  pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/settings`) ? ACTIVE_ROW : INACTIVE_ROW
-                }`}
-              >
-                <RiSettings3Fill size={20} />
-                <span>Settings</span>
-              </Link>
-            ) : !complianceComplete ? (
-              <Tippy content={COMPLIANCE_MESSAGE} placement="top" arrow theme="sidebar-light">
-                <span className="flex items-center space-x-3 px-3 py-2 rounded-md text-gray-700 opacity-60 cursor-not-allowed w-full">
+              collapsed ? (
+                <Tippy content="Settings" placement="right" arrow theme="sidebar-light">
+                  <Link
+                    href={`/dashboard/create-app/all-apps/${appId}/settings`}
+                    aria-label="Settings"
+                    className={`flex items-center justify-center rounded-lg px-2 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                      pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/settings`) ? ACTIVE_ROW : INACTIVE_ROW
+                    }`}
+                  >
+                    <RiSettings3Fill size={20} />
+                  </Link>
+                </Tippy>
+              ) : (
+                <Link
+                  href={`/dashboard/create-app/all-apps/${appId}/settings`}
+                  className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                    pathname.startsWith(`/dashboard/create-app/all-apps/${appId}/settings`) ? ACTIVE_ROW : INACTIVE_ROW
+                  }`}
+                >
                   <RiSettings3Fill size={20} />
-                  <span className="text-sm">Settings</span>
+                  <span>Settings</span>
+                </Link>
+              )
+            ) : !complianceComplete ? (
+              <Tippy content={COMPLIANCE_MESSAGE} placement={collapsed ? "right" : "top"} arrow theme="sidebar-light">
+                <span
+                  className={`flex cursor-not-allowed items-center rounded-md text-gray-700 opacity-60 w-full ${
+                    collapsed ? "justify-center px-2 py-2" : "space-x-3 px-3 py-2"
+                  }`}
+                >
+                  <RiSettings3Fill size={20} />
+                  {!collapsed && <span className="text-sm">Settings</span>}
                 </span>
+              </Tippy>
+            ) : collapsed ? (
+              <Tippy content="Settings" placement="right" arrow theme="sidebar-light">
+                <Link
+                  href="/dashboard/settings"
+                  aria-label="Settings"
+                  className={`flex items-center justify-center rounded-lg px-2 py-2.5 text-sm transition-colors [&_svg]:shrink-0 ${
+                    pathname.startsWith("/dashboard/settings") ? ACTIVE_ROW : INACTIVE_ROW
+                  }`}
+                >
+                  <RiSettings3Fill size={20} />
+                </Link>
               </Tippy>
             ) : (
               <Link
@@ -428,24 +585,28 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
         </ul>
       </nav>
 
-      <div className="py-4 px-4 border-t border-gray-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3 min-w-0">
-            <Avatar className="w-9 h-9 shrink-0">
-              <AvatarFallback className="text-sm font-semibold text-gray-900 border border-gray-200 rounded-full">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
-              <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
-            </div>
+      <div className={`border-t border-gray-200 py-4 ${collapsed ? "px-2" : "px-4"}`}>
+        <div className={`flex items-center ${collapsed ? "flex-col gap-2" : "justify-between"}`}>
+          <div className={`flex items-center min-w-0 ${collapsed ? "" : "space-x-3"}`}>
+            <Tippy content={displayName || displayEmail || "Account"} placement="right" arrow theme="sidebar-light" disabled={!collapsed}>
+              <Avatar className="w-9 h-9 shrink-0">
+                <AvatarFallback className="text-sm font-semibold text-gray-900 border border-gray-200 rounded-full">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </Tippy>
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
+                <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
+              </div>
+            )}
           </div>
           <button
             type="button"
             onClick={handleLogout}
             aria-label="Logout"
-            className="text-gray-500 hover:text-gray-700 pr-2 shrink-0"
+            className="text-gray-500 hover:text-gray-700 shrink-0"
           >
             <FiLogOut size={20} className="cursor-pointer" />
           </button>
