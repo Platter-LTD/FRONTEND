@@ -241,27 +241,9 @@ function Badge({ label, tone }: { label: string; tone: Tone }) {
   )
 }
 
-function KpiCard({
-  kpi,
-  selected,
-  onSelect,
-}: {
-  kpi: KpiSpec
-  selected: boolean
-  onSelect: () => void
-}) {
+function KpiCard({ kpi }: { kpi: KpiSpec }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={cn(
-        "rounded-xl border px-5 py-4 text-left transition-colors",
-        selected
-          ? "border-[#B08D57] bg-[#F7EEDD]"
-          : "border-[#E7E5E0] bg-white hover:border-[#D6D3CE] hover:bg-[#FAFAF9]",
-      )}
-    >
+    <div className="rounded-xl border border-[#E7E5E0] bg-white px-5 py-4 text-left">
       <span className="flex items-center gap-2 text-[13px] text-[#78716C]">
         <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", TONE_DOT[kpi.tone])} />
         {kpi.label}
@@ -270,7 +252,7 @@ function KpiCard({
         {kpi.value}
       </span>
       <span className={cn("mt-2 block text-xs", TONE_NOTE[kpi.tone])}>{kpi.note}</span>
-    </button>
+    </div>
   )
 }
 
@@ -734,11 +716,6 @@ export default function ProductOverviewDashboard({
   appName?: string
 }) {
   const [activeTab, setActiveTab] = useState<TabKey>("loan")
-  const [selectedKpi, setSelectedKpi] = useState<string | null>(null)
-  const [applications, setApplications] = useState<SavingsApplication[]>([])
-  const [plans, setPlans] = useState<SavingsPlan[]>([])
-  const [remindersSent, setRemindersSent] = useState<Record<string, boolean>>({})
-  const [reviewTarget, setReviewTarget] = useState<SavingsApplication | null>(null)
 
   const [overview, setOverview] = useState<ProductOverviewData | null>(null)
   const [liveView, setLiveView] = useState<OverviewByTypeView | null>(null)
@@ -837,7 +814,6 @@ export default function ProductOverviewDashboard({
     )
   }, [liveView])
 
-  const selected = kpis.find((kpi) => kpi.id === selectedKpi) ?? null
   const tabRequests = liveView?.requests ?? []
   const tabTables = (liveView?.tables as TableSpec[] | undefined) ?? []
   const tabDue = liveView?.due
@@ -847,12 +823,7 @@ export default function ProductOverviewDashboard({
 
   function handleTabChange(next: TabKey) {
     setActiveTab(next)
-    setSelectedKpi(null)
     setTypeError(null)
-  }
-
-  function handleKpiSelect(id: string) {
-    setSelectedKpi((current) => (current === id ? null : id))
   }
 
   function resolveRequest(id: string, next: "approved" | "declined") {
@@ -869,46 +840,6 @@ export default function ProductOverviewDashboard({
     const description = row ? `${row.reference} · ${money(row.amount)}` : undefined
     if (next === "approved") toast.success("Request approved", { description })
     else toast.info("Request declined", { description })
-  }
-
-  function approveApplication(application: SavingsApplication) {
-    setApplications((current) =>
-      current.map((entry) =>
-        entry.id === application.id ? { ...entry, status: "approved" } : entry,
-      ),
-    )
-    setPlans((current) => [
-      {
-        id: application.id,
-        reference: application.reference,
-        customer: application.customer,
-        property: application.property,
-        saved: 0,
-        target: application.target,
-        monthly: application.monthly,
-        startedOn: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
-      },
-      ...current,
-    ])
-    setReviewTarget(null)
-    toast.success("Savings plan created", {
-      description: `${application.customer} · ${money(application.monthly)} monthly`,
-    })
-  }
-
-  function declineApplication(application: SavingsApplication) {
-    setApplications((current) =>
-      current.map((entry) =>
-        entry.id === application.id ? { ...entry, status: "declined" } : entry,
-      ),
-    )
-    setReviewTarget(null)
-    toast.info("Application declined", { description: application.reference })
-  }
-
-  function sendReminder(plan: MissedSavingsPlan) {
-    setRemindersSent((current) => ({ ...current, [plan.id]: true }))
-    toast.success("Reminder sent", { description: `${plan.customer} · ${plan.reference}` })
   }
 
   return (
@@ -1008,31 +939,8 @@ export default function ProductOverviewDashboard({
                 )}
               >
                 {kpis.map((kpi) => (
-                  <KpiCard
-                    key={kpi.id}
-                    kpi={kpi}
-                    selected={selectedKpi === kpi.id}
-                    onSelect={() => handleKpiSelect(kpi.id)}
-                  />
+                  <KpiCard key={kpi.id} kpi={kpi} />
                 ))}
-              </div>
-            ) : null}
-
-            {selected?.special === "mortgage-savings" ? (
-              <MortgageSavingsPanel
-                appName={appName}
-                applications={applications}
-                plans={plans}
-                missed={[]}
-                remindersSent={remindersSent}
-                onReview={setReviewTarget}
-                onSendReminder={sendReminder}
-              />
-            ) : null}
-
-            {selected && !selected.special && selected.drilldown ? (
-              <div className="mt-4">
-                <DataTable table={selected.drilldown} />
               </div>
             ) : null}
 
@@ -1055,15 +963,6 @@ export default function ProductOverviewDashboard({
           </>
         )}
       </div>
-
-      {reviewTarget ? (
-        <ReviewModal
-          application={reviewTarget}
-          onClose={() => setReviewTarget(null)}
-          onApprove={() => approveApplication(reviewTarget)}
-          onDecline={() => declineApplication(reviewTarget)}
-        />
-      ) : null}
     </div>
   )
 }

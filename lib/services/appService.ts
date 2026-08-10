@@ -1,7 +1,9 @@
 // App Service - Complete API wrapper for app management operations
 
 import { getAccessToken } from '@/lib/cookieAuth';
+import { plataAuthFetch } from '@/lib/plataAuthFetch';
 import { emptyPwaTemplateConfig } from '@/lib/pwaTemplateBridge';
+import type { AnalyticsProductFilter, AnalyticsRange, AppAnalyticsResponse } from '@/lib/appAnalytics';
 
 const getAuthHeaders = () => {
   const token = typeof window !== 'undefined' ? getAccessToken() : null;
@@ -171,6 +173,29 @@ export const appApi = {
     }
 
     return data;
+  },
+
+  /**
+   * App analytics overview (range + productType). One call fills the analytics screen.
+   */
+  async getAppAnalytics(
+    appId: string,
+    params?: { range?: AnalyticsRange; productType?: AnalyticsProductFilter },
+    signal?: AbortSignal,
+  ): Promise<AppAnalyticsResponse> {
+    const qs = new URLSearchParams({
+      range: params?.range || '30d',
+      productType: params?.productType || 'ALL',
+    });
+    const response = await plataAuthFetch(
+      `/api/v1/apps/${encodeURIComponent(appId)}/analytics?${qs.toString()}`,
+      { headers: getAuthHeaders(), signal },
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || 'Failed to fetch app analytics');
+    }
+    return data as AppAnalyticsResponse;
   },
 
   /**
