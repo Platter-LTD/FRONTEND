@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
 import { useAppMerchantId } from "@/hooks/useAppMerchantId"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import {
@@ -9,6 +10,7 @@ import {
   fetchTreasuryTransactionsThunk,
 } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
+import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
 
@@ -22,12 +24,17 @@ export default function TreasuryWalletPage() {
 
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [fundOpen, setFundOpen] = useState(false)
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (!merchantId || !appId) return
     void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
     void dispatch(fetchTreasuryTransactionsThunk({ merchantId, appId }))
   }, [dispatch, merchantId, appId])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
 
@@ -63,6 +70,15 @@ export default function TreasuryWalletPage() {
         title="Treasury wallet"
         subtitle="Disbursements and treasury operations"
         className="mb-8"
+        actions={
+          <Button
+            className="bg-[#8B7355] text-white hover:bg-[#7A6449]"
+            disabled={walletsLoading || !treasury}
+            onClick={() => setFundOpen(true)}
+          >
+            Fund
+          </Button>
+        }
       />
 
       <MerchantTransactionsTable
@@ -71,6 +87,20 @@ export default function TreasuryWalletPage() {
         currency={currency}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
+      />
+
+      <FundWalletDrawer
+        open={fundOpen}
+        onOpenChange={setFundOpen}
+        currency={currency}
+        virtualNuban={{
+          accountNumber: treasury?.virtualNuban?.accountNumber,
+          bankName: treasury?.virtualNuban?.bankName,
+          bankCode: treasury?.virtualNuban?.bankCode,
+          accountHolder: treasury?.name || "Treasury wallet",
+          provisionStatus: treasury?.virtualNuban?.provisionStatus,
+        }}
+        onRefreshBalance={refresh}
       />
     </div>
   )

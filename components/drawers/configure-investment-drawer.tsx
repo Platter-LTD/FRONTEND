@@ -253,6 +253,11 @@ export default function ConfigureInvestmentDrawer({
     description,
     investmentTypes,
     previewImage,
+    hasPreviewAsset: !!(
+      (investmentData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ||
+      investmentData?.previewAssetUrl ||
+      investmentData?.previewImage?.url
+    ),
     roi,
     interestMethod,
     investmentType,

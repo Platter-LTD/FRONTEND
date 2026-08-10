@@ -1,15 +1,16 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
-import { Loader2, Upload, X } from "lucide-react"
+import { ChevronDown, ChevronUp, Loader2, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
-import { getImageFileValidationError, getPdfFileValidationError } from "@/lib/fileValidation"
+import { getImageFileValidationError, getPdfFileValidationError, getPdfOrImageFileValidationError } from "@/lib/fileValidation"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import {
   uploadProductDocumentTemplateToUrl,
   uploadProductMediaToUrl,
+  uploadPropertyDocumentationToUrl,
 } from "@/lib/uploadProductMediaToUrl"
 import {
   normalizeOtherRequirementRowFromApi,
@@ -17,7 +18,7 @@ import {
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
 } from "@/lib/otherRequirementPayload"
-import { fetchOptionLabels, fetchProductOptionLabels } from "@/lib/productOptions"
+import { fetchOptionLabels, fetchProductOptionLabels, fetchProductOptions, type ProductOption } from "@/lib/productOptions"
 import type { MortgageConfigurePrefetched } from "@/lib/productConfigurePrefetch"
 import { ProductConfigAboutStep } from "@/components/drawers/product-config-about-step"
 import { ProductConfigDocumentRequirementsPanel } from "@/components/drawers/product-config-document-requirements"
@@ -87,6 +88,13 @@ interface PenaltyItem {
   triggerDuration: string
 }
 
+interface PropertyDocumentationItem {
+  id: string
+  documentType: string
+  fileUrl: string
+  fileName?: string
+}
+
 interface PropertyItem {
   id: string
   name: string
@@ -100,6 +108,7 @@ interface PropertyItem {
   videoUrl: string
   previewFiles: File[]
   previewObjectUrls: string[]
+  propertyDocumentation: PropertyDocumentationItem[]
 }
 
 interface InspectionDateItem {
@@ -197,6 +206,78 @@ function extractMoratoriumPrefill(raw: unknown): string {
   return ""
 }
 
+/** API may return numeric interest; drawer state expects a %-suffixed display string when applicable. */
+function normalizeInterestRateHydrate(raw: unknown): string {
+  if (raw == null || raw === "") return ""
+  if (typeof raw === "number" && Number.isFinite(raw)) return `${raw}%`
+  const s = String(raw).trim()
+  if (!s) return ""
+  if (s.includes("%")) return s
+  const n = Number(s.replace(/%/g, ""))
+  if (!Number.isNaN(n)) return `${n}%`
+  return s
+}
+
+function pickRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>
+  return {}
+}
+
+/** Product MS may return tabs at root or nested under `configuration`. */
+function pickAboutFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown> {
+  const direct = pickRecord(mortgageData.about)
+  if (Object.keys(direct).length) return direct
+  return pickRecord(pickRecord(mortgageData.configuration).about)
+}
+
+function pickStructureFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown> {
+  const direct = pickRecord(mortgageData.structure)
+  if (Object.keys(direct).length) return direct
+  return pickRecord(pickRecord(mortgageData.configuration).structure)
+}
+
+function pickRequirementsFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown> {
+  const direct = pickRecord(mortgageData.requirements)
+  if (Object.keys(direct).length) return direct
+  return pickRecord(pickRecord(mortgageData.configuration).requirements)
+}
+
+function pickFeesAndChargesFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown> {
+  const direct = pickRecord(mortgageData.feesAndCharges)
+  if (Object.keys(direct).length) return direct
+  return pickRecord(pickRecord(mortgageData.configuration).feesAndCharges)
+}
+
+function pickPropertiesFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown>[] {
+  if (Array.isArray(mortgageData.properties)) return mortgageData.properties as Record<string, unknown>[]
+  const cfg = pickRecord(mortgageData.configuration)
+  return Array.isArray(cfg.properties) ? (cfg.properties as Record<string, unknown>[]) : []
+}
+
+function pickInspectionDatesFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown>[] {
+  if (Array.isArray(mortgageData.inspectionDates)) return mortgageData.inspectionDates as Record<string, unknown>[]
+  const cfg = pickRecord(mortgageData.configuration)
+  return Array.isArray(cfg.inspectionDates) ? (cfg.inspectionDates as Record<string, unknown>[]) : []
+}
+
+/** Stored enum / snake_case → UI workflow label. */
+function canonicalRepaymentWorkflowFromApi(raw: unknown): string {
+  const k = String(raw ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/_+/g, "_")
+  const map: Record<string, string> = {
+    principal_interest_charges: DEFAULT_REPAYMENT_WORKFLOWS[0],
+    principal_then_interest_then_charges: DEFAULT_REPAYMENT_WORKFLOWS[0],
+    charges_principal_interest: DEFAULT_REPAYMENT_WORKFLOWS[1],
+    charges_then_principal_then_interest: DEFAULT_REPAYMENT_WORKFLOWS[1],
+    interest_charges_principal: DEFAULT_REPAYMENT_WORKFLOWS[2],
+    interest_then_charges_then_principal: DEFAULT_REPAYMENT_WORKFLOWS[2],
+  }
+  return map[k] ?? String(raw ?? "").trim()
+}
+
 export default function ConfigureMortgageDrawer({
   isOpen,
   onClose,
@@ -220,6 +301,10 @@ export default function ConfigureMortgageDrawer({
   const [securityOptions, setSecurityOptions] = useState<string[]>([])
   const [propertyTypeOptions, setPropertyTypeOptions] = useState<string[]>([])
   const [propertyFacilityOptions, setPropertyFacilityOptions] = useState<string[]>([])
+  const [propertyDocumentationOptions, setPropertyDocumentationOptions] = useState<ProductOption[]>([])
+  const [propertyDocDrafts, setPropertyDocDrafts] = useState<PropertyDocumentationItem[]>([])
+  const [propertyDocUploadingId, setPropertyDocUploadingId] = useState<string | null>(null)
+  const propertyDocFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [feeTypeOptions, setFeeTypeOptions] = useState<string[]>(DEFAULT_FEE_TYPE_OPTIONS)
   const [penaltyTypeOptions, setPenaltyTypeOptions] = useState<string[]>(DEFAULT_PENALTY_TYPE_OPTIONS)
   const [triggerDurationOptions, setTriggerDurationOptions] = useState<string[]>(TRIGGER_DURATION_OPTIONS)
@@ -269,10 +354,11 @@ export default function ConfigureMortgageDrawer({
   const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
   const mortgageHydratedKeyRef = useRef<string | null>(null)
 
-  const [contractId, setContractId] = useState("")
-  const [airSignSecretKey, setAirSignSecretKey] = useState("")
-  const [airSignUid, setAirSignUid] = useState("")
-  const [requireApplicantSignature, setRequireApplicantSignature] = useState(false)
+  // AirSign / applicant signature — not used for product config submit.
+  // const [contractId, setContractId] = useState("")
+  // const [airSignSecretKey, setAirSignSecretKey] = useState("")
+  // const [airSignUid, setAirSignUid] = useState("")
+  // const [requireApplicantSignature, setRequireApplicantSignature] = useState(false)
 
   const [chargeName, setChargeName] = useState("")
   const [chargeFeeType, setChargeFeeType] = useState("")
@@ -369,6 +455,7 @@ export default function ConfigureMortgageDrawer({
       setSecurityOptions(prefetchedOptions.securities)
       setPropertyTypeOptions(prefetchedOptions.propertyTypes)
       setPropertyFacilityOptions(prefetchedOptions.mortgageFacilities)
+      setPropertyDocumentationOptions(prefetchedOptions.propertyDocumentation ?? [])
       setFeeTypeOptions(prefetchedOptions.feeType)
       setPenaltyTypeOptions(prefetchedOptions.penaltyType)
       setTriggerDurationOptions(prefetchedOptions.triggerDuration)
@@ -391,6 +478,7 @@ export default function ConfigureMortgageDrawer({
         securities,
         propertyTypes,
         mortgageFacilities,
+        propertyDocumentation,
         feeType,
         penaltyType,
         triggerDuration,
@@ -410,6 +498,7 @@ export default function ConfigureMortgageDrawer({
         fetchProductOptionLabels("security-requirements", [], { productType: "MORTGAGE" }),
         fetchProductOptionLabels("property-type", []),
         fetchProductOptionLabels("mortgage-facilities", []),
+        fetchProductOptions("property-documentation", []),
         fetchOptionLabels("fee-type", DEFAULT_FEE_TYPE_OPTIONS),
         fetchOptionLabels("penalty-type", DEFAULT_PENALTY_TYPE_OPTIONS),
         fetchProductOptionLabels("trigger-duration", TRIGGER_DURATION_OPTIONS),
@@ -430,6 +519,7 @@ export default function ConfigureMortgageDrawer({
       setSecurityOptions(securities)
       setPropertyTypeOptions(propertyTypes)
       setPropertyFacilityOptions(mortgageFacilities)
+      setPropertyDocumentationOptions(propertyDocumentation)
       setFeeTypeOptions(feeType)
       setPenaltyTypeOptions(penaltyType)
       setTriggerDurationOptions(triggerDuration)
@@ -457,23 +547,25 @@ export default function ConfigureMortgageDrawer({
     } else {
       mortgageHydratedKeyRef.current = "__noid__"
     }
-    const about = (mortgageData.about ?? {}) as Record<string, any>
-    const structure = (mortgageData.structure ?? {}) as Record<string, any>
-    const requirements = (mortgageData.requirements ?? {}) as Record<string, any>
-    const fees = (mortgageData.feesAndCharges ?? {}) as Record<string, any>
+    const about = pickAboutFromMortgage(mortgageData as Record<string, unknown>)
+    const structure = pickStructureFromMortgage(mortgageData as Record<string, unknown>)
+    const requirements = pickRequirementsFromMortgage(mortgageData as Record<string, unknown>)
+    const fees = pickFeesAndChargesFromMortgage(mortgageData as Record<string, unknown>)
 
-    setName(String(mortgageData.name ?? ""))
+    setName(String(mortgageData.name ?? about.name ?? ""))
     setTenure(String(mortgageData.tenure ?? about.tenure ?? ""))
     setExistingPreviewAssetUrl(
       String(about.previewAssetUrl ?? mortgageData.previewAssetUrl ?? mortgageData.previewImage?.url ?? ""),
     )
-    setDescription(String(mortgageData.description ?? ""))
+    setDescription(String(mortgageData.description ?? about.description ?? ""))
     const mt = Array.isArray(mortgageData.mortgageTypes ?? about.mortgageTypes)
       ? (mortgageData.mortgageTypes ?? about.mortgageTypes)
       : []
     setSelectedMortgageType(String(mt[0]?.name ?? ""))
 
-    setInterestRate(String(mortgageData.interestRate ?? structure.interestRate ?? ""))
+    setInterestRate(
+      normalizeInterestRateHydrate(mortgageData.interestRate ?? structure.interestRate),
+    )
     setInterestMethod(
       resolveOptionLabel(
         mortgageData.interestMethod ?? structure.interestMethod ?? "",
@@ -513,9 +605,11 @@ export default function ConfigureMortgageDrawer({
     )
     setRepaymentWorkflow(
       resolveOptionLabel(
-        mortgageData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0],
+        canonicalRepaymentWorkflowFromApi(
+          mortgageData.repaymentWorkflow ?? structure.repaymentWorkflow ?? DEFAULT_REPAYMENT_WORKFLOWS[0],
+        ),
         repaymentWorkflowOptions,
-      ),
+      ) || DEFAULT_REPAYMENT_WORKFLOWS[0],
     )
     const loanAmount = (structure.loanAmount ?? {}) as Record<string, unknown>
     setMinLoanAmount(
@@ -556,16 +650,26 @@ export default function ConfigureMortgageDrawer({
         acceptableNpaOptions,
       ),
     )
-    setEquityRequirement(
-      resolveOptionLabel(
-        mortgageData.equityRequirement ?? structure.equityRequirement ?? "",
-        equityRequirementOptions,
-      ),
+    const eqLabel = resolveOptionLabel(
+      mortgageData.equityRequirement ?? structure.equityRequirement ?? "",
+      equityRequirementOptions,
     )
-    setEquityFixedAmount(
-      formatAmountDisplayFromUnknown(mortgageData.equityFixedAmount ?? structure.equityFixedAmount ?? ""),
+    setEquityRequirement(eqLabel)
+    const eqMode = classifyEquityRequirementMode(eqLabel)
+    const eqContribution = mortgageData.equityContribution ?? structure.equityContribution
+    let eqFixed = formatAmountDisplayFromUnknown(
+      mortgageData.equityFixedAmount ?? structure.equityFixedAmount ?? "",
     )
-    setEquityPercentage(String(mortgageData.equityPercentage ?? structure.equityPercentage ?? ""))
+    let eqPct = String(mortgageData.equityPercentage ?? structure.equityPercentage ?? "")
+    if (eqMode === "fixed" && !eqFixed && eqContribution != null && String(eqContribution).trim() !== "") {
+      eqFixed = formatAmountDisplayFromUnknown(eqContribution)
+    }
+    if (eqMode === "percentage" && !eqPct.replace(/%/g, "").trim() && eqContribution != null && String(eqContribution).trim() !== "") {
+      const raw = String(eqContribution).trim()
+      eqPct = raw.includes("%") ? raw : `${raw.replace(/,/g, "")}%`
+    }
+    setEquityFixedAmount(eqFixed)
+    setEquityPercentage(eqPct)
 
     const docsRaw = mortgageData.documentsToDownload ?? requirements.documentsToDownload
     setDocuments(
@@ -587,11 +691,11 @@ export default function ConfigureMortgageDrawer({
         : [],
     )
 
-    const rawProps = mortgageData.properties
+    const rawProps = pickPropertiesFromMortgage(mortgageData as Record<string, unknown>)
     if (Array.isArray(rawProps)) {
       if (rawProps.length) {
         setProperties(
-          rawProps.map((p: Record<string, unknown>, idx: number) => ({
+          rawProps.map((p, idx) => ({
             id: String(p.id ?? `prop-${idx}`),
             name: String(p.name ?? ""),
             type: String(p.propertyType ?? p.type ?? ""),
@@ -609,6 +713,14 @@ export default function ConfigureMortgageDrawer({
             videoUrl: String(p.videoUrl ?? ""),
             previewFiles: [],
             previewObjectUrls: [],
+            propertyDocumentation: Array.isArray(p.propertyDocumentation)
+              ? (p.propertyDocumentation as Record<string, unknown>[]).map((doc, docIdx) => ({
+                  id: String(doc.id ?? `doc-${idx}-${docIdx}`),
+                  documentType: String(doc.documentType ?? ""),
+                  fileUrl: String(doc.fileUrl ?? ""),
+                  fileName: typeof doc.fileName === "string" ? doc.fileName : undefined,
+                }))
+              : [],
           })),
         )
       } else {
@@ -616,10 +728,10 @@ export default function ConfigureMortgageDrawer({
       }
     }
 
-    const rawInspectionDates = mortgageData.inspectionDates
+    const rawInspectionDates = pickInspectionDatesFromMortgage(mortgageData as Record<string, unknown>)
     if (Array.isArray(rawInspectionDates) && rawInspectionDates.length) {
       setInspectionDates(
-        rawInspectionDates.map((slot: Record<string, unknown>, idx: number) => ({
+        rawInspectionDates.map((slot, idx) => ({
           id: String(slot.id ?? `insp-${idx}-${String(slot.scheduledFor ?? idx)}`),
           scheduledForLocal: toDatetimeLocalValue(String(slot.scheduledFor ?? "")),
           label: String(slot.label ?? "").slice(0, 200),
@@ -635,18 +747,11 @@ export default function ConfigureMortgageDrawer({
     setOtherRequirements(
       Array.isArray(otherReqRaw) ? otherReqRaw.map((row: unknown) => normalizeOtherRequirementRowFromApi(row)) : [],
     )
-    setContractId(
-      String(mortgageData.contractId ?? structure.contractId ?? requirements.contractId ?? ""),
-    )
-    setAirSignSecretKey(
-      String(
-        mortgageData.airSignSecretKey ?? structure.airSignSecretKey ?? requirements.airSignSecretKey ?? "",
-      ),
-    )
-    setAirSignUid(
-      String(mortgageData.airSignUid ?? structure.airSignUid ?? requirements.airSignUid ?? ""),
-    )
-    setRequireApplicantSignature(asBool(mortgageData.requireApplicantSignature))
+    // AirSign / applicant signature — not used for product config submit.
+    // setContractId(...)
+    // setAirSignSecretKey(...)
+    // setAirSignUid(...)
+    // setRequireApplicantSignature(...)
     setCharges(
       Array.isArray(mortgageData.charges ?? fees.charges ?? fees.fees)
         ? (mortgageData.charges ?? fees.charges ?? fees.fees)
@@ -687,7 +792,7 @@ export default function ConfigureMortgageDrawer({
 
   useEffect(() => {
     if (!isOpen || !mortgageData) return
-    const requirements = (mortgageData.requirements ?? {}) as Record<string, any>
+    const requirements = pickRequirementsFromMortgage(mortgageData as Record<string, unknown>)
     const sec = requirements.security
     const opts = mergeSecurityRequirementDisplayOptions(securityOptions)
     setSecurityOtherSpecification("")
@@ -695,12 +800,12 @@ export default function ConfigureMortgageDrawer({
     if (sec && typeof sec === "object") {
       const picked: string[] = []
       const secRec = sec as Record<string, unknown>
-      if (asBool(sec.realEstateProperties)) {
+      if (asBool(secRec.realEstateProperties)) {
         const m = opts.find((o) => /real\s*estate|propert(y|ies)/i.test(o))
         if (m) picked.push(m)
         else if (!opts.length) picked.push("Real Estate")
       }
-      if (asBool(sec.bankGuarantee)) {
+      if (asBool(secRec.bankGuarantee)) {
         const m = opts.find((o) => /bank/i.test(o) && /guarantee/i.test(o))
         if (m) picked.push(m)
         else picked.push("Bank Guarantee")
@@ -722,41 +827,98 @@ export default function ConfigureMortgageDrawer({
     }
 
     const rawArr = Array.isArray(mortgageData.securityRequirements ?? requirements.securityRequirements)
-      ? (mortgageData.securityRequirements ?? requirements.securityRequirements).map((x: unknown) => String(x))
+      ? ((mortgageData.securityRequirements ?? requirements.securityRequirements) as unknown[]).map((x) =>
+          String(x),
+        )
       : []
     const { toggles, otherSpecification } = splitStoredSecurityRequirements(rawArr)
     setSelectedSecurities(toggles)
     setSecurityOtherSpecification(otherSpecification)
   }, [isOpen, mortgageData, securityOptions])
 
+  // When options arrive after hydration, remap enum-like stored values to displayed labels.
   useEffect(() => {
-    if (!isOpen) return
-
-    const controller = new AbortController()
-
-    const run = async () => {
-      try {
-        const res = await fetch("/api/v1/keys", {
-          credentials: "include",
-          cache: "no-store",
-          signal: controller.signal,
-        })
-        const json = await res.json().catch(() => null)
-
-        const payload = (json && typeof json === "object" ? (json as any).data ?? json : {}) as any
-        const secretKey = payload?.airSignSecretKey ?? payload?.secretKey ?? payload?.secret ?? ""
-        const uid = payload?.airSignUid ?? payload?.uid ?? ""
-
-        if (typeof secretKey === "string" && secretKey.length > 0) setAirSignSecretKey(secretKey)
-        if (typeof uid === "string" && uid.length > 0) setAirSignUid(uid)
-      } catch (err) {
-        console.error("[keys] /api/v1/keys fetch error:", err)
-      }
+    if (!isOpen || !mortgageData) return
+    const structure = pickStructureFromMortgage(mortgageData as Record<string, unknown>)
+    const about = pickAboutFromMortgage(mortgageData as Record<string, unknown>)
+    const eqRaw = mortgageData.equityRequirement ?? structure.equityRequirement ?? ""
+    if (eqRaw) {
+      setEquityRequirement((prev) => resolveOptionLabel(eqRaw, equityRequirementOptions) || prev)
     }
+    const morRaw =
+      mortgageData.moratoriumSelectDuration ??
+      structure.moratoriumSelectDuration ??
+      mortgageData.moratorium ??
+      structure.moratorium
+    const resolvedMor = resolveOptionLabel(extractMoratoriumPrefill(morRaw), moratoriumDurationOptions)
+    if (resolvedMor) {
+      setMoratoriumSelectDuration((prev) =>
+        prev ? resolveOptionLabel(prev, moratoriumDurationOptions) || prev : resolvedMor,
+      )
+    }
+    const imRaw = mortgageData.interestMethod ?? structure.interestMethod
+    if (imRaw && interestMethodOptions.length) {
+      setInterestMethod((prev) => resolveOptionLabel(imRaw, interestMethodOptions) || prev)
+    }
+    const morTypeRaw = mortgageData.moratoriumType ?? structure.moratoriumType
+    if (morTypeRaw && moratoriumTypeOptions.length) {
+      setMoratoriumType((prev) => resolveOptionLabel(morTypeRaw, moratoriumTypeOptions) || prev)
+    }
+    const rwRaw = mortgageData.repaymentWorkflow ?? structure.repaymentWorkflow
+    if (rwRaw && repaymentWorkflowOptions.length) {
+      const canonical = canonicalRepaymentWorkflowFromApi(rwRaw)
+      setRepaymentWorkflow(
+        (prev) =>
+          resolveOptionLabel(canonical, repaymentWorkflowOptions) ||
+          resolveOptionLabel(rwRaw, repaymentWorkflowOptions) ||
+          canonical ||
+          prev,
+      )
+    }
+    const rsRaw =
+      mortgageData.repaymentStructure ??
+      structure.repaymentStructure ??
+      mortgageData.repaymentSchedule ??
+      structure.repaymentSchedule
+    if (rsRaw && repaymentScheduleOptions.length) {
+      setRepaymentSchedule((prev) => resolveOptionLabel(rsRaw, repaymentScheduleOptions) || prev)
+    }
+    const amRaw = mortgageData.amortizationSchedule ?? structure.amortizationSchedule
+    if (amRaw && amortizationScheduleOptions.length) {
+      setAmortizationSchedule((prev) => resolveOptionLabel(amRaw, amortizationScheduleOptions) || prev)
+    }
+    const rfRaw = mortgageData.repaymentFrequency ?? structure.repaymentFrequency
+    if (rfRaw && repaymentFrequencyOptions.length) {
+      setRepaymentFrequency((prev) => resolveOptionLabel(rfRaw, repaymentFrequencyOptions) || prev)
+    }
+    const npaRaw = mortgageData.acceptableNpa ?? structure.acceptableNPA ?? structure.acceptableNpa
+    if (npaRaw && acceptableNpaOptions.length) {
+      setAcceptableNpa((prev) => resolveOptionLabel(npaRaw, acceptableNpaOptions) || prev)
+    }
+    const tenureRaw = mortgageData.tenure ?? about.tenure
+    if (tenureRaw && tenureOptions.length) {
+      setTenure((prev) => resolveOptionLabel(tenureRaw, tenureOptions) || prev)
+    }
+  }, [
+    isOpen,
+    mortgageData,
+    equityRequirementOptions,
+    moratoriumDurationOptions,
+    interestMethodOptions,
+    moratoriumTypeOptions,
+    repaymentWorkflowOptions,
+    repaymentScheduleOptions,
+    amortizationScheduleOptions,
+    repaymentFrequencyOptions,
+    acceptableNpaOptions,
+    tenureOptions,
+  ])
 
-    void run()
-    return () => controller.abort()
-  }, [isOpen])
+  // AirSign keys fetch — not used for product config submit.
+  // useEffect(() => {
+  //   if (!isOpen) return
+  //   ...
+  // }, [isOpen])
 
   const revokePreviewUrl = useCallback((url: string | null) => {
     if (url) URL.revokeObjectURL(url)
@@ -921,6 +1083,13 @@ export default function ConfigureMortgageDrawer({
       setPropertyFormError("Property video URL is required before adding.")
       return
     }
+    const incompleteDocs = propertyDocDrafts.filter(
+      (doc) => (doc.documentType.trim() || doc.fileUrl.trim()) && (!doc.documentType.trim() || !doc.fileUrl.trim()),
+    )
+    if (incompleteDocs.length) {
+      setPropertyFormError("Each documentation row needs a document type and uploaded file.")
+      return
+    }
     setPropertyFormError("")
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     const previewFiles = [...propertyPreviewFiles]
@@ -940,6 +1109,14 @@ export default function ConfigureMortgageDrawer({
         previewObjectUrls,
         imageUrls: [],
         customFacilities: [],
+        propertyDocumentation: propertyDocDrafts
+          .filter((doc) => doc.documentType.trim() || doc.fileUrl.trim())
+          .map((doc) => ({
+            id: doc.id,
+            documentType: doc.documentType.trim(),
+            fileUrl: doc.fileUrl.trim(),
+            fileName: doc.fileName,
+          })),
       },
     ])
     setPropertyName("")
@@ -951,6 +1128,7 @@ export default function ConfigureMortgageDrawer({
     setPropertyVideoUrl("")
     setPropertyPreviewFiles([])
     setPropertyPreviewUrls([])
+    setPropertyDocDrafts([])
   }
 
   const removeProperty = (id: string) => {
@@ -983,6 +1161,203 @@ export default function ConfigureMortgageDrawer({
     setCustomPropertyFacility("")
   }
 
+  const newPropertyDocRow = (): PropertyDocumentationItem => ({
+    id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    documentType: "",
+    fileUrl: "",
+  })
+
+  const updatePropertyDocs = (
+    propertyId: string | null,
+    updater: (rows: PropertyDocumentationItem[]) => PropertyDocumentationItem[],
+  ) => {
+    if (propertyId == null) {
+      setPropertyDocDrafts((prev) => updater(prev))
+      return
+    }
+    setProperties((prev) =>
+      prev.map((p) => (p.id === propertyId ? { ...p, propertyDocumentation: updater(p.propertyDocumentation) } : p)),
+    )
+  }
+
+  const addPropertyDocRow = (propertyId: string | null) => {
+    updatePropertyDocs(propertyId, (rows) => [...rows, newPropertyDocRow()])
+  }
+
+  const removePropertyDocRow = (propertyId: string | null, docId: string) => {
+    updatePropertyDocs(propertyId, (rows) => rows.filter((row) => row.id !== docId))
+  }
+
+  const movePropertyDocRow = (propertyId: string | null, docId: string, direction: -1 | 1) => {
+    updatePropertyDocs(propertyId, (rows) => {
+      const index = rows.findIndex((row) => row.id === docId)
+      if (index < 0) return rows
+      const next = index + direction
+      if (next < 0 || next >= rows.length) return rows
+      const copy = [...rows]
+      const [item] = copy.splice(index, 1)
+      copy.splice(next, 0, item)
+      return copy
+    })
+  }
+
+  const setPropertyDocType = (propertyId: string | null, docId: string, documentType: string) => {
+    updatePropertyDocs(propertyId, (rows) =>
+      rows.map((row) => (row.id === docId ? { ...row, documentType } : row)),
+    )
+  }
+
+  const handlePropertyDocFile = async (
+    propertyId: string | null,
+    docId: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+    const fileError = getPdfOrImageFileValidationError(file)
+    if (fileError) {
+      toast.error(fileError)
+      return
+    }
+    setPropertyDocUploadingId(docId)
+    try {
+      const fileUrl = await uploadPropertyDocumentationToUrl(file)
+      updatePropertyDocs(propertyId, (rows) =>
+        rows.map((row) => (row.id === docId ? { ...row, fileUrl, fileName: file.name } : row)),
+      )
+      toast.success("Document uploaded")
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload document")
+    } finally {
+      setPropertyDocUploadingId(null)
+    }
+  }
+
+  const propertyDocLabel = (documentType: string) => {
+    const match = propertyDocumentationOptions.find((opt) => opt.value === documentType)
+    return match?.label || documentType || "Document"
+  }
+
+  const renderPropertyDocumentationEditor = (
+    rows: PropertyDocumentationItem[],
+    propertyId: string | null,
+  ) => (
+    <div className="space-y-3 rounded-md border border-[#E8DFC3] bg-[#FBF8EF]/60 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-medium text-gray-700">
+            Property documentation <span className="font-normal text-gray-500">(Optional)</span>
+          </p>
+          <p className="text-xs text-gray-500">Add title documents for this property. PDF or image, max 5MB.</p>
+        </div>
+        <Button
+          type="button"
+          onClick={() => addPropertyDocRow(propertyId)}
+          className="h-9 bg-[#9A813F] text-white hover:bg-[#8A7335]"
+        >
+          Add another
+        </Button>
+      </div>
+
+      {rows.length === 0 ? (
+        <p className="text-xs text-gray-500">No documentation rows yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {rows.map((row, index) => (
+            <div
+              key={row.id}
+              className="grid grid-cols-1 gap-3 rounded-md border border-gray-200 bg-white p-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]"
+            >
+              <ProductConfigSelect
+                label="Document type"
+                placeholder="Select document type"
+                value={row.documentType}
+                options={propertyDocumentationOptions}
+                onChange={(value) => setPropertyDocType(propertyId, row.id, value)}
+                requirement="required"
+              />
+              <div className="min-w-0 space-y-2">
+                <p className="text-sm font-medium text-gray-700">
+                  File <span className="font-normal text-gray-500">(Required)</span>
+                </p>
+                <input
+                  ref={(el) => {
+                    propertyDocFileInputRefs.current[row.id] = el
+                  }}
+                  type="file"
+                  className="hidden"
+                  accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp,image/svg+xml,.pdf"
+                  onChange={(event) => void handlePropertyDocFile(propertyId, row.id, event)}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={propertyDocUploadingId === row.id}
+                    onClick={() => propertyDocFileInputRefs.current[row.id]?.click()}
+                    className="h-10 border-[#9A813F] text-[#9A813F] hover:bg-[#9A813F]/10"
+                  >
+                    {propertyDocUploadingId === row.id ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading…
+                      </>
+                    ) : row.fileUrl ? (
+                      "Replace file"
+                    ) : (
+                      "Upload file"
+                    )}
+                  </Button>
+                  {row.fileUrl ? (
+                    <a
+                      href={row.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="max-w-full truncate text-xs text-[#9A813F] underline hover:text-[#8A7335]"
+                    >
+                      {row.fileName || "View file"}
+                    </a>
+                  ) : (
+                    <span className="text-xs text-gray-400">No file uploaded</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-end justify-end gap-1 pb-1">
+                <button
+                  type="button"
+                  className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+                  disabled={index === 0}
+                  onClick={() => movePropertyDocRow(propertyId, row.id, -1)}
+                  aria-label="Move documentation up"
+                >
+                  <ChevronUp size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40"
+                  disabled={index === rows.length - 1}
+                  onClick={() => movePropertyDocRow(propertyId, row.id, 1)}
+                  aria-label="Move documentation down"
+                >
+                  <ChevronDown size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="rounded p-1.5 text-red-600 hover:bg-red-50"
+                  onClick={() => removePropertyDocRow(propertyId, row.id)}
+                  aria-label="Remove documentation"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
   const handleBack = () => {
     if (isSubmitting) return
     if (step > 1) setStep((prev) => prev - 1)
@@ -994,6 +1369,12 @@ export default function ConfigureMortgageDrawer({
     description,
     mortgageTypeSelected: selectedMortgageType,
     previewImage,
+    hasPreviewAsset: !!(
+      existingPreviewAssetUrl ||
+      mortgageData?.previewAssetUrl ||
+      mortgageData?.previewImage?.url ||
+      (mortgageData?.about as Record<string, unknown> | undefined)?.previewAssetUrl
+    ),
     structure: {
       interestRate,
       interestMethod,
@@ -1016,9 +1397,6 @@ export default function ConfigureMortgageDrawer({
     charges,
     enableLateRepaymentCharges,
     penalties,
-    contractId,
-    airSignSecretKey,
-    airSignUid,
     properties: properties.map((p) => ({
       name: p.name,
       type: p.type,
@@ -1027,7 +1405,12 @@ export default function ConfigureMortgageDrawer({
       description: p.description,
       facilities: p.facilities,
       previewFiles: p.previewFiles,
+      imageUrls: p.imageUrls,
       videoUrl: p.videoUrl,
+      propertyDocumentation: p.propertyDocumentation.map((doc) => ({
+        documentType: doc.documentType,
+        fileUrl: doc.fileUrl,
+      })),
     })),
     inspectionDates: inspectionDates
       .map((slot) => {
@@ -1152,6 +1535,12 @@ export default function ConfigureMortgageDrawer({
             videoUrl: p.videoUrl,
             previewImages,
             previewImage: previewImages[0] ?? null,
+            propertyDocumentation: (p.propertyDocumentation ?? [])
+              .filter((doc) => doc.documentType.trim() && doc.fileUrl.trim())
+              .map((doc) => ({
+                documentType: doc.documentType.trim(),
+                fileUrl: doc.fileUrl.trim(),
+              })),
           }
         }),
       )
@@ -1200,7 +1589,7 @@ export default function ConfigureMortgageDrawer({
           minFacilityAmount: minLoanAmount,
           maxFacilityAmount: maxLoanAmount,
           mortgageTypes,
-          previewImage: null,
+          ...(previewImage ? { previewImage } : {}),
           previewAssetUrl: previewAssetUrlSubmit,
           equityContribution: equityContributionSubmit,
           propertyValue: propertyValueSubmit,
@@ -1226,10 +1615,6 @@ export default function ConfigureMortgageDrawer({
           securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
-          contractId,
-          airSignSecretKey,
-          airSignUid,
-          requireApplicantSignature,
           charges,
           deductChargesOnLoan,
           customerPayChargesBeforeDisbursement,
@@ -1536,6 +1921,7 @@ export default function ConfigureMortgageDrawer({
               summarizeItem={otherRequirementSummary}
             />
 
+            {/* AirSign / applicant signature — not required for product config submit.
             <ProductConfigToggle
               id="mortgage-require-applicant-signature"
               label="Require applicant signature on submit"
@@ -1567,6 +1953,7 @@ export default function ConfigureMortgageDrawer({
                 requirement="required"
               />
             </div>
+            */}
           </div>
         )}
 
@@ -1872,6 +2259,8 @@ export default function ConfigureMortgageDrawer({
               ) : null}
           </div>
 
+            {renderPropertyDocumentationEditor(propertyDocDrafts, null)}
+
             <Button type="button" onClick={addProperty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
               Add
             </Button>
@@ -1890,8 +2279,9 @@ export default function ConfigureMortgageDrawer({
                 {properties.map((p) => (
                   <div
                     key={p.id}
-                    className="grid grid-cols-1 gap-2 border-b border-gray-100 py-3 text-sm last:border-0 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,0.75fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-start md:py-2"
+                    className="space-y-3 border-b border-gray-100 py-3 last:border-0"
                   >
+                    <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,0.75fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-start md:py-2">
                     <div className="min-w-0 pr-2">
                       <span className="font-medium text-gray-900 md:font-normal">{p.name}</span>
                       {p.description ? (
@@ -1919,6 +2309,19 @@ export default function ConfigureMortgageDrawer({
                       ) : (
                         <p className="text-gray-400">No facilities tagged</p>
                       )}
+                      {p.propertyDocumentation.length > 0 ? (
+                        <p>
+                          <span className="font-medium text-gray-700">{p.propertyDocumentation.length}</span>{" "}
+                          {p.propertyDocumentation.length === 1 ? "document" : "documents"}
+                          {": "}
+                          {p.propertyDocumentation
+                            .map((doc) => propertyDocLabel(doc.documentType))
+                            .filter(Boolean)
+                            .join(", ")}
+                        </p>
+                      ) : (
+                        <p className="text-gray-400">No documentation</p>
+                      )}
                       {p.videoUrl ? (
                         <a
                           href={p.videoUrl}
@@ -1945,6 +2348,8 @@ export default function ConfigureMortgageDrawer({
                         <X size={18} />
                       </button>
                     </div>
+                    </div>
+                    {renderPropertyDocumentationEditor(p.propertyDocumentation, p.id)}
                   </div>
                 ))}
               </div>

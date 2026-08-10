@@ -439,6 +439,12 @@ export default function ConfigureSavingsDrawer({
     description,
     savingsTypes,
     previewImage,
+    hasPreviewAsset: !!(
+      existingPreviewAssetUrl ||
+      savingsData?.previewAssetUrl ||
+      savingsData?.previewImage?.url ||
+      (savingsData?.about as Record<string, unknown> | undefined)?.previewAssetUrl
+    ),
     interestRate,
     interestMethod,
     savingsType,
@@ -507,7 +513,7 @@ export default function ConfigureSavingsDrawer({
           durationOfSavings,
           description,
           savingsTypes,
-          previewImage: null,
+          ...(previewImage ? { previewImage } : {}),
           previewAssetUrl: previewAssetUrlSubmit,
           interestRate,
           interestMethod,

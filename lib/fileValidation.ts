@@ -32,3 +32,14 @@ export function getPdfFileValidationError(file: File): string | null {
   }
   return null
 }
+
+/** PDF or image — used for mortgage propertyDocumentation uploads. */
+export function getPdfOrImageFileValidationError(file: File): string | null {
+  if (isAllowedImageFile(file) || isPdfFile(file)) {
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return "File size must not exceed 5MB."
+    }
+    return null
+  }
+  return "Invalid file type. Allowed formats: PDF, PNG, JPEG, JPG, SVG, WebP."
+}

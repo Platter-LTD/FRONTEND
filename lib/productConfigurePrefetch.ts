@@ -113,6 +113,8 @@ export type MortgageConfigurePrefetched = {
   propertyTypes: string[]
   /** From GET `/api/v1/products/options/mortgage-facilities` (labels). */
   mortgageFacilities: string[]
+  /** From GET `/api/v1/products/options/property-documentation` (value + label). */
+  propertyDocumentation: ProductOption[]
   repaymentWorkflow: string[]
 }
 
@@ -132,6 +134,7 @@ export async function prefetchMortgageConfigureOptions(): Promise<MortgageConfig
     securities,
     propertyTypes,
     mortgageFacilities,
+    propertyDocumentation,
     feeType,
     penaltyType,
     triggerDuration,
@@ -151,6 +154,7 @@ export async function prefetchMortgageConfigureOptions(): Promise<MortgageConfig
     fetchProductOptionLabels("security-requirements", [], { productType: "MORTGAGE" }),
     fetchProductOptionLabels("property-type", []),
     fetchProductOptionLabels("mortgage-facilities", []),
+    fetchProductOptions("property-documentation", []),
     fetchOptionLabels("fee-type", MORTGAGE_DEFAULTS.feeType),
     fetchOptionLabels("penalty-type", MORTGAGE_DEFAULTS.penaltyType),
     fetchProductOptionLabels("trigger-duration", MORTGAGE_DEFAULTS.triggerDuration),
@@ -172,6 +176,7 @@ export async function prefetchMortgageConfigureOptions(): Promise<MortgageConfig
     securities,
     propertyTypes,
     mortgageFacilities,
+    propertyDocumentation,
     feeType,
     penaltyType,
     triggerDuration,

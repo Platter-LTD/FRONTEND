@@ -70,9 +70,6 @@ export type LoanStepCtx = {
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
   penalties: { name?: string; type?: string; value?: string; triggerDurationDays?: number; triggerDuration?: string }[]
-  contractId: string
-  airSignSecretKey: string
-  airSignUid: string
 }
 
 export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: string[] } {
@@ -98,9 +95,7 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
       errors.push('Requirements: Describe the “Other” security requirement (text field below).')
     }
     // Document requirements are optional — customers may satisfy docs via Other Requirements instead.
-    if (!has(ctx.contractId)) errors.push("Requirements: Contract ID is required.")
-    if (!has(ctx.airSignSecretKey)) errors.push("Requirements: AirSign Secret Key is required.")
-    if (!has(ctx.airSignUid)) errors.push("Requirements: AirSign UID is required.")
+    // AirSign / Contract ID are not required for product config submit.
   }
 
   if (step === 4) {
@@ -128,6 +123,7 @@ export type MortgageStepCtx = {
   description: string
   mortgageTypeSelected: string
   previewImage: File | null
+  hasPreviewAsset?: boolean
   structure: LoanLikeStructureInput
   selectedSecurities: string[]
   securityOtherSpecification: string
@@ -135,9 +131,6 @@ export type MortgageStepCtx = {
   charges: { name?: string; feeType?: string; value?: string }[]
   enableLateRepaymentCharges: boolean
   penalties: { name?: string; type?: string; value?: string; triggerDurationDays?: number; triggerDuration?: string }[]
-  contractId: string
-  airSignSecretKey: string
-  airSignUid: string
   properties: {
     name: string
     type: string
@@ -146,7 +139,9 @@ export type MortgageStepCtx = {
     description: string
     facilities: string[]
     previewFiles: unknown[]
+    imageUrls?: string[]
     videoUrl: string
+    propertyDocumentation?: { documentType: string; fileUrl: string }[]
   }[]
   inspectionDates: {
     scheduledFor: string
@@ -165,7 +160,9 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
     if (!has(ctx.tenure)) errors.push("About Product: Tenure is required.")
     if (!has(ctx.description)) errors.push("About Product: Product description is required.")
     // Mortgage type is optional — product type is captured at product creation.
-    if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
+    if (!ctx.previewImage && !ctx.hasPreviewAsset) {
+      errors.push("About Product: Preview file upload is required.")
+    }
   }
 
   if (step === 2) {
@@ -178,9 +175,7 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
       errors.push('Requirements: Describe the “Other” security requirement (text field below).')
     }
     // Document requirements are optional.
-    if (!has(ctx.contractId)) errors.push("Requirements: Contract ID is required.")
-    if (!has(ctx.airSignSecretKey)) errors.push("Requirements: AirSign Secret Key is required.")
-    if (!has(ctx.airSignUid)) errors.push("Requirements: AirSign UID is required.")
+    // AirSign / Contract ID are not required for product config submit.
   }
 
   if (step === 4) {
@@ -200,8 +195,18 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
       if (!Array.isArray(p.facilities) || p.facilities.length === 0) {
         errors.push(`Properties: Property #${n} — Select at least one facility.`)
       }
-      if (!p.previewFiles?.length) errors.push(`Properties: Property #${n} — At least one property image is required.`)
+      const hasImages = Boolean(p.previewFiles?.length) || Boolean(p.imageUrls?.length)
+      if (!hasImages) errors.push(`Properties: Property #${n} — At least one property image is required.`)
       if (!has(p.videoUrl)) errors.push(`Properties: Property #${n} — Property video URL is required.`)
+      const docs = Array.isArray(p.propertyDocumentation) ? p.propertyDocumentation : []
+      docs.forEach((doc, j) => {
+        const dn = j + 1
+        if (!has(doc.documentType) || !has(doc.fileUrl)) {
+          errors.push(
+            `Properties: Property #${n} — Documentation #${dn} needs a document type and uploaded file.`,
+          )
+        }
+      })
     })
   }
 
@@ -249,6 +254,7 @@ export type SavingsStepCtx = {
   description: string
   savingsTypes: { name: string; description: string }[]
   previewImage: File | null
+  hasPreviewAsset?: boolean
   interestRate: string
   interestMethod: string
   savingsType: string
@@ -271,7 +277,9 @@ export function validateSavingsStep(ctx: SavingsStepCtx): { ok: boolean; errors:
     if (!has(ctx.duration)) errors.push("About Product: Duration is required.")
     if (!has(ctx.description)) errors.push("About Product: Product description is required.")
     // Savings type rows are optional — product type is captured at product creation.
-    if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
+    if (!ctx.previewImage && !ctx.hasPreviewAsset) {
+      errors.push("About Product: Preview file upload is required.")
+    }
   }
   if (ctx.step === 2) {
     if (!has(ctx.interestRate)) errors.push("Structure: Interest rate is required.")
@@ -286,9 +294,7 @@ export function validateSavingsStep(ctx: SavingsStepCtx): { ok: boolean; errors:
       errors.push("Structure: Maximum savings amount must be greater than or equal to the minimum.")
     }
     if (!has(ctx.termsAndConditions)) errors.push("Structure: Terms and conditions are required.")
-    if (!has(ctx.contractId)) errors.push("Structure: Contract ID is required.")
-    if (!has(ctx.airSignSecretKey)) errors.push("Structure: AirSign Secret Key is required.")
-    if (!has(ctx.airSignUid)) errors.push("Structure: AirSign UID is required.")
+    // AirSign / Contract ID are not required for product config submit.
   }
   if (ctx.step === 3) {
     if (!ctx.charges.length) errors.push("Fees & Charges: Add at least one fee (name, type, and value).")
@@ -316,6 +322,7 @@ export type InvestmentStepCtx = {
   description: string
   investmentTypes: { name: string; description: string }[]
   previewImage: File | null
+  hasPreviewAsset?: boolean
   roi: string
   interestMethod: string
   investmentType: string
@@ -341,7 +348,9 @@ export function validateInvestmentStep(ctx: InvestmentStepCtx): { ok: boolean; e
     if (!has(ctx.duration)) errors.push("About Product: Duration is required.")
     if (!has(ctx.description)) errors.push("About Product: Description is required.")
     // Investment type rows are optional — product type is captured at product creation.
-    if (!ctx.previewImage) errors.push("About Product: Preview file upload is required.")
+    if (!ctx.previewImage && !ctx.hasPreviewAsset) {
+      errors.push("About Product: Preview file upload is required.")
+    }
   }
   if (ctx.step === 2) {
     if (!has(ctx.roi)) errors.push("Structure: Returns on Investment (ROI) is required.")
@@ -362,9 +371,7 @@ export function validateInvestmentStep(ctx: InvestmentStepCtx): { ok: boolean; e
   }
   if (ctx.step === 3) {
     if (!ctx.charges.length) errors.push("Fees & Charges: Add at least one fee (name, type, and value).")
-    if (!has(ctx.contractId)) errors.push("Fees & Charges: Contract ID is required.")
-    if (!has(ctx.airSignSecretKey)) errors.push("Fees & Charges: AirSign Secret Key is required.")
-    if (!has(ctx.airSignUid)) errors.push("Fees & Charges: AirSign UID is required.")
+    // AirSign / Contract ID are not required for product config submit.
     // Charge for Forceful Withdrawal — penalties optional per spec
   }
   return { ok: errors.length === 0, errors }
@@ -441,9 +448,7 @@ export function validateCommodityStep(ctx: CommodityStepCtx): { ok: boolean; err
       errors.push(ctx.isInvestment ? "Structure: Maximum investment amount is required." : "Structure: Max amount is required.")
     if (!has(ctx.termsAndConditions)) errors.push("Structure: Terms and conditions are required.")
     // Minimum holding period / moratorium days — optional per spec
-    if (!has(ctx.contractId)) errors.push("Structure: Contract ID is required.")
-    if (!has(ctx.airSignSecretKey)) errors.push("Structure: AirSign Secret Key is required.")
-    if (!has(ctx.airSignUid)) errors.push("Structure: AirSign UID is required.")
+    // AirSign / Contract ID are not required for product config submit.
   }
 
   if (ctx.step === 3) {

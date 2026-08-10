@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useAppMerchantId } from "@/hooks/useAppMerchantId"
@@ -10,6 +10,7 @@ import {
   fetchOperationTransactionsThunk,
 } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
+import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
 
@@ -23,12 +24,17 @@ export default function BillingWalletPage() {
 
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [fundOpen, setFundOpen] = useState(false)
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     if (!merchantId || !appId) return
     void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
     void dispatch(fetchOperationTransactionsThunk({ merchantId, appId }))
   }, [dispatch, merchantId, appId])
+
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
 
@@ -65,8 +71,12 @@ export default function BillingWalletPage() {
         subtitle="Fees and billing collections (API: BILLING)"
         className="mb-8"
         actions={
-          <Button className="bg-[#8B7355] text-white hover:bg-[#7A6449]" disabled={walletsLoading}>
-            Withdraw
+          <Button
+            className="bg-[#8B7355] text-white hover:bg-[#7A6449]"
+            disabled={walletsLoading || !billing}
+            onClick={() => setFundOpen(true)}
+          >
+            Fund
           </Button>
         }
       />
@@ -77,6 +87,20 @@ export default function BillingWalletPage() {
         currency={currency}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
+      />
+
+      <FundWalletDrawer
+        open={fundOpen}
+        onOpenChange={setFundOpen}
+        currency={currency}
+        virtualNuban={{
+          accountNumber: billing?.virtualNuban?.accountNumber,
+          bankName: billing?.virtualNuban?.bankName,
+          bankCode: billing?.virtualNuban?.bankCode,
+          accountHolder: billing?.name || "Billing wallet",
+          provisionStatus: billing?.virtualNuban?.provisionStatus,
+        }}
+        onRefreshBalance={refresh}
       />
     </div>
   )

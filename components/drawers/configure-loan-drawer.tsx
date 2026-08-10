@@ -238,10 +238,11 @@ export default function ConfigureLoanDrawer({
   const [interestMethod, setInterestMethod] = useState("")
   const [allowMoratorium, setAllowMoratorium] = useState(false)
   const [autoApproveLoans, setAutoApproveLoans] = useState(false)
-  const [requireApplicantSignature, setRequireApplicantSignature] = useState(false)
-  const [contractId, setContractId] = useState("")
-  const [airSignSecretKey, setAirSignSecretKey] = useState("")
-  const [airSignUid, setAirSignUid] = useState("")
+  // AirSign / applicant signature — not used for product config submit.
+  // const [requireApplicantSignature, setRequireApplicantSignature] = useState(false)
+  // const [contractId, setContractId] = useState("")
+  // const [airSignSecretKey, setAirSignSecretKey] = useState("")
+  // const [airSignUid, setAirSignUid] = useState("")
   const [moratoriumSelectDuration, setMoratoriumSelectDuration] = useState("")
   const [moratoriumDurationOf, setMoratoriumDurationOf] = useState("")
   const [moratoriumType, setMoratoriumType] = useState("")
@@ -469,36 +470,11 @@ export default function ConfigureLoanDrawer({
     )
     setInterestMethod(String(loanData.interestMethod ?? structure.interestMethod ?? ""))
     setAutoApproveLoans(asBool(loanData.autoApproveLoans ?? structure.autoApproveLoans))
-    setRequireApplicantSignature(
-      asBool(
-        loanData.requireApplicantSignature ??
-          (loanData as Record<string, unknown>).requireApplicantSignature,
-      ),
-    )
-    setContractId(
-      String(
-        loanData.contractId ??
-          structure.contractId ??
-          (requirements as Record<string, unknown>).contractId ??
-          "",
-      ),
-    )
-    setAirSignSecretKey(
-      String(
-        loanData.airSignSecretKey ??
-          structure.airSignSecretKey ??
-          (requirements as Record<string, unknown>).airSignSecretKey ??
-          "",
-      ),
-    )
-    setAirSignUid(
-      String(
-        loanData.airSignUid ??
-          structure.airSignUid ??
-          (requirements as Record<string, unknown>).airSignUid ??
-          "",
-      ),
-    )
+    // AirSign / applicant signature — not used for product config submit.
+    // setRequireApplicantSignature(...)
+    // setContractId(...)
+    // setAirSignSecretKey(...)
+    // setAirSignUid(...)
     const allowMoratoriumValue = asBool(loanData.allowMoratorium ?? structure.allowMoratorium)
     const morStr = extractMoratoriumPrefill(
       loanData.moratorium ??
@@ -549,16 +525,33 @@ export default function ConfigureLoanDrawer({
     setAcceptableNpa(
       String(loanData.acceptableNpa ?? structure.acceptableNPA ?? structure.acceptableNpa ?? ""),
     )
-    setEquityRequirement(
-      resolveOptionLabel(
+    {
+      const eqLabel = resolveOptionLabel(
         loanData.equityRequirement ?? structure.equityRequirement ?? "",
         equityRequirementOptions,
-      ),
-    )
-    setEquityFixedAmount(
-      formatAmountDisplayFromUnknown(loanData.equityFixedAmount ?? structure.equityFixedAmount ?? ""),
-    )
-    setEquityPercentage(String(loanData.equityPercentage ?? structure.equityPercentage ?? ""))
+      )
+      setEquityRequirement(eqLabel)
+      const eqMode = classifyEquityRequirementMode(eqLabel)
+      const eqContribution = loanData.equityContribution ?? structure.equityContribution
+      let eqFixed = formatAmountDisplayFromUnknown(
+        loanData.equityFixedAmount ?? structure.equityFixedAmount ?? "",
+      )
+      let eqPct = String(loanData.equityPercentage ?? structure.equityPercentage ?? "")
+      if (eqMode === "fixed" && !eqFixed && eqContribution != null && String(eqContribution).trim() !== "") {
+        eqFixed = formatAmountDisplayFromUnknown(eqContribution)
+      }
+      if (
+        eqMode === "percentage" &&
+        !eqPct.replace(/%/g, "").trim() &&
+        eqContribution != null &&
+        String(eqContribution).trim() !== ""
+      ) {
+        const raw = String(eqContribution).trim()
+        eqPct = raw.includes("%") ? raw : `${raw.replace(/,/g, "")}%`
+      }
+      setEquityFixedAmount(eqFixed)
+      setEquityPercentage(eqPct)
+    }
 
     const docsRaw = loanData.documentsToDownload ?? requirements.documentsToDownload
     setDocuments(
@@ -920,9 +913,6 @@ export default function ConfigureLoanDrawer({
     charges,
     enableLateRepaymentCharges,
     penalties,
-    contractId,
-    airSignSecretKey,
-    airSignUid,
   })
 
   const handleNext = async () => {
@@ -999,13 +989,12 @@ export default function ConfigureLoanDrawer({
           tenure,
           description,
           loanTypes,
-          previewImage: null,
+          ...(previewImage ? { previewImage } : {}),
           previewAssetUrl: previewAssetUrlSubmit,
           interestRate,
           interestMethod,
           allowMoratorium,
           autoApproveLoans,
-          requireApplicantSignature,
           moratoriumSelectDuration: allowMoratorium ? moratoriumSelectDuration : "",
           moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
           moratoriumType: allowMoratorium ? moratoriumType : "",
@@ -1024,9 +1013,6 @@ export default function ConfigureLoanDrawer({
           securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
-          contractId,
-          airSignSecretKey,
-          airSignUid,
           charges,
           chargePaymentMode,
           deductAllChargesOnLoan: chargePaymentMode === "deduct",
@@ -1315,6 +1301,7 @@ export default function ConfigureLoanDrawer({
             onRemoveItem={removeOtherRequirement}
           />
 
+          {/* AirSign / applicant signature — not required for product config submit.
           <ProductConfigToggle
             id="require-applicant-signature"
             label="Require applicant signature on submit"
@@ -1346,6 +1333,7 @@ export default function ConfigureLoanDrawer({
               requirement="required"
             />
           </div>
+          */}
         </div>
       )}
 

@@ -11,7 +11,6 @@ import {
   fetchKycTransactionsThunk,
 } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
-import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { WithdrawWalletDialog } from "@/components/wallets/withdraw-wallet-dialog"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
@@ -26,7 +25,6 @@ export default function RepaymentWalletPage() {
 
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [fundOpen, setFundOpen] = useState(false)
   const [withdrawOpen, setWithdrawOpen] = useState(false)
 
   const refresh = useCallback(() => {
@@ -72,26 +70,17 @@ export default function RepaymentWalletPage() {
         showBalance={showBalance}
         onToggleBalance={() => setShowBalance((value) => !value)}
         title="Repayment wallet"
-        subtitle="Loan repayments collect here · fund via bank transfer · withdraw to your bank (API: REPAYMENT)"
+        subtitle="Loan repayments collect here · withdraw to your bank (API: REPAYMENT)"
         className="mb-8"
         actions={
-          <>
-            <Button
-              className="bg-[#9A813F] font-semibold text-white hover:bg-[#7A642F]"
-              disabled={walletsLoading || !repayment}
-              onClick={() => setFundOpen(true)}
-            >
-              Fund
-            </Button>
-            <Button
-              variant="outline"
-              className="border-[#9A813F] bg-transparent font-semibold text-[#9A813F] hover:bg-[#9A813F]/10"
-              disabled={walletsLoading || !repayment || mainBal <= 0}
-              onClick={() => setWithdrawOpen(true)}
-            >
-              Withdraw
-            </Button>
-          </>
+          <Button
+            variant="outline"
+            className="border-[#9A813F] bg-transparent font-semibold text-[#9A813F] hover:bg-[#9A813F]/10"
+            disabled={walletsLoading || !repayment || mainBal <= 0}
+            onClick={() => setWithdrawOpen(true)}
+          >
+            Withdraw
+          </Button>
         }
       />
 
@@ -103,19 +92,6 @@ export default function RepaymentWalletPage() {
         onSearchChange={setSearchTerm}
       />
 
-      <FundWalletDrawer
-        open={fundOpen}
-        onOpenChange={setFundOpen}
-        currency={currency}
-        virtualNuban={{
-          accountNumber: repayment?.virtualNuban?.accountNumber,
-          bankName: repayment?.virtualNuban?.bankName,
-          bankCode: repayment?.virtualNuban?.bankCode,
-          accountHolder: repayment?.name || "Repayment wallet",
-          provisionStatus: repayment?.virtualNuban?.provisionStatus,
-        }}
-        onRefreshBalance={refresh}
-      />
       <WithdrawWalletDialog
         open={withdrawOpen}
         onOpenChange={setWithdrawOpen}

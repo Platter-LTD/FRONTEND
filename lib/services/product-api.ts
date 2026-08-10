@@ -317,6 +317,21 @@ const mapMortgagePropertiesForApi = (items: any[]) => {
       (u: unknown) => typeof u === 'string' && u.trim().length > 0,
     );
 
+    const propertyDocumentation = Array.isArray(p?.propertyDocumentation)
+      ? p.propertyDocumentation
+          .map((doc: any) =>
+            compactObject({
+              documentType:
+                typeof doc?.documentType === 'string' && doc.documentType.trim()
+                  ? doc.documentType.trim()
+                  : undefined,
+              fileUrl:
+                typeof doc?.fileUrl === 'string' && doc.fileUrl.trim() ? doc.fileUrl.trim() : undefined,
+            }),
+          )
+          .filter((doc: any) => doc.documentType || doc.fileUrl)
+      : [];
+
     return compactObject({
       name: p?.name,
       propertyType: p?.propertyType ?? p?.type,
@@ -328,6 +343,7 @@ const mapMortgagePropertiesForApi = (items: any[]) => {
         Array.isArray(p?.customFacilities) && p.customFacilities.length ? p.customFacilities : undefined,
       imageUrls: imageUrls.length ? imageUrls : undefined,
       videoUrl: p?.videoUrl || undefined,
+      ...(propertyDocumentation.length ? { propertyDocumentation } : {}),
       ...(fromUploads.length ? { previewImages: fromUploads } : {}),
     });
   });
@@ -441,13 +457,11 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
   const common = compactObject({
     name: configuration?.name,
     description: configuration?.description,
-    previewImage: configuration?.previewImage,
+    ...(configuration?.previewImage ? { previewImage: configuration.previewImage } : {}),
   });
 
   const previewAssetUrl =
-    !configuration?.previewImage &&
-    typeof configuration?.previewAssetUrl === 'string' &&
-    configuration.previewAssetUrl.trim()
+    typeof configuration?.previewAssetUrl === 'string' && configuration.previewAssetUrl.trim()
       ? configuration.previewAssetUrl.trim()
       : undefined;
 
@@ -604,38 +618,44 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     structure = buildLoanStructure(configuration);
   } else {
     const structureBase: Record<string, any> = {
-      interestRate: configuration?.interestRate,
-      interestMethod: configuration?.interestMethod,
+      interestRate: configuration?.interestRate || undefined,
+      interestMethod:
+        typeof configuration?.interestMethod === 'string' && configuration.interestMethod.trim()
+          ? toEnum(configuration.interestMethod) || configuration.interestMethod.trim()
+          : undefined,
       allowMoratorium: configuration?.allowMoratorium ?? configuration?.moratoriumEnabled,
-      moratoriumDuration: configuration?.moratoriumDuration ?? configuration?.moratoriumDays,
-      moratoriumSelectDuration: configuration?.moratoriumSelectDuration,
-      moratoriumDurationOf: configuration?.moratoriumDurationOf,
-      moratoriumType: mapMoratoriumType(configuration?.moratoriumType),
-      repaymentWorkflow: mapRepaymentWorkflow(configuration?.repaymentWorkflow),
+      moratoriumDuration: (configuration?.moratoriumDuration ?? configuration?.moratoriumDays) || undefined,
+      moratoriumSelectDuration: configuration?.moratoriumSelectDuration || undefined,
+      moratoriumDurationOf: configuration?.moratoriumDurationOf || undefined,
+      moratoriumType: mapMoratoriumType(configuration?.moratoriumType) || undefined,
+      repaymentWorkflow: mapRepaymentWorkflow(configuration?.repaymentWorkflow) || undefined,
       // Mortgage uses repaymentStructure; keep repaymentSchedule only as a fallback for older drafts
       repaymentStructure:
-        configuration?.repaymentStructure ??
-        (isMortgage ? configuration?.repaymentSchedule : undefined),
-      repaymentSchedule: isMortgage ? undefined : configuration?.repaymentSchedule,
-      amortizationSchedule: configuration?.amortizationSchedule,
-      repaymentFrequency: configuration?.repaymentFrequency,
-      acceptableNPA: configuration?.acceptableNPA ?? configuration?.acceptableNpa,
-      equityRequirement: configuration?.equityRequirement,
-      savingsType: configuration?.savingsType,
-      withdrawalFlexibility: configuration?.withdrawalFlexibility,
+        (configuration?.repaymentStructure ??
+          (isMortgage ? configuration?.repaymentSchedule : undefined)) ||
+        undefined,
+      repaymentSchedule: isMortgage
+        ? undefined
+        : configuration?.repaymentSchedule || undefined,
+      amortizationSchedule:
+        typeof configuration?.amortizationSchedule === 'string' && configuration.amortizationSchedule.trim()
+          ? toEnum(configuration.amortizationSchedule) || configuration.amortizationSchedule.trim()
+          : configuration?.amortizationSchedule || undefined,
+      repaymentFrequency: configuration?.repaymentFrequency || undefined,
+      acceptableNPA: (configuration?.acceptableNPA ?? configuration?.acceptableNpa) || undefined,
+      equityRequirement: configuration?.equityRequirement || undefined,
+      savingsType: configuration?.savingsType || undefined,
+      withdrawalFlexibility: configuration?.withdrawalFlexibility || undefined,
       minLoanAmount: isMortgage || isLoan ? undefined : configuration?.minLoanAmount,
       maxLoanAmount: isMortgage || isLoan ? undefined : configuration?.maxLoanAmount,
       minInvestmentAmount: configuration?.minInvestmentAmount ?? configuration?.unitAmount,
       maxInvestmentAmount: configuration?.maxInvestmentAmount ?? configuration?.maxAmount,
       minQuantityPurchase: configuration?.minQuantityPurchase,
-      yieldMethod: configuration?.yieldMethod,
+      yieldMethod: configuration?.yieldMethod || undefined,
       offerYieldOn: configuration?.offerYieldOn,
       offerYieldValue: configuration?.offerYieldValue,
-      termsAndConditions: configuration?.termsAndConditions,
-      savingsTermsAndCondition: isSavings ? configuration?.termsAndConditions : undefined,
-      contractId: configuration?.contractId,
-      airSignSecretKey: configuration?.airSignSecretKey,
-      airSignUid: configuration?.airSignUid,
+      termsAndConditions: configuration?.termsAndConditions || undefined,
+      savingsTermsAndCondition: isSavings ? configuration?.termsAndConditions || undefined : undefined,
     };
 
     if (!isSavings) {
@@ -685,9 +705,6 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
             configuration?.documentsToDownload ?? configuration?.documentRequirements,
           ),
           otherRequirements: mapOtherRequirementsForLoanApi(configuration?.otherRequirements ?? []),
-          contractId: configuration?.contractId,
-          airSignSecretKey: configuration?.airSignSecretKey,
-          airSignUid: configuration?.airSignUid,
         }
       : isLoan
         ? {
@@ -700,9 +717,6 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
               configuration?.documentsToDownload ?? configuration?.documentRequirements,
             ),
             otherRequirements: mapOtherRequirementsForLoanApi(configuration?.otherRequirements ?? []),
-            contractId: configuration?.contractId,
-            airSignSecretKey: configuration?.airSignSecretKey,
-            airSignUid: configuration?.airSignUid,
           }
         : undefined,
   );
@@ -896,8 +910,9 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
 
   return compactObject({
     ...common,
-    // Platform default false — only send true when merchant opts in.
-    requireApplicantSignature: toBool(configuration?.requireApplicantSignature),
+    // Loan/mortgage product config no longer depends on AirSign / applicant signature.
+    requireApplicantSignature:
+      isLoan || isMortgage ? false : toBool(configuration?.requireApplicantSignature),
     about,
     structure,
     ...(requirements && Object.keys(requirements).length ? { requirements } : {}),
