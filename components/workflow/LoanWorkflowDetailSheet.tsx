@@ -225,6 +225,9 @@ export function LoanWorkflowDetailSheet({
     .trim()
     .toLowerCase()
   const isTerminal = ["declined", "blacklisted", "rejected"].includes(statusLower)
+  const workflowReason = String(
+    detail?.loanWorkflowReason ?? detail?.rejectionReason ?? detail?.reason ?? "",
+  ).trim()
 
   const canMarkUnderReview = !isTerminal && statusLower === "requested"
 
@@ -478,6 +481,21 @@ export function LoanWorkflowDetailSheet({
                 {profileError && !profilePayload && !detail ? (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                     Applicant profile could not be loaded: {profileError}
+                  </div>
+                ) : null}
+
+                {isTerminal && workflowReason ? (
+                  <div
+                    className={`rounded-lg border px-4 py-3 text-sm ${
+                      statusLower === "blacklisted"
+                        ? "border-gray-300 bg-gray-50 text-gray-800"
+                        : "border-red-200 bg-red-50 text-red-900"
+                    }`}
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-wide opacity-70">
+                      {statusLower === "blacklisted" ? "Blacklist reason" : "Decline reason"}
+                    </p>
+                    <p className="mt-1 leading-relaxed">{workflowReason}</p>
                   </div>
                 ) : null}
 

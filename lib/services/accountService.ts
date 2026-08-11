@@ -150,6 +150,9 @@ export interface LoanWorkflowApplication {
   merchantProductId?: string;
   status?: string;
   loanWorkflowStatus?: LoanWorkflowStatus;
+  /** Merchant note for decline / blacklist transitions. */
+  loanWorkflowReason?: string;
+  rejectionReason?: string;
   loanWorkflowCallbackUrl?: string;
   loanDisbursement?: Record<string, any> | null;
   postApprovalFulfillment?: Record<string, any> | null;
@@ -802,15 +805,23 @@ export const applicationApi = {
 
   /**
    * Reject a loan/mortgage workflow application.
+   * `reason` is optional for decline.
    */
   async reject(id: string, reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
     try {
+      const trimmed = reason?.trim() || ""
       const response = await plataAuthFetch(`/api/v1/products/applications/${encodeURIComponent(id)}/loan-workflow`, {
         method: 'PATCH',
         headers: getAuthHeaders(),
         body: JSON.stringify({
           loanWorkflowStatus: 'declined',
-          ...(reason?.trim() ? { rejectionReason: reason.trim() } : {}),
+          ...(trimmed
+            ? {
+                reason: trimmed,
+                // Legacy alias some backends still read
+                rejectionReason: trimmed,
+              }
+            : {}),
         }),
       });
 
@@ -833,8 +844,22 @@ export const applicationApi = {
     }
   },
 
-  async blacklist(id: string, _reason?: string): Promise<ApiResponse<LoanWorkflowApplication>> {
-    return this.updateLoanWorkflowStatus(id, { loanWorkflowStatus: 'blacklisted' });
+  /**
+   * Blacklist a loan/mortgage application (terminal).
+   * Backend requires `reason` (1–1000 chars).
+   */
+  async blacklist(id: string, reason: string): Promise<ApiResponse<LoanWorkflowApplication>> {
+    const trimmed = String(reason || "").trim()
+    if (!trimmed) {
+      return { success: false, error: "Reason is required to blacklist an application" }
+    }
+    if (trimmed.length > 1000) {
+      return { success: false, error: "Reason must be 1000 characters or fewer" }
+    }
+    return this.updateLoanWorkflowStatus(id, {
+      loanWorkflowStatus: "blacklisted",
+      reason: trimmed,
+    })
   },
 
   async getLoanWorkflowApplications(params: {
@@ -845,12 +870,14 @@ export const applicationApi = {
   }): Promise<ApiResponse<LoanWorkflowApplication[]>> {
     try {
       const queryParams = new URLSearchParams();
+      queryParams.set('appId', params.appId);
       if (params.loanWorkflowStatus) queryParams.set('loanWorkflowStatus', params.loanWorkflowStatus);
       if (params.limit) queryParams.set('limit', String(params.limit));
       if (params.skip) queryParams.set('skip', String(params.skip));
 
+      // Product creator dashboard: GET .../applications/me/loan-workflow
       const response = await plataAuthFetch(
-        `/api/v1/products/app/${encodeURIComponent(params.appId)}/applications/loan-workflow${queryParams.toString() ? `?${queryParams}` : ''}`,
+        `/api/v1/products/applications/me/loan-workflow?${queryParams}`,
         { headers: getAuthHeaders() },
       );
       const result = await response.json();
@@ -1034,6 +1061,8 @@ export const applicationApi = {
       approvedAmount?: number
       equityReceived?: boolean
       equityProviderReference?: string
+      /** Required for blacklist; optional for decline. */
+      reason?: string
       rejectionReason?: string
     },
   ): Promise<ApiResponse<LoanWorkflowApplication>> {

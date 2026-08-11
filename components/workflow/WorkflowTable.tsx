@@ -49,6 +49,8 @@ export interface PlataWorkflowRow {
   ref: string
   date: string
   status: LoanWorkflowStatus
+  /** Merchant note for declined / blacklisted apps (`loanWorkflowReason`). */
+  reason?: string
 }
 
 interface WorkflowTableProps {
@@ -109,6 +111,9 @@ function mapRecord(
     ref: String(x.reference ?? x.applicationReference ?? id),
     date: String(x.createdAt ?? x.applicationDate ?? "—"),
     status: String(x.loanWorkflowStatus ?? "requested") as LoanWorkflowStatus,
+    reason: String(
+      x.loanWorkflowReason ?? x.rejectionReason ?? x.reason ?? "",
+    ).trim() || undefined,
   }
 }
 
@@ -224,18 +229,33 @@ export function WorkflowTable({
   const handleConfirm = async () => {
     if (!confirm) return
     const { kind, row, reason } = confirm
+    const trimmed = reason.trim()
+    if (kind === "blacklist") {
+      if (!trimmed) {
+        toast.error("A reason is required to blacklist an application")
+        return
+      }
+      if (trimmed.length > 1000) {
+        toast.error("Reason must be 1000 characters or fewer")
+        return
+      }
+    }
     setBusyId(row.id)
     try {
       const res =
         kind === "reject"
-          ? await applicationApi.reject(row.id, reason || "Not approved")
-          : await applicationApi.blacklist(row.id, reason || "Blacklisted")
+          ? await applicationApi.reject(row.id, trimmed || undefined)
+          : await applicationApi.blacklist(row.id, trimmed)
       if (!res.success) throw new Error(res.error || `${kind} failed`)
       toast.success(
         kind === "reject" ? `Rejected ${row.ref}` : `Blacklisted ${row.ref}`,
       )
       setConfirm(null)
-      void fetchRows(true)
+      if (kind === "blacklist") {
+        setActiveTab("blacklisted")
+      } else {
+        void fetchRows(true)
+      }
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : `${kind} failed`)
     } finally {
@@ -303,13 +323,19 @@ export function WorkflowTable({
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Ref</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Date</th>
                 <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Status</th>
+                {(activeTab === "blacklisted" || activeTab === "declined") && (
+                  <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Reason</th>
+                )}
                 <th className="w-12" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
               {displayRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-500">
+                  <td
+                    colSpan={activeTab === "blacklisted" || activeTab === "declined" ? 7 : 6}
+                    className="px-6 py-12 text-center text-sm text-gray-500"
+                  >
                     No applications found.
                   </td>
                 </tr>
@@ -318,10 +344,15 @@ export function WorkflowTable({
                   const canAct =
                     row.status !== "approved" &&
                     row.status !== "declined" &&
-                    row.status !== "blacklisted"
+                    row.status !== "blacklisted" &&
+                    row.status !== "completed"
                   const canApprove = canAct
                   const canReject = canAct
-                  const canBlacklist = row.status !== "blacklisted"
+                  // Blacklist is allowed from active or approved states; not once already blacklisted.
+                  const canBlacklist =
+                    row.status !== "blacklisted" &&
+                    row.status !== "declined" &&
+                    row.status !== "completed"
 
                   return (
                     <tr
@@ -338,6 +369,13 @@ export function WorkflowTable({
                           {row.status.replaceAll("_", " ")}
                         </Badge>
                       </td>
+                      {(activeTab === "blacklisted" || activeTab === "declined") && (
+                        <td className="max-w-[240px] px-6 py-4 text-sm text-gray-600">
+                          <span className="line-clamp-2" title={row.reason || undefined}>
+                            {row.reason || "—"}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -399,17 +437,25 @@ export function WorkflowTable({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirm?.kind === "reject"
-                ? "The applicant will be notified that their application has been rejected."
-                : "This application will be moved to the Blacklisted list and excluded from active workflows."}
+                ? "The applicant will be notified that their application has been declined. A reason is optional."
+                : "Blacklisting is permanent for this application. Approve and review actions will be unavailable. A reason is required."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">Reason</label>
+            <label className="text-sm font-medium text-gray-700">
+              Reason
+              {confirm?.kind === "blacklist" ? (
+                <span className="font-normal text-red-600"> (required)</span>
+              ) : (
+                <span className="font-normal text-gray-500"> (optional)</span>
+              )}
+            </label>
             <textarea
               value={confirm?.reason || ""}
               onChange={(e) =>
-                setConfirm((c) => (c ? { ...c, reason: e.target.value } : c))
+                setConfirm((c) => (c ? { ...c, reason: e.target.value.slice(0, 1000) } : c))
               }
+              maxLength={1000}
               className="min-h-[96px] w-full rounded-md border border-gray-300 p-3 text-sm outline-none focus:border-[#8B7355] focus:ring-1 focus:ring-[#8B7355]"
               placeholder={
                 confirm?.kind === "reject"
@@ -417,6 +463,9 @@ export function WorkflowTable({
                   : "Repeated default on repayments"
               }
             />
+            {confirm?.kind === "blacklist" ? (
+              <p className="text-xs text-gray-500">{(confirm?.reason || "").trim().length}/1000</p>
+            ) : null}
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -425,7 +474,10 @@ export function WorkflowTable({
                 e.preventDefault()
                 void handleConfirm()
               }}
-              className="text-white hover:opacity-90"
+              disabled={
+                confirm?.kind === "blacklist" && !(confirm?.reason || "").trim()
+              }
+              className="text-white hover:opacity-90 disabled:opacity-50"
               style={{ backgroundColor: PLATA_ACCENT_DARK }}
             >
               Confirm
