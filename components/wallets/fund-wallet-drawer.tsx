@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Copy, CreditCard, Landmark, Loader2, Check } from "lucide-react"
 import { toast } from "sonner"
 
@@ -13,10 +13,12 @@ import {
 } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
 import { WALLET_BRAND } from "@/lib/walletBrand"
-import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
-import { fundingApi } from "@/lib/services/walletService"
+import {
+  formatPlataWalletAmount,
+  plataWalletDisplayCurrency,
+} from "@/lib/walletDisplay"
+import { isVirtualNubanActive } from "@/lib/services/walletService"
 
 export interface WalletVirtualNuban {
   accountNumber?: string
@@ -30,6 +32,8 @@ interface FundWalletDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   virtualNuban?: WalletVirtualNuban | null
+  /** Spendable balance shown in instructions (from wallet GET). */
+  mainBalance?: number
   currency?: string
   onRefreshBalance?: () => void | Promise<void>
 }
@@ -72,24 +76,25 @@ export function FundWalletDrawer({
   open,
   onOpenChange,
   virtualNuban,
+  mainBalance,
   currency: currencyProp,
   onRefreshBalance,
 }: FundWalletDrawerProps) {
   const currency = plataWalletDisplayCurrency(currencyProp)
   const [step, setStep] = useState<"method" | "bank-details">("method")
-  const [txnId, setTxnId] = useState("")
-  const [polling, setPolling] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
-  const hasNuban =
-    virtualNuban?.accountNumber && virtualNuban?.provisionStatus !== "failed"
+  const canFund = isVirtualNubanActive(virtualNuban)
+
+  useEffect(() => {
+    if (open && canFund) setStep("bank-details")
+  }, [open, canFund])
 
   const handleOpenChange = (next: boolean) => {
     onOpenChange(next)
     if (!next) {
       setTimeout(() => {
         setStep("method")
-        setTxnId("")
       }, 300)
     }
   }
@@ -106,33 +111,6 @@ export function FundWalletDrawer({
     }
   }, [onRefreshBalance])
 
-  const handlePollFunding = async () => {
-    const id = txnId.trim()
-    if (!id) {
-      void handleRefresh()
-      return
-    }
-    setPolling(true)
-    try {
-      const res = await fundingApi.checkFundingStatus(id)
-      const status = String(res.data?.status || "").toUpperCase()
-      if (status === "COMPLETED" || status === "SUCCESS") {
-        toast.success("Funding confirmed")
-        await onRefreshBalance?.()
-        handleOpenChange(false)
-      } else if (status === "FAILED" || status === "CANCELLED") {
-        toast.error(res.data?.message || "Funding failed")
-      } else {
-        toast.message("Payment still processing — try again shortly")
-        await onRefreshBalance?.()
-      }
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Could not check funding status")
-    } finally {
-      setPolling(false)
-    }
-  }
-
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent side="right" className="flex flex-col gap-0 p-0 sm:max-w-md">
@@ -140,17 +118,27 @@ export function FundWalletDrawer({
           <SheetTitle>{step === "method" ? "Fund wallet" : "Bank transfer"}</SheetTitle>
           <SheetDescription>
             {step === "method"
-              ? "Choose how you want to add money to this wallet."
-              : `Send ${currency} to your dedicated virtual account.`}
+              ? "Transfer into this wallet’s virtual account. Funding is not submitted from the dashboard."
+              : `Send ${currency} to the account below. Credits arrive via PayOnUs webhook.`}
           </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {step === "method" ? (
             <div className="space-y-3">
+              {typeof mainBalance === "number" && Number.isFinite(mainBalance) ? (
+                <p className="rounded-lg border border-[#E8DFD0] bg-[#FFF9EB] px-4 py-3 text-sm text-gray-700">
+                  Current balance:{" "}
+                  <span className="font-semibold text-gray-900">
+                    {formatPlataWalletAmount(mainBalance)} {currency}
+                  </span>
+                </p>
+              ) : null}
+
               <button
                 type="button"
-                className="flex w-full items-center gap-4 rounded-xl border border-[#E8DFD0] bg-[#FFF9EB] p-4 text-left transition-colors hover:border-[#9A813F]/40 hover:bg-[#FFF3CF]/60"
+                disabled={!canFund}
+                className="flex w-full items-center gap-4 rounded-xl border border-[#E8DFD0] bg-[#FFF9EB] p-4 text-left transition-colors hover:border-[#9A813F]/40 hover:bg-[#FFF3CF]/60 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => setStep("bank-details")}
               >
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#9A813F]/15 text-[#9A813F]">
@@ -159,7 +147,9 @@ export function FundWalletDrawer({
                 <div>
                   <h3 className="font-semibold text-gray-900">Bank transfer</h3>
                   <p className="text-sm text-gray-600">
-                    Send {currency} to your virtual account
+                    {canFund
+                      ? `Send ${currency} to your virtual NUBAN`
+                      : "Virtual account not active yet"}
                   </p>
                 </div>
               </button>
@@ -180,9 +170,10 @@ export function FundWalletDrawer({
             </div>
           ) : (
             <div className="space-y-5">
-              {!hasNuban ? (
+              {!canFund ? (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                  No active virtual account is provisioned yet. Try again after wallet
+                  No active virtual account is provisioned yet (`provisionStatus` must be{" "}
+                  <strong>active</strong> with an account number). Try again after wallet
                   onboarding completes.
                 </div>
               ) : (
@@ -193,6 +184,9 @@ export function FundWalletDrawer({
                   />
                   <CopyRow label="Account number" value={virtualNuban?.accountNumber || ""} />
                   <CopyRow label="Bank name" value={virtualNuban?.bankName || ""} />
+                  {virtualNuban?.bankCode ? (
+                    <CopyRow label="Bank code" value={virtualNuban.bankCode} />
+                  ) : null}
                 </div>
               )}
 
@@ -201,18 +195,8 @@ export function FundWalletDrawer({
                 <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-gray-700">
                   <li>Only send {currency} to this account</li>
                   <li>Deposits usually reflect within a few minutes</li>
-                  <li>No extra deposit fees from Plata</li>
+                  <li>After you transfer, tap refresh to update the balance</li>
                 </ul>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm text-gray-600">Payment reference (optional)</Label>
-                <Input
-                  placeholder="Paste provider reference to check status"
-                  value={txnId}
-                  onChange={(e) => setTxnId(e.target.value)}
-                  className="border-[#E8DFD0] focus-visible:ring-[#9A813F]"
-                />
               </div>
             </div>
           )}
@@ -225,10 +209,10 @@ export function FundWalletDrawer({
                 type="button"
                 className="w-full text-white hover:opacity-90"
                 style={{ backgroundColor: WALLET_BRAND.primary }}
-                onClick={() => void handlePollFunding()}
-                disabled={polling || refreshing}
+                onClick={() => void handleRefresh()}
+                disabled={refreshing || !canFund}
               >
-                {(polling || refreshing) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {refreshing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 I&apos;ve sent money — refresh
               </Button>
               <Button

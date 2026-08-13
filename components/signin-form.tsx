@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Eye, EyeOff, AlertTriangle } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
+import { readReturnTo } from "@/lib/authReturnTo"
 import { ComplianceService, COMPLIANCE_COMPLETE_KEY } from "@/lib/services/complianceService"
 import { resolveDashboardPostLoginRoute } from "@/lib/postLoginRoute"
 import { isKycStatusApproved } from "@/lib/kycApproval"
@@ -22,6 +23,7 @@ export function SigninForm() {
 
   const { signin } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [formData, setFormData] = useState({
     email: "",
@@ -65,7 +67,7 @@ export function SigninForm() {
       await signin(formData.email, formData.password)
       toast.success("Signin successful 🎉")
 
-      const nextRoute = await resolvePostLoginRoute()
+      const nextRoute = readReturnTo(searchParams) || (await resolvePostLoginRoute())
       setTimeout(() => {
         router.push(nextRoute)
       }, 1000)

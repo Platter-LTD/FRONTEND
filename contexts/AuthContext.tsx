@@ -2,6 +2,7 @@
 
 import { createContext, useEffect, useRef, type ReactNode } from "react"
 import { usePathname } from "next/navigation"
+import { buildSigninUrl, getCurrentReturnTo } from "@/lib/authReturnTo"
 import { getAccessToken } from "@/lib/cookieAuth"
 import { clearSecureTokens } from "@/lib/tokenManager"
 import { isOnAuthPage } from "@/lib/plataAuthFetch"
@@ -59,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // After retry (or no cookie): hard navigate so middleware doesn't bounce us back.
     void (async () => {
       if (token) await clearSecureTokens()
-      window.location.replace("/signin")
+      window.location.replace(buildSigninUrl(getCurrentReturnTo()))
     })()
   }, [loading, isAuthenticated, pathname, dispatch])
 

@@ -1,16 +1,15 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
-import { ChevronDown, ChevronUp, Loader2, Upload, X } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState, useRef, ChangeEvent } from "react"
+import { ChevronDown, Loader2, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
-import { getImageFileValidationError, getPdfFileValidationError, getPdfOrImageFileValidationError } from "@/lib/fileValidation"
+import { getImageFileValidationError, getPdfFileValidationError } from "@/lib/fileValidation"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import {
   uploadProductDocumentTemplateToUrl,
   uploadProductMediaToUrl,
-  uploadPropertyDocumentationToUrl,
 } from "@/lib/uploadProductMediaToUrl"
 import {
   normalizeOtherRequirementRowFromApi,
@@ -91,8 +90,6 @@ interface PenaltyItem {
 interface PropertyDocumentationItem {
   id: string
   documentType: string
-  fileUrl: string
-  fileName?: string
 }
 
 interface PropertyItem {
@@ -303,8 +300,6 @@ export default function ConfigureMortgageDrawer({
   const [propertyFacilityOptions, setPropertyFacilityOptions] = useState<string[]>([])
   const [propertyDocumentationOptions, setPropertyDocumentationOptions] = useState<ProductOption[]>([])
   const [propertyDocDrafts, setPropertyDocDrafts] = useState<PropertyDocumentationItem[]>([])
-  const [propertyDocUploadingId, setPropertyDocUploadingId] = useState<string | null>(null)
-  const propertyDocFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const [feeTypeOptions, setFeeTypeOptions] = useState<string[]>(DEFAULT_FEE_TYPE_OPTIONS)
   const [penaltyTypeOptions, setPenaltyTypeOptions] = useState<string[]>(DEFAULT_PENALTY_TYPE_OPTIONS)
   const [triggerDurationOptions, setTriggerDurationOptions] = useState<string[]>(TRIGGER_DURATION_OPTIONS)
@@ -717,8 +712,6 @@ export default function ConfigureMortgageDrawer({
               ? (p.propertyDocumentation as Record<string, unknown>[]).map((doc, docIdx) => ({
                   id: String(doc.id ?? `doc-${idx}-${docIdx}`),
                   documentType: String(doc.documentType ?? ""),
-                  fileUrl: String(doc.fileUrl ?? ""),
-                  fileName: typeof doc.fileName === "string" ? doc.fileName : undefined,
                 }))
               : [],
           })),
@@ -1083,11 +1076,16 @@ export default function ConfigureMortgageDrawer({
       setPropertyFormError("Property video URL is required before adding.")
       return
     }
-    const incompleteDocs = propertyDocDrafts.filter(
-      (doc) => (doc.documentType.trim() || doc.fileUrl.trim()) && (!doc.documentType.trim() || !doc.fileUrl.trim()),
-    )
-    if (incompleteDocs.length) {
-      setPropertyFormError("Each documentation row needs a document type and uploaded file.")
+    const duplicateDocs = new Set<string>()
+    const hasDuplicateDocs = propertyDocDrafts.some((doc) => {
+      const key = doc.documentType.trim()
+      if (!key) return false
+      if (duplicateDocs.has(key)) return true
+      duplicateDocs.add(key)
+      return false
+    })
+    if (hasDuplicateDocs) {
+      setPropertyFormError("Each property can only declare a document type once.")
       return
     }
     setPropertyFormError("")
@@ -1110,12 +1108,10 @@ export default function ConfigureMortgageDrawer({
         imageUrls: [],
         customFacilities: [],
         propertyDocumentation: propertyDocDrafts
-          .filter((doc) => doc.documentType.trim() || doc.fileUrl.trim())
+          .filter((doc) => doc.documentType.trim())
           .map((doc) => ({
             id: doc.id,
             documentType: doc.documentType.trim(),
-            fileUrl: doc.fileUrl.trim(),
-            fileName: doc.fileName,
           })),
       },
     ])
@@ -1164,7 +1160,6 @@ export default function ConfigureMortgageDrawer({
   const newPropertyDocRow = (): PropertyDocumentationItem => ({
     id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     documentType: "",
-    fileUrl: "",
   })
 
   const updatePropertyDocs = (
@@ -1180,58 +1175,32 @@ export default function ConfigureMortgageDrawer({
     )
   }
 
+  const availablePropertyDocOptions = (rows: PropertyDocumentationItem[], activeDocId?: string) => {
+    const used = new Set(
+      rows
+        .filter((row) => row.id !== activeDocId)
+        .map((row) => row.documentType.trim())
+        .filter(Boolean),
+    )
+    return propertyDocumentationOptions.filter((opt) => !used.has(opt.value))
+  }
+
   const addPropertyDocRow = (propertyId: string | null) => {
-    updatePropertyDocs(propertyId, (rows) => [...rows, newPropertyDocRow()])
+    updatePropertyDocs(propertyId, (rows) => {
+      const available = availablePropertyDocOptions(rows)
+      if (available.length === 0) return rows
+      return [...rows, { ...newPropertyDocRow(), documentType: available[0]?.value ?? "" }]
+    })
   }
 
   const removePropertyDocRow = (propertyId: string | null, docId: string) => {
     updatePropertyDocs(propertyId, (rows) => rows.filter((row) => row.id !== docId))
   }
 
-  const movePropertyDocRow = (propertyId: string | null, docId: string, direction: -1 | 1) => {
-    updatePropertyDocs(propertyId, (rows) => {
-      const index = rows.findIndex((row) => row.id === docId)
-      if (index < 0) return rows
-      const next = index + direction
-      if (next < 0 || next >= rows.length) return rows
-      const copy = [...rows]
-      const [item] = copy.splice(index, 1)
-      copy.splice(next, 0, item)
-      return copy
-    })
-  }
-
   const setPropertyDocType = (propertyId: string | null, docId: string, documentType: string) => {
     updatePropertyDocs(propertyId, (rows) =>
       rows.map((row) => (row.id === docId ? { ...row, documentType } : row)),
     )
-  }
-
-  const handlePropertyDocFile = async (
-    propertyId: string | null,
-    docId: string,
-    event: ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0]
-    event.target.value = ""
-    if (!file) return
-    const fileError = getPdfOrImageFileValidationError(file)
-    if (fileError) {
-      toast.error(fileError)
-      return
-    }
-    setPropertyDocUploadingId(docId)
-    try {
-      const fileUrl = await uploadPropertyDocumentationToUrl(file)
-      updatePropertyDocs(propertyId, (rows) =>
-        rows.map((row) => (row.id === docId ? { ...row, fileUrl, fileName: file.name } : row)),
-      )
-      toast.success("Document uploaded")
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to upload document")
-    } finally {
-      setPropertyDocUploadingId(null)
-    }
   }
 
   const propertyDocLabel = (documentType: string) => {
@@ -1242,106 +1211,47 @@ export default function ConfigureMortgageDrawer({
   const renderPropertyDocumentationEditor = (
     rows: PropertyDocumentationItem[],
     propertyId: string | null,
-  ) => (
+  ) => {
+    const remainingOptions = availablePropertyDocOptions(rows)
+    return (
     <div className="space-y-3 rounded-md border border-[#E8DFC3] bg-[#FBF8EF]/60 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <p className="text-sm font-medium text-gray-700">
             Property documentation <span className="font-normal text-gray-500">(Optional)</span>
           </p>
-          <p className="text-xs text-gray-500">Add title documents for this property. PDF or image, max 5MB.</p>
+          <p className="text-xs text-gray-500">
+            Declare which title documents are available for this property. Add each type once.
+          </p>
         </div>
         <Button
           type="button"
           onClick={() => addPropertyDocRow(propertyId)}
+          disabled={remainingOptions.length === 0}
           className="h-9 bg-[#9A813F] text-white hover:bg-[#8A7335]"
         >
-          Add another
+          Add document
         </Button>
       </div>
 
       {rows.length === 0 ? (
-        <p className="text-xs text-gray-500">No documentation rows yet.</p>
+        <p className="text-xs text-gray-500">No title documents declared yet.</p>
       ) : (
         <div className="space-y-3">
-          {rows.map((row, index) => (
+          {rows.map((row) => (
             <div
               key={row.id}
-              className="grid grid-cols-1 gap-3 rounded-md border border-gray-200 bg-white p-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto]"
+              className="grid grid-cols-1 gap-3 rounded-md border border-gray-200 bg-white p-3 sm:grid-cols-[minmax(0,1.2fr)_auto]"
             >
               <ProductConfigSelect
                 label="Document type"
                 placeholder="Select document type"
                 value={row.documentType}
-                options={propertyDocumentationOptions}
+                options={availablePropertyDocOptions(rows, row.id)}
                 onChange={(value) => setPropertyDocType(propertyId, row.id, value)}
                 requirement="required"
               />
-              <div className="min-w-0 space-y-2">
-                <p className="text-sm font-medium text-gray-700">
-                  File <span className="font-normal text-gray-500">(Required)</span>
-                </p>
-                <input
-                  ref={(el) => {
-                    propertyDocFileInputRefs.current[row.id] = el
-                  }}
-                  type="file"
-                  className="hidden"
-                  accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp,image/svg+xml,.pdf"
-                  onChange={(event) => void handlePropertyDocFile(propertyId, row.id, event)}
-                />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={propertyDocUploadingId === row.id}
-                    onClick={() => propertyDocFileInputRefs.current[row.id]?.click()}
-                    className="h-10 border-[#9A813F] text-[#9A813F] hover:bg-[#9A813F]/10"
-                  >
-                    {propertyDocUploadingId === row.id ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Uploading…
-                      </>
-                    ) : row.fileUrl ? (
-                      "Replace file"
-                    ) : (
-                      "Upload file"
-                    )}
-                  </Button>
-                  {row.fileUrl ? (
-                    <a
-                      href={row.fileUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="max-w-full truncate text-xs text-[#9A813F] underline hover:text-[#8A7335]"
-                    >
-                      {row.fileName || "View file"}
-                    </a>
-                  ) : (
-                    <span className="text-xs text-gray-400">No file uploaded</span>
-                  )}
-                </div>
-              </div>
               <div className="flex items-end justify-end gap-1 pb-1">
-                <button
-                  type="button"
-                  className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-                  disabled={index === 0}
-                  onClick={() => movePropertyDocRow(propertyId, row.id, -1)}
-                  aria-label="Move documentation up"
-                >
-                  <ChevronUp size={16} />
-                </button>
-                <button
-                  type="button"
-                  className="rounded p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-40"
-                  disabled={index === rows.length - 1}
-                  onClick={() => movePropertyDocRow(propertyId, row.id, 1)}
-                  aria-label="Move documentation down"
-                >
-                  <ChevronDown size={16} />
-                </button>
                 <button
                   type="button"
                   className="rounded p-1.5 text-red-600 hover:bg-red-50"
@@ -1356,7 +1266,8 @@ export default function ConfigureMortgageDrawer({
         </div>
       )}
     </div>
-  )
+    )
+  }
 
   const handleBack = () => {
     if (isSubmitting) return
@@ -1409,7 +1320,6 @@ export default function ConfigureMortgageDrawer({
       videoUrl: p.videoUrl,
       propertyDocumentation: p.propertyDocumentation.map((doc) => ({
         documentType: doc.documentType,
-        fileUrl: doc.fileUrl,
       })),
     })),
     inspectionDates: inspectionDates
@@ -1536,10 +1446,9 @@ export default function ConfigureMortgageDrawer({
             previewImages,
             previewImage: previewImages[0] ?? null,
             propertyDocumentation: (p.propertyDocumentation ?? [])
-              .filter((doc) => doc.documentType.trim() && doc.fileUrl.trim())
+              .filter((doc) => doc.documentType.trim())
               .map((doc) => ({
                 documentType: doc.documentType.trim(),
-                fileUrl: doc.fileUrl.trim(),
               })),
           }
         }),

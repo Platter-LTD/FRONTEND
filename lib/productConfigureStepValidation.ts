@@ -141,7 +141,7 @@ export type MortgageStepCtx = {
     previewFiles: unknown[]
     imageUrls?: string[]
     videoUrl: string
-    propertyDocumentation?: { documentType: string; fileUrl: string }[]
+    propertyDocumentation?: { documentType: string }[]
   }[]
   inspectionDates: {
     scheduledFor: string
@@ -199,13 +199,18 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
       if (!hasImages) errors.push(`Properties: Property #${n} — At least one property image is required.`)
       if (!has(p.videoUrl)) errors.push(`Properties: Property #${n} — Property video URL is required.`)
       const docs = Array.isArray(p.propertyDocumentation) ? p.propertyDocumentation : []
+      const seenDocs = new Set<string>()
       docs.forEach((doc, j) => {
         const dn = j + 1
-        if (!has(doc.documentType) || !has(doc.fileUrl)) {
-          errors.push(
-            `Properties: Property #${n} — Documentation #${dn} needs a document type and uploaded file.`,
-          )
+        if (!has(doc.documentType)) {
+          errors.push(`Properties: Property #${n} — Documentation #${dn} needs a document type.`)
+          return
         }
+        const key = String(doc.documentType).trim().toLowerCase()
+        if (seenDocs.has(key)) {
+          errors.push(`Properties: Property #${n} — Duplicate property document types are not allowed.`)
+        }
+        seenDocs.add(key)
       })
     })
   }

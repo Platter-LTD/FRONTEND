@@ -1,6 +1,7 @@
 import { getAccessToken } from "@/lib/cookieAuth"
 import { refreshAccessTokenClient } from "@/lib/refreshAccessTokenClient"
 import { clearSecureTokens } from "@/lib/tokenManager"
+import { buildSigninUrl, getCurrentReturnTo } from "@/lib/authReturnTo"
 
 let sessionRedirectInFlight = false
 
@@ -59,7 +60,7 @@ export async function handleSessionExpired(): Promise<never> {
       /* still redirect */
     }
     if (!isOnAuthPage()) {
-      window.location.replace("/signin")
+      window.location.replace(buildSigninUrl(getCurrentReturnTo()))
     }
   }
 

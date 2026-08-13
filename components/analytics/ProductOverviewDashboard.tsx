@@ -13,14 +13,18 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { productApi } from "@/lib/services/product-api"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
 import {
+  appendPortfolioAccountRows,
   categoryCountForTab,
   mapByTypeToView,
+  mapPortfolioAccountsFromData,
   moneyMajor,
   tabKeyToApiType,
   unwrapApiData,
+  withPortfolioAccountsTable,
   type ByTypeOverviewData,
   type OverviewByTypeView,
   type ProductOverviewData,
@@ -94,7 +98,10 @@ type KpiSpec = {
   tone: Tone
   drilldown?: TableSpec
   special?: "mortgage-savings"
+  portfolioStatus?: "active" | "inactive" | "non_performing" | "bad"
 }
+
+type PortfolioFilterKey = "all" | "active" | "inactive" | "non_performing" | "bad"
 
 type DueSpec = { label: string; note: string; amount: number }
 
@@ -192,6 +199,14 @@ const TAB_META: {
     } },
 ]
 
+const PORTFOLIO_FILTERS: Array<{ value: PortfolioFilterKey; label: string }> = [
+  { value: "all", label: "All statuses" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+  { value: "non_performing", label: "Non-performing" },
+  { value: "bad", label: "Bad" },
+]
+
 /* -------------------------------------------------------------------------- */
 /*  Presentational pieces                                                      */
 /* -------------------------------------------------------------------------- */
@@ -241,9 +256,24 @@ function Badge({ label, tone }: { label: string; tone: Tone }) {
   )
 }
 
-function KpiCard({ kpi }: { kpi: KpiSpec }) {
-  return (
-    <div className="rounded-xl border border-[#E7E5E0] bg-white px-5 py-4 text-left">
+function KpiCard({
+  kpi,
+  selected,
+  onSelect,
+}: {
+  kpi: KpiSpec
+  selected?: boolean
+  onSelect?: () => void
+}) {
+  const interactive = Boolean(onSelect)
+  const className = cn(
+    "rounded-xl border bg-white px-5 py-4 text-left transition-colors",
+    selected ? "border-[#B08D57] ring-1 ring-[#B08D57]/40" : "border-[#E7E5E0]",
+    interactive && "cursor-pointer hover:border-[#B08D57]/60",
+  )
+
+  const body = (
+    <>
       <span className="flex items-center gap-2 text-[13px] text-[#78716C]">
         <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", TONE_DOT[kpi.tone])} />
         {kpi.label}
@@ -252,8 +282,18 @@ function KpiCard({ kpi }: { kpi: KpiSpec }) {
         {kpi.value}
       </span>
       <span className={cn("mt-2 block text-xs", TONE_NOTE[kpi.tone])}>{kpi.note}</span>
-    </div>
+    </>
   )
+
+  if (interactive) {
+    return (
+      <button type="button" className={className} onClick={onSelect} aria-pressed={selected}>
+        {body}
+      </button>
+    )
+  }
+
+  return <div className={className}>{body}</div>
 }
 
 function DueCallout({ due }: { due: DueSpec }) {
@@ -716,14 +756,20 @@ export default function ProductOverviewDashboard({
   appName?: string
 }) {
   const [activeTab, setActiveTab] = useState<TabKey>("loan")
+  const [portfolioFilter, setPortfolioFilter] = useState<PortfolioFilterKey>("all")
 
   const [overview, setOverview] = useState<ProductOverviewData | null>(null)
   const [liveView, setLiveView] = useState<OverviewByTypeView | null>(null)
   const [loadingOverview, setLoadingOverview] = useState(Boolean(appId))
   const [loadingType, setLoadingType] = useState(Boolean(appId))
+  const [loadingAccounts, setLoadingAccounts] = useState(false)
+  const [loadingMoreAccounts, setLoadingMoreAccounts] = useState(false)
   const [overviewError, setOverviewError] = useState<string | null>(null)
   const [typeError, setTypeError] = useState<string | null>(null)
-  const typeCache = useRef<Partial<Record<TabKey, OverviewByTypeView>>>({})
+  /** Unfiltered by-type shell (KPIs + default accounts) cached per tab. */
+  const kpiCache = useRef<Partial<Record<TabKey, OverviewByTypeView>>>({})
+  const ACCOUNTS_PAGE_SIZE = 50
+  const showPortfolioFilter = activeTab === "loan" || activeTab === "mortgage"
 
   const tabMeta = useMemo(
     () => TAB_META.find((entry) => entry.key === activeTab) ?? TAB_META[0],
@@ -756,17 +802,11 @@ export default function ProductOverviewDashboard({
     return () => ac.abort()
   }, [appId])
 
+  // Load by-type once per tab for KPI cards (and default accounts when filter is all).
   useEffect(() => {
     if (!appId) {
       setLoadingType(false)
       setLiveView(null)
-      return
-    }
-    const cached = typeCache.current[activeTab]
-    if (cached) {
-      setLiveView(cached)
-      setTypeError(null)
-      setLoadingType(false)
       return
     }
 
@@ -774,14 +814,29 @@ export default function ProductOverviewDashboard({
     setLoadingType(true)
     setTypeError(null)
     setLiveView(null)
+
     const apiType = tabKeyToApiType(activeTab as ProductOverviewTabKey)
+    const opts = showPortfolioFilter
+      ? { portfolioStatus: "all" as const, limit: ACCOUNTS_PAGE_SIZE, skip: 0 }
+      : undefined
+
     void productApi
-      .getProductOverviewByType(appId, apiType, ac.signal)
+      .getProductOverviewByType(appId, apiType, ac.signal, opts)
       .then((res) => {
         try {
-          const view = mapByTypeToView(unwrapApiData<ByTypeOverviewData>(res))
-          typeCache.current[activeTab] = view
-          setLiveView(view)
+          const mapped = mapByTypeToView(unwrapApiData<ByTypeOverviewData>(res))
+          kpiCache.current[activeTab] = mapped
+          // If user already clicked a status before this resolved, filter effect will overlay accounts.
+          setLiveView((prev) => {
+            if (showPortfolioFilter && portfolioFilter !== "all" && prev) {
+              return withPortfolioAccountsTable(
+                mapped,
+                prev.tables.find((t) => t.id.endsWith("-accounts")) ?? null,
+                prev.portfolioAccountsMeta,
+              )
+            }
+            return mapped
+          })
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : "Could not read this product type"
           setTypeError(msg)
@@ -799,7 +854,60 @@ export default function ProductOverviewDashboard({
         if (!ac.signal.aborted) setLoadingType(false)
       })
     return () => ac.abort()
-  }, [appId, activeTab])
+    // portfolioFilter intentionally omitted — KPIs load once per tab; status clicks only refetch accounts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appId, activeTab, showPortfolioFilter])
+
+  // Drop cached by-type shells when the app changes.
+  useEffect(() => {
+    kpiCache.current = {}
+  }, [appId])
+
+  // On status card/dropdown change: refetch accounts with ?portfolioStatus=
+  useEffect(() => {
+    if (!appId || !showPortfolioFilter) return
+
+    if (portfolioFilter === "all") {
+      const cached = kpiCache.current[activeTab]
+      if (cached) {
+        setLiveView(cached)
+        setLoadingAccounts(false)
+      }
+      return
+    }
+
+    const ac = new AbortController()
+    setLoadingAccounts(true)
+    const apiType = tabKeyToApiType(activeTab as ProductOverviewTabKey)
+
+    void productApi
+      .getProductOverviewByType(appId, apiType, ac.signal, {
+        portfolioStatus: portfolioFilter,
+        limit: ACCOUNTS_PAGE_SIZE,
+        skip: 0,
+      })
+      .then((res) => {
+        const payload = unwrapApiData<ByTypeOverviewData>(res)
+        const { table, meta } = mapPortfolioAccountsFromData(payload)
+        const base = kpiCache.current[activeTab]
+        if (base) {
+          setLiveView(withPortfolioAccountsTable(base, table, meta))
+        } else {
+          // KPI shell not ready yet — map full response so UI still works.
+          setLiveView(mapByTypeToView(payload))
+        }
+      })
+      .catch((err: unknown) => {
+        if (ac.signal.aborted) return
+        const msg = err instanceof Error ? err.message : "Failed to filter portfolio accounts"
+        toast.error(msg)
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setLoadingAccounts(false)
+      })
+
+    return () => ac.abort()
+  }, [appId, activeTab, portfolioFilter, showPortfolioFilter])
 
   const kpis: KpiSpec[] = useMemo(() => {
     if (!liveView) return []
@@ -818,12 +926,50 @@ export default function ProductOverviewDashboard({
   const tabTables = (liveView?.tables as TableSpec[] | undefined) ?? []
   const tabDue = liveView?.due
   const headline = overview?.headline
-  const showSkeleton = loadingOverview || loadingType
+  const showSkeleton = loadingOverview || (loadingType && !liveView)
+  const accountsRefreshing = (loadingAccounts || loadingType) && Boolean(liveView) && showPortfolioFilter
   const hasTypeData = Boolean(liveView && (kpis.length || tabTables.length || tabRequests.length || tabDue))
+  const accountsMeta = liveView?.portfolioAccountsMeta
+  const canLoadMoreAccounts =
+    showPortfolioFilter && Boolean(accountsMeta?.hasMore) && !loadingMoreAccounts && !loadingAccounts
+
+  async function loadMoreAccounts() {
+    if (!appId || !showPortfolioFilter || !liveView || !accountsMeta?.hasMore) return
+    const skip = (accountsMeta.skip ?? 0) + (accountsMeta.limit ?? ACCOUNTS_PAGE_SIZE)
+    const apiType = tabKeyToApiType(activeTab as ProductOverviewTabKey)
+    setLoadingMoreAccounts(true)
+    try {
+      const res = await productApi.getProductOverviewByType(appId, apiType, undefined, {
+        portfolioStatus: portfolioFilter,
+        limit: accountsMeta.limit ?? ACCOUNTS_PAGE_SIZE,
+        skip,
+      })
+      const payload = unwrapApiData<ByTypeOverviewData>(res)
+      const { table, meta } = mapPortfolioAccountsFromData(payload)
+      if (!table) return
+      setLiveView((prev) => (prev ? appendPortfolioAccountRows(prev, table, meta) : prev))
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to load more accounts")
+    } finally {
+      setLoadingMoreAccounts(false)
+    }
+  }
 
   function handleTabChange(next: TabKey) {
+    if (next === activeTab) return
     setActiveTab(next)
     setTypeError(null)
+    setPortfolioFilter("all")
+    setLiveView(null)
+  }
+
+  function handlePortfolioFilterChange(next: PortfolioFilterKey) {
+    setPortfolioFilter(next)
+  }
+
+  function handleKpiClick(kpi: KpiSpec) {
+    if (!showPortfolioFilter || !kpi.portfolioStatus) return
+    setPortfolioFilter((prev) => (prev === kpi.portfolioStatus ? "all" : kpi.portfolioStatus!))
   }
 
   function resolveRequest(id: string, next: "approved" | "declined") {
@@ -835,7 +981,7 @@ export default function ProductOverviewDashboard({
         entry.id === id ? { ...entry, status: next } : entry,
       ),
     }
-    typeCache.current[activeTab] = updated
+    kpiCache.current[activeTab] = updated
     setLiveView(updated)
     const description = row ? `${row.reference} · ${money(row.amount)}` : undefined
     if (next === "approved") toast.success("Request approved", { description })
@@ -885,37 +1031,57 @@ export default function ProductOverviewDashboard({
           </p>
         ) : null}
 
-        <nav className="mt-6 flex flex-wrap gap-2" aria-label="Product type">
-          {TAB_META.map((entry) => {
-            const Icon = entry.icon
-            const isActive = entry.key === activeTab
-            const configured = overview
-              ? categoryCountForTab(overview.byCategory, entry.key as ProductOverviewTabKey)
-              : undefined
-            return (
-              <button
-                key={entry.key}
-                type="button"
-                onClick={() => handleTabChange(entry.key)}
-                aria-current={isActive ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "border-[#B08D57] bg-[#F7EEDD] text-[#96723F]"
-                    : "border-[#E7E5E0] bg-white text-[#78716C] hover:border-[#D6D3CE] hover:text-[#1C1917]",
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {entry.label}
-                {typeof configured === "number" ? (
-                  <span className="rounded-full bg-[#F5F5F4] px-1.5 py-0.5 text-[11px] text-[#57534E]">
-                    {configured}
-                  </span>
-                ) : null}
-              </button>
-            )
-          })}
-        </nav>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+          <nav className="flex flex-wrap gap-2" aria-label="Product type">
+            {TAB_META.map((entry) => {
+              const Icon = entry.icon
+              const isActive = entry.key === activeTab
+              const configured = overview
+                ? categoryCountForTab(overview.byCategory, entry.key as ProductOverviewTabKey)
+                : undefined
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  onClick={() => handleTabChange(entry.key)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors",
+                    isActive
+                      ? "border-[#B08D57] bg-[#F7EEDD] text-[#96723F]"
+                      : "border-[#E7E5E0] bg-white text-[#78716C] hover:border-[#D6D3CE] hover:text-[#1C1917]",
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {entry.label}
+                  {typeof configured === "number" ? (
+                    <span className="rounded-full bg-[#F5F5F4] px-1.5 py-0.5 text-[11px] text-[#57534E]">
+                      {configured}
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </nav>
+
+          {showPortfolioFilter ? (
+            <Select
+              value={portfolioFilter}
+              onValueChange={(value) => handlePortfolioFilterChange(value as PortfolioFilterKey)}
+            >
+              <SelectTrigger className="h-10 min-w-[190px] rounded-full border-[#E7E5E0] bg-white px-4 text-sm text-[#57534E]">
+                <SelectValue placeholder="Filter overview" />
+              </SelectTrigger>
+              <SelectContent>
+                {PORTFOLIO_FILTERS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : null}
+        </div>
 
         {showSkeleton ? (
           <OverviewSkeleton />
@@ -939,14 +1105,27 @@ export default function ProductOverviewDashboard({
                 )}
               >
                 {kpis.map((kpi) => (
-                  <KpiCard key={kpi.id} kpi={kpi} />
+                  <KpiCard
+                    key={kpi.id}
+                    kpi={kpi}
+                    selected={Boolean(kpi.portfolioStatus && portfolioFilter === kpi.portfolioStatus)}
+                    onSelect={
+                      showPortfolioFilter && kpi.portfolioStatus
+                        ? () => handleKpiClick(kpi)
+                        : undefined
+                    }
+                  />
                 ))}
               </div>
             ) : null}
 
             {tabDue ? <DueCallout due={tabDue} /> : null}
 
-            <div className="mt-4 space-y-4">
+            {accountsRefreshing ? (
+              <p className="mt-3 text-xs text-[#78716C]">Updating portfolio accounts…</p>
+            ) : null}
+
+            <div className={cn("mt-4 space-y-4", accountsRefreshing && "opacity-60")}>
               {tabTables.length === 0 && !tabMeta.requests ? (
                 <EmptyState
                   title="Nothing to show"
@@ -956,6 +1135,18 @@ export default function ProductOverviewDashboard({
               {tabTables.map((table) => (
                 <DataTable key={table.id} table={table} />
               ))}
+              {canLoadMoreAccounts ? (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    className={OUTLINE_BUTTON}
+                    disabled={loadingMoreAccounts}
+                    onClick={() => void loadMoreAccounts()}
+                  >
+                    {loadingMoreAccounts ? "Loading…" : "Load more accounts"}
+                  </button>
+                </div>
+              ) : null}
               {tabMeta.requests ? (
                 <RequestTable spec={tabMeta.requests} rows={tabRequests} onResolve={resolveRequest} />
               ) : null}

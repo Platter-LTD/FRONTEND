@@ -20,6 +20,9 @@ export type OverviewTable = {
   rows: OverviewCell[][]
 }
 
+/** Query value for by-type LOAN / MORTGAGE portfolio filters. */
+export type PortfolioStatusParam = "all" | "active" | "inactive" | "non_performing" | "bad"
+
 export type OverviewKpi = {
   id: string
   label: string
@@ -28,6 +31,8 @@ export type OverviewKpi = {
   tone: OverviewTone
   drilldown?: OverviewTable
   special?: "mortgage-savings"
+  /** When set, KPI card click refetches by-type with this portfolioStatus. */
+  portfolioStatus?: Exclude<PortfolioStatusParam, "all">
 }
 
 export type OverviewDue = { label: string; note: string; amount: number }
@@ -49,6 +54,7 @@ export type OverviewByTypeView = {
   requests: OverviewRequestRow[]
   mortgageSavingsPending?: number
   mortgageSavingsRunning?: number
+  portfolioAccountsMeta?: PortfolioAccountsMeta
 }
 
 export type CategoryRow = {
@@ -94,12 +100,45 @@ export type OverviewProductRow = {
   salesAmount?: number
 }
 
-type CountDelta = { count?: number; deltaThisMonth?: number }
+type CountDelta = {
+  count?: number
+  deltaThisMonth?: number
+  principalTotal?: number
+  outstandingTotal?: number
+}
+type PortfolioBucket = {
+  count?: number
+  deltaThisMonth?: number
+  principalTotal?: number
+  outstandingTotal?: number
+}
 type WeekDue = {
   amount?: number
   scheduledCount?: number
   weekStart?: string
   weekEnd?: string
+}
+
+export type PortfolioAccountRow = {
+  id?: string
+  reference?: string
+  customerName?: string
+  productId?: string
+  productName?: string
+  principal?: number
+  outstanding?: number
+  daysOverdue?: number
+  status?: string
+  disbursedAt?: string | null
+  maturedAt?: string | null
+}
+
+export type PortfolioAccountsMeta = {
+  portfolioStatus?: string
+  total?: number
+  limit?: number
+  skip?: number
+  hasMore?: boolean
 }
 
 type RepaymentRow = {
@@ -148,6 +187,9 @@ export type ByTypeOverviewData = {
   appId?: string
   type?: string
   products?: OverviewProductRow[]
+  loanAccounts?: PortfolioAccountRow[]
+  mortgageAccounts?: PortfolioAccountRow[]
+  portfolioAccountsMeta?: PortfolioAccountsMeta
   totals?: {
     distinctCustomerCount?: number
     applicationCount?: number
@@ -158,19 +200,21 @@ export type ByTypeOverviewData = {
     salesAmount?: number
   }
   loanPortfolio?: {
+    statusDefinitions?: Record<string, string>
     activeLoan?: CountDelta
-    inactiveLoan?: { count?: number }
-    nonPerformingLoan?: { count?: number }
-    badLoan?: { count?: number }
+    inactiveLoan?: PortfolioBucket
+    nonPerformingLoan?: PortfolioBucket
+    badLoan?: PortfolioBucket
     repaymentsDueThisWeek?: WeekDue
     recentRepayments?: RepaymentRow[]
     failedRepayments?: RepaymentRow[]
   }
   mortgagePortfolio?: {
+    statusDefinitions?: Record<string, string>
     activeMortgage?: CountDelta
-    inactiveMortgage?: { count?: number }
-    nonPerformingMortgage?: { count?: number }
-    badMortgage?: { count?: number }
+    inactiveMortgage?: PortfolioBucket
+    nonPerformingMortgage?: PortfolioBucket
+    badMortgage?: PortfolioBucket
     mortgageSavings?: { count?: number; pendingReview?: number; running?: number }
     repaymentsDueThisWeek?: WeekDue
     recentRepayments?: RepaymentRow[]
@@ -306,10 +350,125 @@ function mapRepaymentRows(rows: RepaymentRow[] | undefined, failed: boolean): Ov
   })
 }
 
+function portfolioStatusTone(status?: string): OverviewTone {
+  const s = String(status || "").toLowerCase().replace(/-/g, "_")
+  if (s === "active") return "success"
+  if (s === "inactive") return "muted"
+  if (s === "non_performing" || s === "nonperforming") return "warning"
+  if (s === "bad") return "danger"
+  return statusTone(status)
+}
+
+/** KPI subtitle: outstanding (or principal) only — ignore long statusDefinitions writeups. */
+function portfolioBucketNote(bucket: PortfolioBucket | CountDelta | undefined): string {
+  if (bucket?.outstandingTotal != null && Number.isFinite(bucket.outstandingTotal)) {
+    return `${moneyMajor(bucket.outstandingTotal)} outstanding`
+  }
+  if (bucket?.principalTotal != null && Number.isFinite(bucket.principalTotal)) {
+    return `${moneyMajor(bucket.principalTotal)} principal`
+  }
+  return "₦0.00 outstanding"
+}
+
+function portfolioAccountsTable(data: ByTypeOverviewData | null | undefined): OverviewTable | null {
+  const type = String(data?.type || "").toUpperCase()
+  if (type !== "LOAN" && type !== "MORTGAGE") return null
+
+  // Always render the accounts table for lending types (empty list is valid).
+  const accounts =
+    (type === "LOAN" ? data?.loanAccounts : data?.mortgageAccounts) ?? []
+
+  const meta = data?.portfolioAccountsMeta
+  const rawStatus = String(meta?.portfolioStatus || "all").toLowerCase()
+  const statusLabel = rawStatus === "all" ? "all" : rawStatus.replace(/_/g, " ")
+  const total = meta?.total ?? accounts.length
+  const noun = type === "MORTGAGE" ? "mortgage" : "loan"
+  const description =
+    `${countMajor(total)} ${statusLabel === "all" ? "" : `${statusLabel} `}${noun} account${total === 1 ? "" : "s"}`.trim()
+
+  return {
+    id: `${noun}-accounts`,
+    title: `${type === "MORTGAGE" ? "Mortgage" : "Loan"} accounts`,
+    description,
+    columns: [
+      col("Reference"),
+      col("Customer"),
+      col("Product"),
+      col("Principal", "right"),
+      col("Outstanding", "right"),
+      col("Days overdue", "right"),
+      col("Status"),
+      col("Disbursed"),
+      col("Matured"),
+    ],
+    rows: accounts.map((a) => [
+      a.reference?.trim() || a.id || "—",
+      a.customerName?.trim() || "—",
+      a.productName?.trim() || a.productId || "—",
+      moneyMajor(a.principal),
+      moneyMajor(a.outstanding),
+      countMajor(a.daysOverdue),
+      {
+        badge: titleCaseStatus(String(a.status || "—").replace(/_/g, " ")),
+        tone: portfolioStatusTone(a.status),
+      },
+      formatDate(a.disbursedAt),
+      formatDate(a.maturedAt),
+    ]),
+  }
+}
+
+/** Map only the filterable accounts table + meta from a by-type payload. */
+export function mapPortfolioAccountsFromData(data: ByTypeOverviewData | null | undefined): {
+  table: OverviewTable | null
+  meta?: PortfolioAccountsMeta
+} {
+  return {
+    table: portfolioAccountsTable(data),
+    meta: data?.portfolioAccountsMeta,
+  }
+}
+
+/** Replace or prepend the portfolio accounts table while keeping other tables. */
+export function withPortfolioAccountsTable(
+  base: OverviewByTypeView,
+  accountsTable: OverviewTable | null | undefined,
+  meta?: PortfolioAccountsMeta | null,
+): OverviewByTypeView {
+  const withoutAccounts = base.tables.filter((t) => !t.id.endsWith("-accounts"))
+  return {
+    ...base,
+    portfolioAccountsMeta: meta ?? base.portfolioAccountsMeta,
+    tables: accountsTable ? [accountsTable, ...withoutAccounts] : withoutAccounts,
+  }
+}
+
+/** Append more account rows (pagination). */
+export function appendPortfolioAccountRows(
+  view: OverviewByTypeView,
+  nextAccountsTable: OverviewTable,
+  meta?: PortfolioAccountsMeta | null,
+): OverviewByTypeView {
+  const existing = view.tables.find((t) => t.id.endsWith("-accounts"))
+  const merged: OverviewTable = existing
+    ? {
+        ...nextAccountsTable,
+        rows: [...existing.rows, ...nextAccountsTable.rows],
+        description: nextAccountsTable.description || existing.description,
+      }
+    : nextAccountsTable
+  return withPortfolioAccountsTable(view, merged, meta)
+}
+
 export function mapByTypeToView(data: ByTypeOverviewData | null | undefined): OverviewByTypeView {
   const type = String(data?.type || "LOAN").toUpperCase() as ProductOverviewApiType
   const productTable = productsTable(data?.products, type)
-  const empty: OverviewByTypeView = { kpis: [], tables: productTable.rows.length ? [productTable] : [], requests: [] }
+  const accountsTable = portfolioAccountsTable(data)
+  const empty: OverviewByTypeView = {
+    kpis: [],
+    tables: [accountsTable, productTable].filter(Boolean) as OverviewTable[],
+    requests: [],
+  }
 
   if (type === "LOAN" && data?.loanPortfolio) {
     const p = data.loanPortfolio
@@ -320,29 +479,33 @@ export function mapByTypeToView(data: ByTypeOverviewData | null | undefined): Ov
           id: "loan-active",
           label: "Active loan",
           value: countMajor(p.activeLoan?.count),
-          note: p.activeLoan?.deltaThisMonth != null ? `+${countMajor(p.activeLoan.deltaThisMonth)} this month` : "Open accounts",
+          note: portfolioBucketNote(p.activeLoan),
           tone: "success",
+          portfolioStatus: "active",
         },
         {
           id: "loan-inactive",
           label: "Inactive loan",
           value: countMajor(p.inactiveLoan?.count),
-          note: "Matured or closed",
+          note: portfolioBucketNote(p.inactiveLoan),
           tone: "muted",
+          portfolioStatus: "inactive",
         },
         {
           id: "loan-non-performing",
           label: "Non-performing loan",
           value: countMajor(p.nonPerformingLoan?.count),
-          note: "90+ days overdue",
+          note: portfolioBucketNote(p.nonPerformingLoan),
           tone: "warning",
+          portfolioStatus: "non_performing",
         },
         {
           id: "loan-bad",
           label: "Bad loan",
           value: countMajor(p.badLoan?.count),
-          note: "Written off",
+          note: portfolioBucketNote(p.badLoan),
           tone: "danger",
+          portfolioStatus: "bad",
         },
       ],
       due: due
@@ -353,6 +516,7 @@ export function mapByTypeToView(data: ByTypeOverviewData | null | undefined): Ov
           }
         : undefined,
       tables: [
+        accountsTable,
         productTable,
         {
           id: "loan-repayments",
@@ -381,8 +545,9 @@ export function mapByTypeToView(data: ByTypeOverviewData | null | undefined): Ov
           ],
           rows: mapRepaymentRows(p.failedRepayments, true),
         },
-      ].filter((t) => t.rows.length > 0 || t.id.endsWith("-products")),
+      ].filter((t): t is OverviewTable => Boolean(t) && (t.rows.length > 0 || t.id.endsWith("-products") || t.id.endsWith("-accounts"))),
       requests: [],
+      portfolioAccountsMeta: data.portfolioAccountsMeta,
     }
   }
 
@@ -396,29 +561,33 @@ export function mapByTypeToView(data: ByTypeOverviewData | null | undefined): Ov
           id: "mortgage-active",
           label: "Active mortgage",
           value: countMajor(p.activeMortgage?.count),
-          note: p.activeMortgage?.deltaThisMonth != null ? `+${countMajor(p.activeMortgage.deltaThisMonth)} this month` : "Open accounts",
+          note: portfolioBucketNote(p.activeMortgage),
           tone: "success",
+          portfolioStatus: "active",
         },
         {
           id: "mortgage-inactive",
           label: "Inactive mortgage",
           value: countMajor(p.inactiveMortgage?.count),
-          note: "Matured or closed",
+          note: portfolioBucketNote(p.inactiveMortgage),
           tone: "muted",
+          portfolioStatus: "inactive",
         },
         {
           id: "mortgage-non-performing",
           label: "Non-performing mortgage",
           value: countMajor(p.nonPerformingMortgage?.count),
-          note: "90+ days overdue",
+          note: portfolioBucketNote(p.nonPerformingMortgage),
           tone: "warning",
+          portfolioStatus: "non_performing",
         },
         {
           id: "mortgage-bad",
           label: "Bad mortgage",
           value: countMajor(p.badMortgage?.count),
-          note: "Written off",
+          note: portfolioBucketNote(p.badMortgage),
           tone: "danger",
+          portfolioStatus: "bad",
         },
         {
           id: "mortgage-savings",
@@ -437,6 +606,7 @@ export function mapByTypeToView(data: ByTypeOverviewData | null | undefined): Ov
           }
         : undefined,
       tables: [
+        accountsTable,
         productTable,
         {
           id: "mortgage-repayments",
@@ -465,10 +635,11 @@ export function mapByTypeToView(data: ByTypeOverviewData | null | undefined): Ov
           ],
           rows: mapRepaymentRows(p.failedRepayments, true),
         },
-      ].filter((t) => t.rows.length > 0 || t.id.endsWith("-products")),
+      ].filter((t): t is OverviewTable => Boolean(t) && (t.rows.length > 0 || t.id.endsWith("-products") || t.id.endsWith("-accounts"))),
       requests: [],
       mortgageSavingsPending: ms?.pendingReview ?? 0,
       mortgageSavingsRunning: ms?.running ?? 0,
+      portfolioAccountsMeta: data.portfolioAccountsMeta,
     }
   }
 

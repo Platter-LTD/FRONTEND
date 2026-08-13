@@ -59,6 +59,7 @@ export interface ProductProperty {
   propertyType?: string
   value?: number
   location?: string
+  propertyDocumentation?: { documentType?: string }[]
 }
 
 const TYPE_TO_UI: Record<string, StorefrontProductType> = {
@@ -207,6 +208,14 @@ function mapProperties(value: unknown): ProductProperty[] {
       propertyType: asString(row.propertyType),
       value: asNumber(row.value),
       location: asString(row.location),
+      propertyDocumentation: Array.isArray(row.propertyDocumentation)
+        ? row.propertyDocumentation.map((doc) => {
+            const docRow = asRecord(doc)
+            return {
+              documentType: asString(docRow.documentType),
+            }
+          })
+        : [],
     }
   })
 }

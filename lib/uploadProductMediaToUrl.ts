@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api"
 import { fileToBase64 } from "@/lib/fileUtils"
-import { getImageFileValidationError, getPdfOrImageFileValidationError } from "@/lib/fileValidation"
+import { getImageFileValidationError } from "@/lib/fileValidation"
 
 const PRODUCT_UPLOAD_IMAGE = "/v1/products/upload-image"
 const PRODUCT_UPLOAD_DOCUMENT_TEMPLATE = "/v1/products/upload-document-template"
@@ -137,46 +137,6 @@ export async function uploadProductMediaToUrl(
     }
 
     throw new Error(upstreamMsg)
-  }
-}
-
-/**
- * Uploads a PDF or image via the same product upload-image endpoint used for property images.
- * Used for mortgage `propertyDocumentation[].fileUrl`.
- */
-export async function uploadPropertyDocumentationToUrl(
-  file: File,
-  opts?: { appId?: string | null },
-): Promise<string> {
-  const fileError = getPdfOrImageFileValidationError(file)
-  if (fileError) {
-    throw new Error(fileError)
-  }
-
-  const form = new FormData()
-  form.append("file", file, file.name || "document")
-  const appId = String(opts?.appId ?? "").trim()
-  if (appId) form.append("appId", appId)
-
-  try {
-    const res = await apiClient.post<UploadPreviewImageSuccess | UploadPreviewImageError | unknown>(
-      PRODUCT_UPLOAD_IMAGE,
-      form,
-    )
-    const payload = res.data
-    if (payload && typeof payload === "object" && "success" in payload && (payload as { success?: boolean }).success === false) {
-      throw new Error(extractErrorMessage(payload, "Document upload was rejected."))
-    }
-    const url = extractProductUploadImageUrl(payload)
-    if (url) return url
-    throw new Error(extractErrorMessage(payload, "Upload succeeded but no file URL was returned."))
-  } catch (err: unknown) {
-    const ax = err as { response?: { data?: unknown; status?: number } }
-    const status = ax.response?.status
-    const body = ax.response?.data
-    throw new Error(
-      extractErrorMessage(body, status ? `Upload failed (${status})` : "Property documentation upload failed."),
-    )
   }
 }
 

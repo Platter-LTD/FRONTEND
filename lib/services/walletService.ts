@@ -120,6 +120,9 @@ export interface MerchantWallet {
   status: 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
   appId?: string;
   appName?: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
   payonusSubaccountCode?: string;
   virtualNuban?: {
     accountType?: string;
@@ -132,6 +135,16 @@ export interface MerchantWallet {
   };
   createdAt: string;
   updatedAt: string;
+}
+
+/** Fund / payout only when PayOnUs NUBAN is provisioned and active. */
+export function isVirtualNubanActive(
+  nuban?: MerchantWallet['virtualNuban'] | null,
+): boolean {
+  if (!nuban?.accountNumber?.trim()) return false;
+  const status = String(nuban.provisionStatus || '').trim().toLowerCase();
+  // Backend docs use "active"; accept common variants from providers.
+  return status === 'active' || status === 'provisioned' || status === 'success';
 }
 
 export interface Transaction {
@@ -494,58 +507,71 @@ export const userWalletApi = {
   },
 };
 
-// Wallet Transfers (Billing <-> Settlement; legacy Operation <-> KYC aliases)
-export const walletTransferApi = {
-  /** POST /billing-to-settlement (legacy: /operation-to-kyc) */
-  async transferBillingToSettlement(amount: number, description: string, appId?: string) {
-    const body = JSON.stringify({ amount, description });
-    let response = await walletFetch(`${walletV1WalletsBase()}/billing-to-settlement`, {
+async function postWalletTransferWithFallbacks(
+  paths: string[],
+  amount: number,
+  description: string,
+  appId?: string,
+) {
+  const body = JSON.stringify({
+    amount,
+    description,
+    ...(appId ? { appId } : {}),
+  });
+  let lastError = 'Failed to transfer funds';
+  for (const path of paths) {
+    const response = await walletFetch(`${walletV1WalletsBase()}/${path}`, {
       method: 'POST',
       appId,
       body,
     });
-    if (response.status === 404) {
-      response = await walletFetch(`${walletV1WalletsBase()}/operation-to-kyc`, {
-        method: 'POST',
-        appId,
-        body,
-      });
-    }
     const data = await response.json();
+    if (response.status === 404) {
+      lastError = walletMessageFromBody(data) || lastError;
+      continue;
+    }
     if (!response.ok) {
-      throw new Error(walletMessageFromBody(data) || 'Failed to transfer funds');
+      throw new Error(walletMessageFromBody(data) || lastError);
     }
     return data as WalletApiResponse<{
       fromWallet: MerchantWallet;
       toWallet: MerchantWallet;
       transaction: Transaction;
     }>;
+  }
+  throw new Error(lastError);
+}
+
+// Wallet Transfers (Billing <-> Repayment; legacy settlement / operation-kyc aliases)
+export const walletTransferApi = {
+  /** POST /billing-to-repayment (fallbacks: billing-to-settlement, operation-to-kyc) */
+  async transferBillingToSettlement(amount: number, description: string, appId?: string) {
+    return postWalletTransferWithFallbacks(
+      ['billing-to-repayment', 'billing-to-settlement', 'operation-to-kyc'],
+      amount,
+      description,
+      appId,
+    );
   },
 
-  /** POST /settlement-to-billing (legacy: /kyc-to-operation) */
+  /** POST /repayment-to-billing (fallbacks: settlement-to-billing, kyc-to-operation) */
   async transferSettlementToBilling(amount: number, description: string, appId?: string) {
-    const body = JSON.stringify({ amount, description });
-    let response = await walletFetch(`${walletV1WalletsBase()}/settlement-to-billing`, {
-      method: 'POST',
+    return postWalletTransferWithFallbacks(
+      ['repayment-to-billing', 'settlement-to-billing', 'kyc-to-operation'],
+      amount,
+      description,
       appId,
-      body,
-    });
-    if (response.status === 404) {
-      response = await walletFetch(`${walletV1WalletsBase()}/kyc-to-operation`, {
-        method: 'POST',
-        appId,
-        body,
-      });
-    }
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(walletMessageFromBody(data) || 'Failed to transfer funds');
-    }
-    return data as WalletApiResponse<{
-      fromWallet: MerchantWallet;
-      toWallet: MerchantWallet;
-      transaction: Transaction;
-    }>;
+    );
+  },
+
+  /** Alias — same as transferBillingToSettlement */
+  async transferBillingToRepayment(amount: number, description: string, appId?: string) {
+    return walletTransferApi.transferBillingToSettlement(amount, description, appId);
+  },
+
+  /** Alias — same as transferSettlementToBilling */
+  async transferRepaymentToBilling(amount: number, description: string, appId?: string) {
+    return walletTransferApi.transferSettlementToBilling(amount, description, appId);
   },
 
   /** POST /treasury/transfer */
@@ -862,7 +888,11 @@ export const billingApi = {
     appId?: string,
   ) {
     const scopedAppId = appId ?? payout.appId;
-    const body = JSON.stringify(payout);
+    const bodyPayload = {
+      ...payout,
+      ...(scopedAppId ? { appId: scopedAppId } : {}),
+    };
+    const body = JSON.stringify(bodyPayload);
     let response = await walletFetch(`${walletV1WalletsBase()}/repayment/payout`, {
       method: 'POST',
       appId: scopedAppId,
@@ -885,8 +915,25 @@ export const billingApi = {
       payoutReference?: string;
       providerReference?: string;
       providerStatus?: string;
-      duplicate?: boolean;
-    }>;
+    }> & { duplicate?: boolean };
+  },
+
+  /** Alias for settlementPayout */
+  async repaymentPayout(
+    payout: {
+      appId?: string;
+      accountNumber: string;
+      bankCode: string;
+      accountName: string;
+      bankName?: string;
+      amount: number;
+      currency?: string;
+      narration?: string;
+      reference?: string;
+    },
+    appId?: string,
+  ) {
+    return billingApi.settlementPayout(payout, appId);
   },
 };
 

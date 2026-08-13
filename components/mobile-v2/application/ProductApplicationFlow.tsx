@@ -37,6 +37,7 @@ import {
   type MortgageDownPaymentMethod,
 } from '@/lib/mortgageWorkflow'
 import { useMobileV2Tenant } from '@/contexts/MobileV2TenantContext'
+import { fetchProductOptions, type ProductOption } from '@/lib/productOptions'
 import {
   defaultApplicationAmountValue,
   formatApplicationAmountHint,
@@ -659,6 +660,18 @@ function ProductSummary({
   const productName = application?.productName || `${prettyKind(kind)} application`
   const resolvedAmount = applicationAmount ?? application?.amount
   const amount = formatCurrency(resolvedAmount, application?.currency || 'NGN')
+  const [propertyDocumentationOptions, setPropertyDocumentationOptions] = useState<ProductOption[]>([])
+
+  useEffect(() => {
+    if (kind !== 'mortgage') return
+    let alive = true
+    void fetchProductOptions('property-documentation', []).then((options) => {
+      if (alive) setPropertyDocumentationOptions(options)
+    })
+    return () => {
+      alive = false
+    }
+  }, [kind])
 
   const loanDetails =
     kind === 'loan' && application
@@ -693,6 +706,13 @@ function ProductSummary({
         ['Powered by:', poweredBy()],
       ]
 
+  const mortgageProperties =
+    kind === 'mortgage' && Array.isArray(catalogProduct?.properties) ? catalogProduct.properties : []
+  const propertyDocLabel = (documentType?: string) =>
+    propertyDocumentationOptions.find((option) => option.value === documentType)?.label ||
+    documentType ||
+    'Document'
+
   return (
     <div className="space-y-5">
       <div
@@ -725,6 +745,50 @@ function ProductSummary({
           </div>
         ))}
       </div>
+      {mortgageProperties.length > 0 ? (
+        <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50/70 p-4">
+          <h3 className={`text-sm font-semibold ${BRAND_INK}`}>Available properties</h3>
+          <div className="space-y-3">
+            {mortgageProperties.map((property, index) => {
+              const labels = (property.propertyDocumentation ?? [])
+                .map((row) => propertyDocLabel(row.documentType))
+                .filter(Boolean)
+              return (
+                <div key={`${property.name || 'property'}-${index}`} className="rounded-2xl bg-white p-3 shadow-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className={`text-sm font-semibold ${BRAND_INK}`}>{property.name || `Property ${index + 1}`}</p>
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        {[property.propertyType, property.location].filter(Boolean).join(' • ') || 'Mortgage property'}
+                      </p>
+                    </div>
+                    {property.value != null ? (
+                      <span className={`text-xs font-semibold ${BRAND_INK}`}>{formatCurrency(property.value)}</span>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <p className="text-[11px] font-medium text-gray-500">Documents available for this property</p>
+                    {labels.length > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {labels.map((label) => (
+                          <span
+                            key={label}
+                            className="rounded-full bg-[color-mix(in_srgb,var(--sf-button,#1E40AF)_10%,white)] px-3 py-1 text-[10px] font-semibold text-[var(--sf-button,#1E40AF)]"
+                          >
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-gray-400">No title documents declared.</p>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
       {withTerms ? (
         <>
           <button
@@ -1543,25 +1607,25 @@ export function ProductApplicationFlow({ kind, productId: productIdProp }: { kin
                 </div>
               ) : null}
 
-              <SectionTitle>Occupation</SectionTitle>
+              <SectionTitle>Occupation <span className="font-normal text-gray-400">(optional)</span></SectionTitle>
               <div className="space-y-3">
                 <InputPill
-                  placeholder="Occupation"
+                  placeholder="Occupation (optional)"
                   value={employmentDraft.occupation}
                   onChange={(occupation) => setEmploymentDraft((draft) => ({ ...draft, occupation }))}
                 />
                 <InputPill
-                  placeholder="Place of Work"
+                  placeholder="Place of Work (optional)"
                   value={employmentDraft.placeOfWork}
                   onChange={(placeOfWork) => setEmploymentDraft((draft) => ({ ...draft, placeOfWork }))}
                 />
                 <InputPill
-                  placeholder="Name of HR"
+                  placeholder="Name of HR (optional)"
                   value={employmentDraft.hrName}
                   onChange={(hrName) => setEmploymentDraft((draft) => ({ ...draft, hrName }))}
                 />
                 <InputPill
-                  placeholder="HR's Email"
+                  placeholder="HR's Email (optional)"
                   type="email"
                   value={employmentDraft.hrEmail}
                   onChange={(hrEmail) => setEmploymentDraft((draft) => ({ ...draft, hrEmail }))}

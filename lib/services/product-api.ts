@@ -325,11 +325,9 @@ const mapMortgagePropertiesForApi = (items: any[]) => {
                 typeof doc?.documentType === 'string' && doc.documentType.trim()
                   ? doc.documentType.trim()
                   : undefined,
-              fileUrl:
-                typeof doc?.fileUrl === 'string' && doc.fileUrl.trim() ? doc.fileUrl.trim() : undefined,
             }),
           )
-          .filter((doc: any) => doc.documentType || doc.fileUrl)
+          .filter((doc: any) => doc.documentType)
       : [];
 
     return compactObject({
@@ -939,10 +937,28 @@ export const productApi = {
     return data;
   },
 
-  async getProductOverviewByType(appId: string, productType: string, signal?: AbortSignal) {
+  async getProductOverviewByType(
+    appId: string,
+    productType: string,
+    signal?: AbortSignal,
+    opts?: {
+      portfolioStatus?: 'all' | 'active' | 'inactive' | 'non_performing' | 'bad'
+      limit?: number
+      skip?: number
+    },
+  ) {
     const type = encodeURIComponent(String(productType || '').trim().toUpperCase());
+    const q = new URLSearchParams();
+    if (opts?.portfolioStatus && opts.portfolioStatus !== 'all') {
+      q.set('portfolioStatus', opts.portfolioStatus);
+    } else if (opts?.portfolioStatus === 'all') {
+      q.set('portfolioStatus', 'all');
+    }
+    if (typeof opts?.limit === 'number') q.set('limit', String(Math.min(200, Math.max(1, opts.limit))));
+    if (typeof opts?.skip === 'number' && opts.skip > 0) q.set('skip', String(opts.skip));
+    const qs = q.toString();
     const response = await plataAuthFetch(
-      `/api/v1/products/app/${encodeURIComponent(appId)}/product-overview/by-type/${type}`,
+      `/api/v1/products/app/${encodeURIComponent(appId)}/product-overview/by-type/${type}${qs ? `?${qs}` : ''}`,
       { headers: getAuthHeaders(), signal },
     );
 

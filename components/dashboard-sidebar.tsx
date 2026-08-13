@@ -22,6 +22,7 @@ import { getUserFromToken } from "@/lib/tokenManager"
 import { displayNameFromEmail, looksLikeEmailLocalOnly } from "@/lib/userNameFromClaims"
 import { ComplianceService } from "@/lib/services/complianceService"
 import { CompanyLogoMark } from "@/components/company-logo-mark"
+import { buildSigninUrl, getCurrentReturnTo } from "@/lib/authReturnTo"
 
 interface GlobalNavItem {
   icon: React.ReactNode
@@ -163,7 +164,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
     try {
       await logout()
       toast.success("Logged out successfully", { id })
-      router.replace("/signin")
+      router.replace(buildSigninUrl(getCurrentReturnTo()))
     } catch {
       toast.error("Could not log out. Please try again.", { id })
     }

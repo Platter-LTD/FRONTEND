@@ -13,6 +13,12 @@ import { MerchantTransactionsTable } from "@/components/wallets/merchant-transac
 import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
+import {
+  isVirtualNubanActive,
+  merchantWalletApi,
+  merchantWalletMainBalance,
+  type MerchantWallet,
+} from "@/lib/services/walletService"
 
 export default function TreasuryWalletPage() {
   const params = useParams()
@@ -25,26 +31,49 @@ export default function TreasuryWalletPage() {
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [fundOpen, setFundOpen] = useState(false)
+  const [treasuryWallet, setTreasuryWallet] = useState<MerchantWallet | null>(null)
+  const [walletDetailLoading, setWalletDetailLoading] = useState(false)
+
+  const inScope = walletState.merchantId === merchantId && walletState.appId === appId
+  const bundleTreasury = inScope ? walletState.treasury : null
+  const treasury = treasuryWallet ?? bundleTreasury
+
+  const refreshTreasuryWallet = useCallback(async () => {
+    if (!merchantId || !appId) return null
+    setWalletDetailLoading(true)
+    try {
+      const res = await merchantWalletApi.getMerchantWallet(merchantId, "TREASURY", appId)
+      const wallet = res.data ?? null
+      setTreasuryWallet(wallet)
+      return wallet
+    } catch {
+      return null
+    } finally {
+      setWalletDetailLoading(false)
+    }
+  }, [merchantId, appId])
 
   const refresh = useCallback(() => {
     if (!merchantId || !appId) return
     void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
     void dispatch(fetchTreasuryTransactionsThunk({ merchantId, appId }))
-  }, [dispatch, merchantId, appId])
+    void refreshTreasuryWallet()
+  }, [dispatch, merchantId, appId, refreshTreasuryWallet])
 
   useEffect(() => {
     refresh()
   }, [refresh])
 
-  const inScope = walletState.merchantId === merchantId && walletState.appId === appId
-
-  const treasury = inScope ? walletState.treasury : null
   const txs = inScope ? walletState.treasuryTransactions : []
-  const walletsLoading = merchantLoading || (inScope && walletState.walletsLoading)
+  const walletsLoading =
+    merchantLoading || walletDetailLoading || (inScope && walletState.walletsLoading && !treasury)
   const txsLoading = merchantLoading || (inScope && walletState.treasuryTxLoading)
   const walletsError = inScope ? walletState.walletsError : null
   const txsError = inScope ? walletState.treasuryTxError : null
   const currency = plataWalletDisplayCurrency(treasury?.currency)
+  const mainBal = merchantWalletMainBalance(treasury)
+  const nubanActive = isVirtualNubanActive(treasury?.virtualNuban)
+  const canOpenFund = Boolean(treasury) && !walletsLoading
 
   const bannerError = useMemo(() => {
     if (merchantError) return merchantError
@@ -68,12 +97,16 @@ export default function TreasuryWalletPage() {
         showBalance={showBalance}
         onToggleBalance={() => setShowBalance((value) => !value)}
         title="Treasury wallet"
-        subtitle="Disbursements and treasury operations"
+        subtitle={
+          nubanActive
+            ? `Disbursements · ${treasury?.virtualNuban?.bankName || "Bank"} · ${treasury?.virtualNuban?.accountNumber}`
+            : "Disbursements and treasury operations · fund via NUBAN"
+        }
         className="mb-8"
         actions={
           <Button
-            className="bg-[#8B7355] text-white hover:bg-[#7A6449]"
-            disabled={walletsLoading || !treasury}
+            className="bg-[#8B7355] text-white hover:bg-[#7A6449] disabled:opacity-50"
+            disabled={!canOpenFund}
             onClick={() => setFundOpen(true)}
           >
             Fund
@@ -93,14 +126,19 @@ export default function TreasuryWalletPage() {
         open={fundOpen}
         onOpenChange={setFundOpen}
         currency={currency}
+        mainBalance={mainBal}
         virtualNuban={{
           accountNumber: treasury?.virtualNuban?.accountNumber,
           bankName: treasury?.virtualNuban?.bankName,
           bankCode: treasury?.virtualNuban?.bankCode,
-          accountHolder: treasury?.name || "Treasury wallet",
+          accountHolder:
+            treasury?.contactName || treasury?.name || "Treasury wallet",
           provisionStatus: treasury?.virtualNuban?.provisionStatus,
         }}
-        onRefreshBalance={refresh}
+        onRefreshBalance={async () => {
+          await refreshTreasuryWallet()
+          refresh()
+        }}
       />
     </div>
   )

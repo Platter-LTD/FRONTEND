@@ -13,6 +13,12 @@ import { MerchantTransactionsTable } from "@/components/wallets/merchant-transac
 import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
+import {
+  isVirtualNubanActive,
+  merchantWalletApi,
+  merchantWalletMainBalance,
+  type MerchantWallet,
+} from "@/lib/services/walletService"
 
 export default function BillingWalletPage() {
   const params = useParams()
@@ -25,26 +31,49 @@ export default function BillingWalletPage() {
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [fundOpen, setFundOpen] = useState(false)
+  const [billingWallet, setBillingWallet] = useState<MerchantWallet | null>(null)
+  const [walletDetailLoading, setWalletDetailLoading] = useState(false)
+
+  const inScope = walletState.merchantId === merchantId && walletState.appId === appId
+  const bundleBilling = inScope ? walletState.billing ?? walletState.operation : null
+  const billing = billingWallet ?? bundleBilling
+
+  const refreshBillingWallet = useCallback(async () => {
+    if (!merchantId || !appId) return null
+    setWalletDetailLoading(true)
+    try {
+      const res = await merchantWalletApi.getMerchantWallet(merchantId, "BILLING", appId)
+      const wallet = res.data ?? null
+      setBillingWallet(wallet)
+      return wallet
+    } catch {
+      return null
+    } finally {
+      setWalletDetailLoading(false)
+    }
+  }, [merchantId, appId])
 
   const refresh = useCallback(() => {
     if (!merchantId || !appId) return
     void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
     void dispatch(fetchOperationTransactionsThunk({ merchantId, appId }))
-  }, [dispatch, merchantId, appId])
+    void refreshBillingWallet()
+  }, [dispatch, merchantId, appId, refreshBillingWallet])
 
   useEffect(() => {
     refresh()
   }, [refresh])
 
-  const inScope = walletState.merchantId === merchantId && walletState.appId === appId
-
-  const billing = inScope ? walletState.billing ?? walletState.operation : null
   const txs = inScope ? walletState.operationTransactions : []
-  const walletsLoading = merchantLoading || (inScope && walletState.walletsLoading)
+  const walletsLoading =
+    merchantLoading || walletDetailLoading || (inScope && walletState.walletsLoading && !billing)
   const txsLoading = merchantLoading || (inScope && walletState.operationTxLoading)
   const walletsError = inScope ? walletState.walletsError : null
   const txsError = inScope ? walletState.operationTxError : null
   const currency = plataWalletDisplayCurrency(billing?.currency)
+  const mainBal = merchantWalletMainBalance(billing)
+  const nubanActive = isVirtualNubanActive(billing?.virtualNuban)
+  const canOpenFund = Boolean(billing) && !walletsLoading
 
   const bannerError = useMemo(() => {
     if (merchantError) return merchantError
@@ -68,12 +97,16 @@ export default function BillingWalletPage() {
         showBalance={showBalance}
         onToggleBalance={() => setShowBalance((value) => !value)}
         title="Billing wallet"
-        subtitle="Fees and billing collections (API: BILLING)"
+        subtitle={
+          nubanActive
+            ? `Fees · ${billing?.virtualNuban?.bankName || "Bank"} · ${billing?.virtualNuban?.accountNumber}`
+            : "Fees and billing collections (API: BILLING)"
+        }
         className="mb-8"
         actions={
           <Button
-            className="bg-[#8B7355] text-white hover:bg-[#7A6449]"
-            disabled={walletsLoading || !billing}
+            className="bg-[#8B7355] text-white hover:bg-[#7A6449] disabled:opacity-50"
+            disabled={!canOpenFund}
             onClick={() => setFundOpen(true)}
           >
             Fund
@@ -93,14 +126,19 @@ export default function BillingWalletPage() {
         open={fundOpen}
         onOpenChange={setFundOpen}
         currency={currency}
+        mainBalance={mainBal}
         virtualNuban={{
           accountNumber: billing?.virtualNuban?.accountNumber,
           bankName: billing?.virtualNuban?.bankName,
           bankCode: billing?.virtualNuban?.bankCode,
-          accountHolder: billing?.name || "Billing wallet",
+          accountHolder:
+            billing?.contactName || billing?.name || "Billing wallet",
           provisionStatus: billing?.virtualNuban?.provisionStatus,
         }}
-        onRefreshBalance={refresh}
+        onRefreshBalance={async () => {
+          await refreshBillingWallet()
+          refresh()
+        }}
       />
     </div>
   )
