@@ -297,6 +297,12 @@ function col(label: string, align?: "right"): { label: string; align?: "right" }
   return align ? { label, align } : { label }
 }
 
+/** Drop null tables; keep products/accounts even when empty. */
+function keepOverviewTable(t: OverviewTable | null | undefined): t is OverviewTable {
+  if (!t) return false
+  return t.rows.length > 0 || t.id.endsWith("-products") || t.id.endsWith("-accounts")
+}
+
 function titleCaseStatus(status?: string) {
   const s = String(status || "—").trim()
   if (!s) return "—"
@@ -545,7 +551,7 @@ export function mapByTypeToView(data: ByTypeOverviewData | null | undefined): Ov
           ],
           rows: mapRepaymentRows(p.failedRepayments, true),
         },
-      ].filter((t): t is OverviewTable => Boolean(t) && (t.rows.length > 0 || t.id.endsWith("-products") || t.id.endsWith("-accounts"))),
+      ].filter(keepOverviewTable),
       requests: [],
       portfolioAccountsMeta: data.portfolioAccountsMeta,
     }
@@ -635,7 +641,7 @@ export function mapByTypeToView(data: ByTypeOverviewData | null | undefined): Ov
           ],
           rows: mapRepaymentRows(p.failedRepayments, true),
         },
-      ].filter((t): t is OverviewTable => Boolean(t) && (t.rows.length > 0 || t.id.endsWith("-products") || t.id.endsWith("-accounts"))),
+      ].filter(keepOverviewTable),
       requests: [],
       mortgageSavingsPending: ms?.pendingReview ?? 0,
       mortgageSavingsRunning: ms?.running ?? 0,
