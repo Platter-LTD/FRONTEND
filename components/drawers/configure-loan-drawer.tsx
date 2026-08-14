@@ -34,11 +34,12 @@ import {
 import { validateAllLoanSteps, validateLoanStep } from "@/lib/productConfigureStepValidation"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import {
+  hydrateSecurityRequirementSelection,
+  isOtherSecurityOption,
   isOtherSecuritySelected,
   mergeSecurityRequirementDisplayOptions,
-  OTHER_SECURITY_CANONICAL_LABEL,
+  nextSecuritySelection,
   serializeSecurityRequirements,
-  splitStoredSecurityRequirements,
 } from "@/lib/securityRequirementOptions"
 import {
   displayStringFromApi,
@@ -249,6 +250,7 @@ export default function ConfigureLoanDrawer({
   const documentsInputRef = useRef<HTMLInputElement>(null)
   const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
   const loanHydratedKeyRef = useRef<string | null>(null)
+  const securityUserTouchedRef = useRef(false)
 
   const [chargeName, setChargeName] = useState("")
   const [chargeFeeType, setChargeFeeType] = useState("")
@@ -400,6 +402,7 @@ export default function ConfigureLoanDrawer({
   useEffect(() => {
     if (!isOpen) {
       loanHydratedKeyRef.current = null
+      securityUserTouchedRef.current = false
       return
     }
     if (!loanData) return
@@ -602,54 +605,21 @@ export default function ConfigureLoanDrawer({
   }, [isOpen, loanData])
 
   useEffect(() => {
-    if (!isOpen || !loanData) return
-    const requirements = pickRequirementsFromLoan(loanData as Record<string, unknown>) as Record<string, any>
-    const sec = requirements.security
-    const opts = mergeSecurityRequirementDisplayOptions(securityOptions)
-    setSecurityOtherSpecification("")
-
-    if (sec && typeof sec === "object") {
-      const picked: string[] = []
-      const secRec = sec as Record<string, unknown>
-      if (asBool(sec.guarantor)) {
-        const m = opts.find((o) => /guarantor/i.test(o))
-        if (m) picked.push(m)
-        else if (!opts.length) picked.push("Guarantor")
-      }
-      if (asBool(sec.savingsAccount)) {
-        const m = opts.find((o) => /savings/i.test(o) && /account/i.test(o))
-        if (m) picked.push(m)
-        else if (!opts.length) picked.push("Savings Account")
-      }
-      if (asBool(sec.noSecurity)) {
-        const m = opts.find((o) => /no security|no collateral|none/i.test(o))
-        if (m) picked.push(m)
-      }
-      if (asBool(secRec.cheque)) {
-        const m = opts.find((o) => /^cheque$/i.test(o.trim()))
-        if (m) picked.push(m)
-        else picked.push("Cheque")
-      }
-      if (asBool(secRec.bankGuarantee)) {
-        const m = opts.find((o) => /bank/i.test(o) && /guarantee/i.test(o))
-        if (m) picked.push(m)
-        else picked.push("Bank Guarantee")
-      }
-      const otherSpecRaw = secRec.otherSpecification ?? secRec.otherSecurityDescription
-      const otherText = typeof otherSpecRaw === "string" ? otherSpecRaw.trim() : ""
-      if (asBool(secRec.other) || otherText) {
-        const m = opts.find((o) => /^other$/i.test(o.trim()))
-        picked.push(m ?? OTHER_SECURITY_CANONICAL_LABEL)
-        if (otherText) setSecurityOtherSpecification(otherText)
-      }
-      setSelectedSecurities(picked)
+    if (!isOpen) {
+      securityUserTouchedRef.current = false
       return
     }
-
-    const rawArr = Array.isArray(loanData.securityRequirements ?? requirements.securityRequirements)
-      ? (loanData.securityRequirements ?? requirements.securityRequirements).map((x: unknown) => String(x))
-      : []
-    const { toggles, otherSpecification } = splitStoredSecurityRequirements(rawArr)
+    if (!loanData) return
+    if (securityUserTouchedRef.current) return
+    const requirements = pickRequirementsFromLoan(loanData as Record<string, unknown>) as Record<string, any>
+    const metadata = pickRecord((loanData as Record<string, unknown>).metadata)
+    const { toggles, otherSpecification } = hydrateSecurityRequirementSelection({
+      security: requirements.security ?? loanData.security,
+      securityRequirements: requirements.securityRequirements ?? loanData.securityRequirements,
+      extra: [loanData.securityRequirements, requirements.securityRequirements],
+      options: securityOptions,
+      otherSpecificationFallback: displayStringFromApi(metadata.securityOtherSpecification),
+    })
     setSelectedSecurities(toggles)
     setSecurityOtherSpecification(otherSpecification)
   }, [isOpen, loanData, securityOptions])
@@ -745,13 +715,14 @@ export default function ConfigureLoanDrawer({
   }
 
   const toggleSecurity = (option: string, checked: boolean) => {
-    if (!checked && option.trim().toLowerCase() === OTHER_SECURITY_CANONICAL_LABEL.toLowerCase()) {
+    securityUserTouchedRef.current = true
+    if (!checked && isOtherSecurityOption(option)) {
       setSecurityOtherSpecification("")
     }
-    setSelectedSecurities((prev) => {
-      if (checked) return prev.includes(option) ? prev : [...prev, option]
-      return prev.filter((item) => item !== option)
-    })
+    if (checked && !isOtherSecurityOption(option)) {
+      setSecurityOtherSpecification("")
+    }
+    setSelectedSecurities((prev) => nextSecuritySelection(prev, option, checked))
   }
 
   const handleOtherRequirementTypeChange = (v: string) => {
@@ -1023,6 +994,7 @@ export default function ConfigureLoanDrawer({
           equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
           equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
           securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),
+          securityOtherSpecification,
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
           charges,
@@ -1269,7 +1241,9 @@ export default function ConfigureLoanDrawer({
                   key={option}
                   id={`security-${option}`}
                   label={option}
-                  checked={selectedSecurities.includes(option)}
+                  checked={selectedSecurities.some(
+                    (item) => item.trim().toLowerCase() === option.trim().toLowerCase(),
+                  )}
                   onChange={(checked) => toggleSecurity(option, checked)}
                 />
               ))}

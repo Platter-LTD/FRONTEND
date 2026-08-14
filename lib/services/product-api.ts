@@ -9,6 +9,7 @@ import {
 } from '@/lib/productDetailView';
 import { normalizeOtherRequirementContentTypeForApi } from '@/lib/otherRequirementPayload';
 import { mergePreferExisting, pickProductTab, pickRecord } from '@/lib/productConfigureHydrate';
+import { lendingSecurityBooleansFromSelection } from '@/lib/securityRequirementOptions';
 
 const decodeTokenMerchantId = (token: string | null): string | null => {
   if (!token) return null;
@@ -125,43 +126,6 @@ const mapForcefulWithdrawalPenaltiesForApi = (list: any[]) =>
       ...(p?.triggerDuration ? { triggerDuration: p.triggerDuration } : {}),
     }),
   );
-
-/** Map multi-select security labels to Product MS mortgage `requirements.security` booleans. */
-const mortgageSecurityBooleansFromSelection = (selected: string[]) => {
-  let realEstateProperties = false;
-  let bankGuarantee = false;
-  for (const raw of selected) {
-    const s = String(raw).toLowerCase().replace(/\s+/g, ' ');
-    if (s.includes('bank') && s.includes('guarantee')) {
-      bankGuarantee = true;
-      continue;
-    }
-    if (s.includes('real estate') || /\bpropert(y|ies)\b/.test(s) || s.includes('collateral')) {
-      realEstateProperties = true;
-    }
-  }
-  return { realEstateProperties, bankGuarantee };
-};
-
-/** Map loan security multi-select labels to Product MS `requirements.security` booleans. */
-const loanSecurityBooleansFromSelection = (selected: string[]) => {
-  let guarantor = false;
-  let savingsAccount = false;
-  let noSecurity = false;
-  for (const raw of selected) {
-    const s = String(raw).toLowerCase().replace(/\s+/g, ' ');
-    if (s.includes('guarantor')) guarantor = true;
-    else if (s.includes('savings') && s.includes('account')) savingsAccount = true;
-    else if (
-      s.includes('no security') ||
-      s.includes('no collateral') ||
-      (s.includes('none') && s.includes('security'))
-    ) {
-      noSecurity = true;
-    }
-  }
-  return { guarantor, savingsAccount, noSecurity };
-};
 
 const parseTriggerDurationDays = (v: any): number | undefined => {
   if (v === undefined || v === null || v === '') return undefined;
@@ -456,6 +420,10 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
   const common = compactObject({
     name: configuration?.name,
     description: configuration?.description,
+    status:
+      typeof configuration?.status === 'string' && configuration.status.trim()
+        ? configuration.status.trim()
+        : undefined,
     ...(configuration?.previewImage ? { previewImage: configuration.previewImage } : {}),
   });
 
@@ -693,30 +661,21 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
   }
 
   const selectedSecurityRequirements = Array.isArray(configuration?.securityRequirements)
-    ? configuration.securityRequirements
+    ? configuration.securityRequirements.map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
     : [];
+  const lendingSecurity =
+    isLoan || isMortgage ? lendingSecurityBooleansFromSelection(selectedSecurityRequirements) : undefined;
+  const otherSecuritySpecification = String(configuration?.securityOtherSpecification ?? '').trim();
   const requirements = compactObject(
-    isMortgage
+    isMortgage || isLoan
       ? {
-          security: selectedSecurityRequirements.length
-            ? compactObject(mortgageSecurityBooleansFromSelection(selectedSecurityRequirements))
-            : undefined,
+          security: lendingSecurity,
           documentsToDownload: mapDocumentsToDownloadForLoan(
             configuration?.documentsToDownload ?? configuration?.documentRequirements,
           ),
           otherRequirements: mapOtherRequirementsForLoanApi(configuration?.otherRequirements ?? []),
         }
-      : isLoan
-        ? {
-            security: selectedSecurityRequirements.length
-              ? compactObject(loanSecurityBooleansFromSelection(selectedSecurityRequirements))
-              : undefined,
-            documentsToDownload: mapDocumentsToDownloadForLoan(
-              configuration?.documentsToDownload ?? configuration?.documentRequirements,
-            ),
-            otherRequirements: mapOtherRequirementsForLoanApi(configuration?.otherRequirements ?? []),
-          }
-        : undefined,
+      : undefined,
   );
 
   const loanLikeFeeToggles = () =>
@@ -914,7 +873,21 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
   const existingProperties = Array.isArray(existing.properties) ? existing.properties : [];
   const mergedRequirements = requirements && Object.keys(requirements).length
     ? mergePreferExisting(existingRequirements, requirements)
-    : existingRequirements;
+    : { ...existingRequirements };
+  if (isLoan || isMortgage) {
+    mergedRequirements.security = lendingSecurity;
+    delete mergedRequirements.securityRequirements;
+  }
+  const existingMetadata = pickRecord(existing.metadata);
+  const metadata =
+    isLoan || isMortgage
+      ? {
+          ...existingMetadata,
+          securityOtherSpecification: otherSecuritySpecification,
+        }
+      : Object.keys(existingMetadata).length
+        ? existingMetadata
+        : undefined;
   const mergedProperties = isMortgage
     ? (normalizedProperties.length
         ? normalizedProperties
@@ -931,6 +904,7 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     about: mergePreferExisting(existingAbout, about),
     structure: mergePreferExisting(existingStructure, structure),
     ...(mergedRequirements && Object.keys(mergedRequirements).length ? { requirements: mergedRequirements } : {}),
+    ...(metadata ? { metadata } : {}),
     feesAndCharges: mergePreferExisting(existingFees, feesAndCharges),
     ...(isMortgage ? { properties: mergedProperties } : {}),
     ...(commodityPricesNormalized

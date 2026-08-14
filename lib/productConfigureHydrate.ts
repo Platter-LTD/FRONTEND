@@ -29,11 +29,14 @@ export function pickProductTab(product: Record<string, unknown> | null | undefin
     pickRecord(product.config),
     pickRecord(product.product),
   ]
+  let out: Record<string, unknown> = {}
   for (const nest of nests) {
     const tab = pickRecord(nest[key])
-    if (Object.keys(tab).length) return tab
+    if (Object.keys(tab).length) {
+      out = { ...out, ...tab }
+    }
   }
-  return {}
+  return out
 }
 
 export function displayStringFromApi(raw: unknown): string {

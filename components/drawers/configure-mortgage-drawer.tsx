@@ -34,11 +34,12 @@ import {
 import { validateAllMortgageSteps, validateMortgageStep } from "@/lib/productConfigureStepValidation"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import {
+  hydrateSecurityRequirementSelection,
+  isOtherSecurityOption,
   isOtherSecuritySelected,
   mergeSecurityRequirementDisplayOptions,
-  OTHER_SECURITY_CANONICAL_LABEL,
+  nextSecuritySelection,
   serializeSecurityRequirements,
-  splitStoredSecurityRequirements,
 } from "@/lib/securityRequirementOptions"
 import {
   displayStringFromApi,
@@ -369,6 +370,7 @@ export default function ConfigureMortgageDrawer({
   const documentsInputRef = useRef<HTMLInputElement>(null)
   const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
   const mortgageHydratedKeyRef = useRef<string | null>(null)
+  const securityUserTouchedRef = useRef(false)
 
   // AirSign / applicant signature — not used for product config submit.
   // const [contractId, setContractId] = useState("")
@@ -551,6 +553,7 @@ export default function ConfigureMortgageDrawer({
   useEffect(() => {
     if (!isOpen) {
       mortgageHydratedKeyRef.current = null
+      securityUserTouchedRef.current = false
       return
     }
     if (!mortgageData) return
@@ -728,10 +731,23 @@ export default function ConfigureMortgageDrawer({
             previewFiles: [],
             previewObjectUrls: [],
             propertyDocumentation: Array.isArray(p.propertyDocumentation)
-              ? (p.propertyDocumentation as Record<string, unknown>[]).map((doc, docIdx) => ({
-                  id: String(doc.id ?? `doc-${idx}-${docIdx}`),
-                  documentType: String(doc.documentType ?? ""),
-                }))
+              ? (p.propertyDocumentation as Record<string, unknown>[])
+                  .map((doc, docIdx) => {
+                    const raw = String(doc.documentType ?? "").trim()
+                    if (!raw) return null
+                    const match = propertyDocumentationOptions.find(
+                      (opt) =>
+                        opt.value === raw ||
+                        opt.label === raw ||
+                        opt.value.toLowerCase() === raw.toLowerCase() ||
+                        opt.label.toLowerCase() === raw.toLowerCase(),
+                    )
+                    return {
+                      id: String(doc.id ?? `doc-${idx}-${docIdx}`),
+                      documentType: match?.value || raw,
+                    }
+                  })
+                  .filter((doc): doc is PropertyDocumentationItem => Boolean(doc))
               : [],
           })),
         )
@@ -803,47 +819,21 @@ export default function ConfigureMortgageDrawer({
   ])
 
   useEffect(() => {
-    if (!isOpen || !mortgageData) return
-    const requirements = pickRequirementsFromMortgage(mortgageData as Record<string, unknown>)
-    const sec = requirements.security
-    const opts = mergeSecurityRequirementDisplayOptions(securityOptions)
-    setSecurityOtherSpecification("")
-
-    if (sec && typeof sec === "object") {
-      const picked: string[] = []
-      const secRec = sec as Record<string, unknown>
-      if (asBool(secRec.realEstateProperties)) {
-        const m = opts.find((o) => /real\s*estate|propert(y|ies)/i.test(o))
-        if (m) picked.push(m)
-        else if (!opts.length) picked.push("Real Estate")
-      }
-      if (asBool(secRec.bankGuarantee)) {
-        const m = opts.find((o) => /bank/i.test(o) && /guarantee/i.test(o))
-        if (m) picked.push(m)
-        else picked.push("Bank Guarantee")
-      }
-      if (asBool(secRec.cheque)) {
-        const m = opts.find((o) => /^cheque$/i.test(o.trim()))
-        if (m) picked.push(m)
-        else picked.push("Cheque")
-      }
-      const otherSpecRaw = secRec.otherSpecification ?? secRec.otherSecurityDescription
-      const otherText = typeof otherSpecRaw === "string" ? otherSpecRaw.trim() : ""
-      if (asBool(secRec.other) || otherText) {
-        const m = opts.find((o) => /^other$/i.test(o.trim()))
-        picked.push(m ?? OTHER_SECURITY_CANONICAL_LABEL)
-        if (otherText) setSecurityOtherSpecification(otherText)
-      }
-      setSelectedSecurities(picked)
+    if (!isOpen) {
+      securityUserTouchedRef.current = false
       return
     }
-
-    const rawArr = Array.isArray(mortgageData.securityRequirements ?? requirements.securityRequirements)
-      ? ((mortgageData.securityRequirements ?? requirements.securityRequirements) as unknown[]).map((x) =>
-          String(x),
-        )
-      : []
-    const { toggles, otherSpecification } = splitStoredSecurityRequirements(rawArr)
+    if (!mortgageData) return
+    if (securityUserTouchedRef.current) return
+    const requirements = pickRequirementsFromMortgage(mortgageData as Record<string, unknown>)
+    const metadata = pickRecord(mortgageData.metadata)
+    const { toggles, otherSpecification } = hydrateSecurityRequirementSelection({
+      security: requirements.security ?? mortgageData.security,
+      securityRequirements: requirements.securityRequirements ?? mortgageData.securityRequirements,
+      extra: [mortgageData.securityRequirements, requirements.securityRequirements],
+      options: securityOptions,
+      otherSpecificationFallback: displayStringFromApi(metadata.securityOtherSpecification),
+    })
     setSelectedSecurities(toggles)
     setSecurityOtherSpecification(otherSpecification)
   }, [isOpen, mortgageData, securityOptions])
@@ -948,13 +938,14 @@ export default function ConfigureMortgageDrawer({
   )
 
   const toggleSecurity = (option: string, checked: boolean) => {
-    if (!checked && option.trim().toLowerCase() === OTHER_SECURITY_CANONICAL_LABEL.toLowerCase()) {
+    securityUserTouchedRef.current = true
+    if (!checked && isOtherSecurityOption(option)) {
       setSecurityOtherSpecification("")
     }
-    setSelectedSecurities((prev) => {
-      if (checked) return prev.includes(option) ? prev : [...prev, option]
-      return prev.filter((item) => item !== option)
-    })
+    if (checked && !isOtherSecurityOption(option)) {
+      setSecurityOtherSpecification("")
+    }
+    setSelectedSecurities((prev) => nextSecuritySelection(prev, option, checked))
   }
 
   const handleOtherRequirementTypeChange = (v: string) => {
@@ -1095,18 +1086,6 @@ export default function ConfigureMortgageDrawer({
       setPropertyFormError("Property video URL is required before adding.")
       return
     }
-    const duplicateDocs = new Set<string>()
-    const hasDuplicateDocs = propertyDocDrafts.some((doc) => {
-      const key = doc.documentType.trim()
-      if (!key) return false
-      if (duplicateDocs.has(key)) return true
-      duplicateDocs.add(key)
-      return false
-    })
-    if (hasDuplicateDocs) {
-      setPropertyFormError("Each property can only declare a document type once.")
-      return
-    }
     setPropertyFormError("")
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     const previewFiles = [...propertyPreviewFiles]
@@ -1180,11 +1159,6 @@ export default function ConfigureMortgageDrawer({
     setCustomPropertyFacility("")
   }
 
-  const newPropertyDocRow = (): PropertyDocumentationItem => ({
-    id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    documentType: "",
-  })
-
   const updatePropertyDocs = (
     propertyId: string | null,
     updater: (rows: PropertyDocumentationItem[]) => PropertyDocumentationItem[],
@@ -1198,32 +1172,20 @@ export default function ConfigureMortgageDrawer({
     )
   }
 
-  const availablePropertyDocOptions = (rows: PropertyDocumentationItem[], activeDocId?: string) => {
-    const used = new Set(
-      rows
-        .filter((row) => row.id !== activeDocId)
-        .map((row) => row.documentType.trim())
-        .filter(Boolean),
-    )
-    return propertyDocumentationOptions.filter((opt) => !used.has(opt.value))
-  }
-
-  const addPropertyDocRow = (propertyId: string | null) => {
+  const togglePropertyDocumentation = (propertyId: string | null, documentType: string, checked: boolean) => {
     updatePropertyDocs(propertyId, (rows) => {
-      const available = availablePropertyDocOptions(rows)
-      if (available.length === 0) return rows
-      return [...rows, { ...newPropertyDocRow(), documentType: available[0]?.value ?? "" }]
+      if (checked) {
+        if (rows.some((row) => row.documentType === documentType)) return rows
+        return [
+          ...rows,
+          {
+            id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            documentType,
+          },
+        ]
+      }
+      return rows.filter((row) => row.documentType !== documentType)
     })
-  }
-
-  const removePropertyDocRow = (propertyId: string | null, docId: string) => {
-    updatePropertyDocs(propertyId, (rows) => rows.filter((row) => row.id !== docId))
-  }
-
-  const setPropertyDocType = (propertyId: string | null, docId: string, documentType: string) => {
-    updatePropertyDocs(propertyId, (rows) =>
-      rows.map((row) => (row.id === docId ? { ...row, documentType } : row)),
-    )
   }
 
   const propertyDocLabel = (documentType: string) => {
@@ -1235,56 +1197,35 @@ export default function ConfigureMortgageDrawer({
     rows: PropertyDocumentationItem[],
     propertyId: string | null,
   ) => {
-    const remainingOptions = availablePropertyDocOptions(rows)
+    const selected = rows.map((row) => row.documentType.trim().toLowerCase()).filter(Boolean)
+    const isSelected = (opt: ProductOption) => {
+      const value = opt.value.trim().toLowerCase()
+      const label = opt.label.trim().toLowerCase()
+      return selected.includes(value) || selected.includes(label)
+    }
     return (
     <div className="space-y-3 rounded-md border border-[#E8DFC3] bg-[#FBF8EF]/60 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-medium text-gray-700">
-            Property documentation <span className="font-normal text-gray-500">(Optional)</span>
-          </p>
-          <p className="text-xs text-gray-500">
-            Declare which title documents are available for this property. Add each type once.
-          </p>
-        </div>
-        <Button
-          type="button"
-          onClick={() => addPropertyDocRow(propertyId)}
-          disabled={remainingOptions.length === 0}
-          className="h-9 bg-[#9A813F] text-white hover:bg-[#8A7335]"
-        >
-          Add document
-        </Button>
+      <div>
+        <p className="text-sm font-medium text-gray-700">
+          Property documentation <span className="font-normal text-gray-500">(Optional)</span>
+        </p>
+        <p className="text-xs text-gray-500">
+          Select the title document types that apply. Do not upload files here.
+        </p>
       </div>
 
-      {rows.length === 0 ? (
-        <p className="text-xs text-gray-500">No title documents declared yet.</p>
+      {propertyDocumentationOptions.length === 0 ? (
+        <p className="text-xs text-gray-500">No documentation types available.</p>
       ) : (
-        <div className="space-y-3">
-          {rows.map((row) => (
-            <div
-              key={row.id}
-              className="grid grid-cols-1 gap-3 rounded-md border border-gray-200 bg-white p-3 sm:grid-cols-[minmax(0,1.2fr)_auto]"
-            >
-              <ProductConfigSelect
-                label="Document type"
-                placeholder="Select document type"
-                value={row.documentType}
-                options={availablePropertyDocOptions(rows, row.id)}
-                onChange={(value) => setPropertyDocType(propertyId, row.id, value)}
-                requirement="required"
-              />
-              <div className="flex items-end justify-end gap-1 pb-1">
-                <button
-                  type="button"
-                  className="rounded p-1.5 text-red-600 hover:bg-red-50"
-                  onClick={() => removePropertyDocRow(propertyId, row.id)}
-                  aria-label="Remove documentation"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {propertyDocumentationOptions.map((opt) => (
+            <ProductConfigToggle
+              key={opt.value}
+              id={`prop-doc-${propertyId ?? "draft"}-${opt.value}`}
+              label={opt.label}
+              checked={isSelected(opt)}
+              onChange={(checked) => togglePropertyDocumentation(propertyId, opt.value, checked)}
+            />
           ))}
         </div>
       )}
@@ -1597,6 +1538,7 @@ export default function ConfigureMortgageDrawer({
           equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
           equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
           securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),
+          securityOtherSpecification,
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
           charges,
@@ -1859,7 +1801,9 @@ export default function ConfigureMortgageDrawer({
                     key={option}
                     id={`mortgage-security-${option}`}
                     label={option}
-                    checked={selectedSecurities.includes(option)}
+                    checked={selectedSecurities.some(
+                      (item) => item.trim().toLowerCase() === option.trim().toLowerCase(),
+                    )}
                     onChange={(checked) => toggleSecurity(option, checked)}
                   />
               ))}
@@ -2202,9 +2146,9 @@ export default function ConfigureMortgageDrawer({
                 <Upload className="shrink-0 text-gray-500" size={18} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-700">
-                    Add image <span className="font-normal text-gray-500">(Required)</span>
+                    Property images <span className="font-normal text-gray-500">(Required)</span>
                   </p>
-                  <p className="text-xs text-gray-500">PNG, JPEG, JPG, SVG, WebP • Max. 5MB</p>
+                  <p className="text-xs text-gray-500">Photos of the listing. PNG, JPEG, JPG, SVG, WebP • Max. 5MB</p>
                 </div>
                 <input
                   ref={propertyPreviewInputRef}

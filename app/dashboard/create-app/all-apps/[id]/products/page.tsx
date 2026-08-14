@@ -108,6 +108,18 @@ export default function ProductsPage() {
     }
   }, [appId])
 
+  const saveConfiguredProduct = useCallback(
+    async (productId: string, productType: string, configData: Record<string, unknown>) => {
+      // PUT /:id is first save and later edits (complete products included).
+      // PUT /:id/manage is only a status-gated alias and is not required.
+      await productApi.saveProductConfiguration(productId, productType, {
+        ...configData,
+        status: "complete",
+      })
+    },
+    [],
+  )
+
   useEffect(() => {
     if (appId) fetchProducts()
   }, [appId, fetchProducts])
@@ -201,13 +213,7 @@ export default function ProductsPage() {
 
     try {
       if (configuringProductId) {
-        // Save configuration
-        if (String(configuringProductStatus ?? "").toLowerCase() === "complete") {
-          await productApi.saveProductConfigurationWithManage(configuringProductId, 'Loan', configData)
-        } else {
-          await productApi.saveProductConfiguration(configuringProductId, 'Loan', configData)
-        }
-        await productApi.updateProduct(configuringProductId, { status: 'complete' })
+        await saveConfiguredProduct(configuringProductId, "Loan", configData)
 
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
@@ -275,13 +281,7 @@ export default function ProductsPage() {
 
     try {
       if (configuringProductId) {
-        // Save configuration and update status to complete
-        if (String(configuringProductStatus ?? "").toLowerCase() === "complete") {
-          await productApi.saveProductConfigurationWithManage(configuringProductId, 'Mortgage', configData)
-        } else {
-          await productApi.saveProductConfiguration(configuringProductId, 'Mortgage', configData)
-        }
-        await productApi.updateProduct(configuringProductId, { status: 'complete' })
+        await saveConfiguredProduct(configuringProductId, "Mortgage", configData)
 
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
@@ -349,13 +349,7 @@ export default function ProductsPage() {
 
     try {
       if (configuringProductId) {
-        // Save configuration and update status to complete
-        if (String(configuringProductStatus ?? "").toLowerCase() === "complete") {
-          await productApi.saveProductConfigurationWithManage(configuringProductId, 'Savings', configData)
-        } else {
-          await productApi.saveProductConfiguration(configuringProductId, 'Savings', configData)
-        }
-        await productApi.updateProduct(configuringProductId, { status: 'complete' })
+        await saveConfiguredProduct(configuringProductId, "Savings", configData)
 
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
@@ -424,15 +418,8 @@ export default function ProductsPage() {
 
     try {
       if (configuringProductId) {
-        // Save configuration and update status to complete.
-        // Investment uses same form/flow but different productType on the backend.
         const configType = (configuringProductType || "").toLowerCase() === "investment" ? "Investment" : "Commodity"
-        if (String(configuringProductStatus ?? "").toLowerCase() === "complete") {
-          await productApi.saveProductConfigurationWithManage(configuringProductId, configType, configData)
-        } else {
-          await productApi.saveProductConfiguration(configuringProductId, configType, configData)
-        }
-        await productApi.updateProduct(configuringProductId, { status: 'complete' })
+        await saveConfiguredProduct(configuringProductId, configType, configData)
 
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
