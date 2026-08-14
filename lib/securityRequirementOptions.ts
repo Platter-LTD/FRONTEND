@@ -161,6 +161,69 @@ export function serializeSecurityRequirements(selected: string[], otherSpecifica
     })
 }
 
+function emptySelectionRecord(): Record<string, boolean> {
+  return {
+    guarantor: false,
+    collateral: false,
+    acceptCheque: false,
+    bankGuarantee: false,
+    savingsAccount: false,
+    noSecurity: false,
+    other: false,
+  }
+}
+
+/** Stored on metadata.securitySelection so loan PUT can round-trip flags the schema strips (e.g. Collateral). */
+export function securitySelectionRecordFromLabels(selected: string[]): Record<string, boolean> {
+  const flags = emptySelectionRecord()
+  const labels = selected.map((s) => String(s ?? "").trim()).filter((s) => s && s !== "__existing__")
+  if (labels.some((s) => isNoneSecurityOption(s))) {
+    flags.noSecurity = true
+    return flags
+  }
+  if (labels.some((s) => isOtherSecurityOption(s) || /^other\s*[:：]/i.test(s))) {
+    flags.other = true
+    return flags
+  }
+  for (const item of labels) {
+    const s = item.toLowerCase().replace(/\s+/g, " ")
+    if (s.includes("guarantor")) flags.guarantor = true
+    else if (s.includes("bank") && s.includes("guarantee")) flags.bankGuarantee = true
+    else if (s.includes("collateral") || s.includes("real estate") || /\bpropert(y|ies)\b/.test(s)) {
+      flags.collateral = true
+    } else if (/\bcheques?\b/.test(s) || /\bchecks?\b/.test(s) || s.includes("accept cheque")) {
+      flags.acceptCheque = true
+    } else if (s.includes("savings") && s.includes("account")) flags.savingsAccount = true
+    else if (s.includes("other")) flags.other = true
+  }
+  return flags
+}
+
+const SELECTION_RECORD_LABELS: Array<{ key: string; fallback: string }> = [
+  { key: "guarantor", fallback: "Guarantor" },
+  { key: "collateral", fallback: "Collateral" },
+  { key: "acceptCheque", fallback: "Cheque" },
+  { key: "bankGuarantee", fallback: "Bank Guarantee" },
+  { key: "savingsAccount", fallback: "Savings Account" },
+  { key: "noSecurity", fallback: "None" },
+  { key: "other", fallback: OTHER_SECURITY_CANONICAL_LABEL },
+]
+
+export function labelsFromSecuritySelectionRecord(
+  raw: unknown,
+  options: string[],
+): string[] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return []
+  const rec = raw as Record<string, unknown>
+  const out: string[] = []
+  for (const row of SELECTION_RECORD_LABELS) {
+    const val = rec[row.key]
+    if (val !== true && val !== "true" && val !== 1 && val !== "1") continue
+    out.push(matchSecurityOptionLabel(row.key, options, row.fallback))
+  }
+  return out
+}
+
 function emptySecurityFlags(): ProductMsSecurity {
   return {
     acceptCheque: false,
@@ -192,11 +255,12 @@ export function lendingSecurityBooleansFromSelection(selected: string[]): Produc
     const s = item.toLowerCase().replace(/\s+/g, " ")
     if (s.includes("guarantor")) flags.guarantor = true
     else if (s.includes("bank") && s.includes("guarantee")) flags.bankGuarantee = true
-    else if (s.includes("cheque") || s.includes("check")) flags.acceptCheque = true
-    else if (s.includes("savings") && s.includes("account")) flags.savingsAccount = true
     else if (s.includes("collateral") || s.includes("real estate") || /\bpropert(y|ies)\b/.test(s)) {
       flags.realEstateProperties = true
-    } else if (s.includes("other")) flags.otherProperties = true
+    } else if (/\bcheques?\b/.test(s) || /\bchecks?\b/.test(s) || s.includes("accept cheque")) {
+      flags.acceptCheque = true
+    } else if (s.includes("savings") && s.includes("account")) flags.savingsAccount = true
+    else if (s.includes("other")) flags.otherProperties = true
   }
   return flags
 }
@@ -237,6 +301,7 @@ function exclusiveHydratedToggles(toggles: string[]): string[] {
 export function hydrateSecurityRequirementSelection(input: {
   security: unknown
   securityRequirements?: unknown
+  securitySelection?: unknown
   extra?: unknown[]
   options: string[]
   otherSpecificationFallback?: string
@@ -245,6 +310,7 @@ export function hydrateSecurityRequirementSelection(input: {
   const rawItems: string[] = []
   pushSecurityRawItems(input.securityRequirements, rawItems)
   for (const extra of input.extra ?? []) pushSecurityRawItems(extra, rawItems)
+  rawItems.push(...labelsFromSecuritySelectionRecord(input.securitySelection, options))
 
   let otherSpecification = String(input.otherSpecificationFallback ?? "").trim()
   if (input.security && typeof input.security === "object" && !Array.isArray(input.security)) {

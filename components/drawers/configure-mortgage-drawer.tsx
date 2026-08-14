@@ -830,6 +830,7 @@ export default function ConfigureMortgageDrawer({
     const { toggles, otherSpecification } = hydrateSecurityRequirementSelection({
       security: requirements.security ?? mortgageData.security,
       securityRequirements: requirements.securityRequirements ?? mortgageData.securityRequirements,
+      securitySelection: metadata.securitySelection,
       extra: [mortgageData.securityRequirements, requirements.securityRequirements],
       options: securityOptions,
       otherSpecificationFallback: displayStringFromApi(metadata.securityOtherSpecification),
