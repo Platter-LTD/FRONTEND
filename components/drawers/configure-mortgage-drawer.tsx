@@ -40,6 +40,13 @@ import {
   serializeSecurityRequirements,
   splitStoredSecurityRequirements,
 } from "@/lib/securityRequirementOptions"
+import {
+  displayStringFromApi,
+  filledOrExisting,
+  interestRateFromApi,
+  pickProductTab,
+  previewUrlFromProduct,
+} from "@/lib/productConfigureHydrate"
 
 interface ConfigureMortgageDrawerProps {
   isOpen: boolean
@@ -203,18 +210,6 @@ function extractMoratoriumPrefill(raw: unknown): string {
   return ""
 }
 
-/** API may return numeric interest; drawer state expects a %-suffixed display string when applicable. */
-function normalizeInterestRateHydrate(raw: unknown): string {
-  if (raw == null || raw === "") return ""
-  if (typeof raw === "number" && Number.isFinite(raw)) return `${raw}%`
-  const s = String(raw).trim()
-  if (!s) return ""
-  if (s.includes("%")) return s
-  const n = Number(s.replace(/%/g, ""))
-  if (!Number.isNaN(n)) return `${n}%`
-  return s
-}
-
 function pickRecord(value: unknown): Record<string, unknown> {
   if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>
   return {}
@@ -222,33 +217,59 @@ function pickRecord(value: unknown): Record<string, unknown> {
 
 /** Product MS may return tabs at root or nested under `configuration`. */
 function pickAboutFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown> {
-  const direct = pickRecord(mortgageData.about)
-  if (Object.keys(direct).length) return direct
-  return pickRecord(pickRecord(mortgageData.configuration).about)
+  return pickProductTab(mortgageData, "about")
 }
 
 function pickStructureFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown> {
-  const direct = pickRecord(mortgageData.structure)
-  if (Object.keys(direct).length) return direct
-  return pickRecord(pickRecord(mortgageData.configuration).structure)
+  return pickProductTab(mortgageData, "structure")
 }
 
 function pickRequirementsFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown> {
-  const direct = pickRecord(mortgageData.requirements)
-  if (Object.keys(direct).length) return direct
-  return pickRecord(pickRecord(mortgageData.configuration).requirements)
+  return pickProductTab(mortgageData, "requirements")
 }
 
 function pickFeesAndChargesFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown> {
-  const direct = pickRecord(mortgageData.feesAndCharges)
-  if (Object.keys(direct).length) return direct
-  return pickRecord(pickRecord(mortgageData.configuration).feesAndCharges)
+  return pickProductTab(mortgageData, "feesAndCharges")
 }
 
 function pickPropertiesFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown>[] {
-  if (Array.isArray(mortgageData.properties)) return mortgageData.properties as Record<string, unknown>[]
-  const cfg = pickRecord(mortgageData.configuration)
-  return Array.isArray(cfg.properties) ? (cfg.properties as Record<string, unknown>[]) : []
+  if (Array.isArray(mortgageData.properties) && mortgageData.properties.length) {
+    return mortgageData.properties as Record<string, unknown>[]
+  }
+  for (const nest of [pickRecord(mortgageData.configuration), pickRecord(mortgageData.calculatedConfig), pickProductTab(mortgageData, "structure")]) {
+    if (Array.isArray(nest.properties) && nest.properties.length) return nest.properties as Record<string, unknown>[]
+  }
+  return []
+}
+
+function pickPropertyVideoUrl(p: Record<string, unknown>): string {
+  const nested = pickRecord(p.video)
+  const candidates = [
+    p.videoUrl,
+    p.youtubeUrl,
+    p.youtubeVideoUrl,
+    p.propertyVideoUrl,
+    p.tourVideoUrl,
+    p.virtualTourUrl,
+    p.video,
+    nested.url,
+    nested.src,
+  ]
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim()) return c.trim()
+  }
+  return ""
+}
+
+function applyDraftVideoUrl(items: PropertyItem[], draft: string): PropertyItem[] {
+  const url = draft.trim()
+  if (!url) return items
+  let used = false
+  return items.map((p) => {
+    if (used || String(p.videoUrl || "").trim()) return p
+    used = true
+    return { ...p, videoUrl: url }
+  })
 }
 
 function pickInspectionDatesFromMortgage(mortgageData: Record<string, unknown>): Record<string, unknown>[] {
@@ -547,19 +568,17 @@ export default function ConfigureMortgageDrawer({
     const requirements = pickRequirementsFromMortgage(mortgageData as Record<string, unknown>)
     const fees = pickFeesAndChargesFromMortgage(mortgageData as Record<string, unknown>)
 
-    setName(String(mortgageData.name ?? about.name ?? ""))
-    setTenure(String(mortgageData.tenure ?? about.tenure ?? ""))
-    setExistingPreviewAssetUrl(
-      String(about.previewAssetUrl ?? mortgageData.previewAssetUrl ?? mortgageData.previewImage?.url ?? ""),
-    )
-    setDescription(String(mortgageData.description ?? about.description ?? ""))
+    setName(displayStringFromApi(mortgageData.name ?? about.name) || String(mortgageData.name ?? ""))
+    setTenure(displayStringFromApi(mortgageData.tenure ?? about.tenure ?? about.duration))
+    setExistingPreviewAssetUrl(previewUrlFromProduct(mortgageData as Record<string, unknown>))
+    setDescription(displayStringFromApi(mortgageData.description ?? about.description ?? about.productDescription))
     const mt = Array.isArray(mortgageData.mortgageTypes ?? about.mortgageTypes)
       ? (mortgageData.mortgageTypes ?? about.mortgageTypes)
       : []
     setSelectedMortgageType(String(mt[0]?.name ?? ""))
 
     setInterestRate(
-      normalizeInterestRateHydrate(mortgageData.interestRate ?? structure.interestRate),
+      interestRateFromApi(mortgageData.interestRate ?? structure.interestRate),
     )
     setInterestMethod(
       resolveOptionLabel(
@@ -705,7 +724,7 @@ export default function ConfigureMortgageDrawer({
               ? (p.customFacilities as string[]).map(String)
               : [],
             imageUrls: Array.isArray(p.imageUrls) ? (p.imageUrls as string[]).map(String) : [],
-            videoUrl: String(p.videoUrl ?? ""),
+            videoUrl: pickPropertyVideoUrl(p),
             previewFiles: [],
             previewObjectUrls: [],
             propertyDocumentation: Array.isArray(p.propertyDocumentation)
@@ -888,9 +907,9 @@ export default function ConfigureMortgageDrawer({
     if (npaRaw && acceptableNpaOptions.length) {
       setAcceptableNpa((prev) => resolveOptionLabel(npaRaw, acceptableNpaOptions) || prev)
     }
-    const tenureRaw = mortgageData.tenure ?? about.tenure
+    const tenureRaw = displayStringFromApi(mortgageData.tenure ?? about.tenure)
     if (tenureRaw && tenureOptions.length) {
-      setTenure((prev) => resolveOptionLabel(tenureRaw, tenureOptions) || prev)
+      setTenure((prev) => resolveOptionLabel(tenureRaw, tenureOptions) || prev || tenureRaw)
     }
   }, [
     isOpen,
@@ -1135,6 +1154,10 @@ export default function ConfigureMortgageDrawer({
     })
   }
 
+  const updatePropertyVideoUrl = (id: string, videoUrl: string) => {
+    setProperties((prev) => prev.map((p) => (p.id === id ? { ...p, videoUrl } : p)))
+  }
+
   const togglePropertyFacility = (option: string, checked: boolean) => {
     setPropertyFacilities((prev) => {
       if (checked) return prev.includes(option) ? prev : [...prev, option]
@@ -1274,67 +1297,108 @@ export default function ConfigureMortgageDrawer({
     if (step > 1) setStep((prev) => prev - 1)
   }
 
-  const mortgageValidationBase = () => ({
-    name,
-    tenure,
-    description,
+  const resolvedProperties = applyDraftVideoUrl(properties, propertyVideoUrl)
+
+  const mortgageValidationBase = () => {
+    const mortgage = (mortgageData || {}) as Record<string, unknown>
+    const about = pickAboutFromMortgage(mortgage)
+    const structure = pickStructureFromMortgage(mortgage)
+    const fees = pickFeesAndChargesFromMortgage(mortgage)
+    const existingFees = Array.isArray(fees.fees) ? fees.fees : Array.isArray(fees.charges) ? fees.charges : []
+    const existingProps = pickPropertiesFromMortgage(mortgage)
+    const propertiesForValidation = resolvedProperties.length
+      ? resolvedProperties
+      : existingProps.map((p) => ({
+          name: String(p.name ?? ""),
+          type: String(p.propertyType ?? p.type ?? ""),
+          value: String(p.value ?? ""),
+          location: String(p.location ?? ""),
+          description: String(p.propertyDescription ?? p.description ?? ""),
+          facilities: Array.isArray(p.facilities) ? (p.facilities as string[]) : ["__existing__"],
+          previewFiles: [],
+          imageUrls: Array.isArray(p.imageUrls) ? (p.imageUrls as string[]) : [],
+          videoUrl: pickPropertyVideoUrl(p),
+          propertyDocumentation: Array.isArray(p.propertyDocumentation)
+            ? (p.propertyDocumentation as { documentType?: string }[]).map((doc) => ({
+                documentType: String(doc.documentType ?? ""),
+              }))
+            : [],
+        }))
+    return {
+    name: filledOrExisting(name, mortgage.name, about.name),
+    tenure: filledOrExisting(tenure, mortgage.tenure, about.tenure),
+    description: filledOrExisting(description, mortgage.description, about.description),
     mortgageTypeSelected: selectedMortgageType,
     previewImage,
-    hasPreviewAsset: !!(
-      existingPreviewAssetUrl ||
-      mortgageData?.previewAssetUrl ||
-      mortgageData?.previewImage?.url ||
-      (mortgageData?.about as Record<string, unknown> | undefined)?.previewAssetUrl
-    ),
+    hasPreviewAsset: !!(existingPreviewAssetUrl || previewUrlFromProduct(mortgage)),
     structure: {
-      interestRate,
-      interestMethod,
-      repaymentWorkflow,
-      minAmount: minLoanAmount,
-      maxAmount: maxLoanAmount,
-      repaymentSchedule,
-      amortizationSchedule,
-      repaymentFrequency,
-      acceptableNpa,
-      equityRequirement,
+      interestRate: filledOrExisting(interestRate, mortgage.interestRate, structure.interestRate),
+      interestMethod: filledOrExisting(interestMethod, mortgage.interestMethod, structure.interestMethod),
+      repaymentWorkflow: filledOrExisting(repaymentWorkflow, mortgage.repaymentWorkflow, structure.repaymentWorkflow),
+      minAmount: filledOrExisting(minLoanAmount, mortgage.minLoanAmount, structure.minLoanAmount, pickRecord(structure.loanAmount).min),
+      maxAmount: filledOrExisting(maxLoanAmount, mortgage.maxLoanAmount, structure.maxLoanAmount, pickRecord(structure.loanAmount).max),
+      repaymentSchedule: filledOrExisting(repaymentSchedule, mortgage.repaymentSchedule, structure.repaymentSchedule),
+      amortizationSchedule: filledOrExisting(amortizationSchedule, mortgage.amortizationSchedule, structure.amortizationSchedule),
+      repaymentFrequency: filledOrExisting(repaymentFrequency, mortgage.repaymentFrequency, structure.repaymentFrequency),
+      acceptableNpa: filledOrExisting(acceptableNpa, mortgage.acceptableNpa, structure.acceptableNPA, structure.acceptableNpa),
+      equityRequirement: filledOrExisting(equityRequirement, mortgage.equityRequirement, structure.equityRequirement),
       equityRequirementMode,
       equityFixedAmount,
       equityPercentage,
     },
-    selectedSecurities,
+    selectedSecurities: selectedSecurities.length ? selectedSecurities : ["__existing__"].filter(() => {
+      const sec = pickRequirementsFromMortgage(mortgage).security
+      return Boolean(sec && typeof sec === "object")
+    }),
     securityOtherSpecification,
     documents,
     otherRequirements,
-    charges,
+    charges: charges.length ? charges : existingFees,
     enableLateRepaymentCharges,
     penalties,
-    properties: properties.map((p) => ({
+    properties: propertiesForValidation.map((p) => ({
       name: p.name,
       type: p.type,
       value: p.value,
       location: p.location,
       description: p.description,
       facilities: p.facilities,
-      previewFiles: p.previewFiles,
+      previewFiles: "previewFiles" in p ? p.previewFiles : [],
       imageUrls: p.imageUrls,
       videoUrl: p.videoUrl,
       propertyDocumentation: p.propertyDocumentation.map((doc) => ({
         documentType: doc.documentType,
       })),
     })),
-    inspectionDates: inspectionDates
-      .map((slot) => {
-        const scheduledFor = datetimeLocalToIso(slot.scheduledForLocal)
-        if (!scheduledFor) return null
-        return {
-          scheduledFor,
-          label: slot.label.trim() || undefined,
-          location: slot.location.trim() || undefined,
-          notes: slot.notes.trim() || undefined,
-        }
-      })
-      .filter((slot): slot is NonNullable<typeof slot> => !!slot),
-  })
+    inspectionDates: (() => {
+      const mapped = inspectionDates
+        .map((slot) => {
+          const scheduledFor = datetimeLocalToIso(slot.scheduledForLocal)
+          if (!scheduledFor) return null
+          return {
+            scheduledFor,
+            label: slot.label.trim() || undefined,
+            location: slot.location.trim() || undefined,
+            notes: slot.notes.trim() || undefined,
+          }
+        })
+        .filter((slot): slot is NonNullable<typeof slot> => !!slot)
+      if (mapped.length) return mapped
+      return pickInspectionDatesFromMortgage(mortgage)
+        .map((slot) => {
+          const scheduledFor = String(slot.scheduledFor ?? "").trim()
+          if (!scheduledFor) return null
+          return {
+            scheduledFor,
+            label: String(slot.label ?? "").trim() || undefined,
+            location: String(slot.location ?? "").trim() || undefined,
+            notes: String(slot.notes ?? "").trim() || undefined,
+          }
+        })
+        .filter((slot): slot is NonNullable<typeof slot> => !!slot)
+    })(),
+  }
+  }
 
   const addInspectionDate = () => {
     setInspectionFormError("")
@@ -1382,8 +1446,19 @@ export default function ConfigureMortgageDrawer({
     setInspectionDates((prev) => prev.filter((slot) => slot.id !== id))
   }
 
+  const persistDraftVideoIfNeeded = () => {
+    const next = applyDraftVideoUrl(properties, propertyVideoUrl)
+    const changed = next.some((p, i) => p.videoUrl !== properties[i]?.videoUrl)
+    if (changed) {
+      setProperties(next)
+      setPropertyVideoUrl("")
+    }
+    return next
+  }
+
   const handleNext = async () => {
     if (step < STEPS.length) {
+      persistDraftVideoIfNeeded()
       const { ok, errors } = validateMortgageStep({ step, ...mortgageValidationBase() })
       if (!ok) {
         setStepErrors(errors)
@@ -1420,7 +1495,7 @@ export default function ConfigureMortgageDrawer({
       }
 
       const propertiesPayload = await Promise.all(
-        properties.map(async (p) => {
+        persistDraftVideoIfNeeded().map(async (p) => {
           const previewImages = await Promise.all(
             p.previewFiles.map(async (file) => ({
               fileName: file.name,
@@ -2115,6 +2190,12 @@ export default function ConfigureMortgageDrawer({
               onChange={setPropertyVideoUrl}
               requirement="required"
             />
+            {properties.some((p) => !String(p.videoUrl || "").trim()) ? (
+              <p className="text-xs text-amber-800">
+                Existing properties below need their own video URL. Paste it on the property row, or here
+                and it will be applied to the first listing that is missing one.
+              </p>
+            ) : null}
 
             <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -2259,6 +2340,24 @@ export default function ConfigureMortgageDrawer({
                     </div>
                     </div>
                     {renderPropertyDocumentationEditor(p.propertyDocumentation, p.id)}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-medium text-gray-600" htmlFor={`mortgage-prop-video-${p.id}`}>
+                        Property video URL <span className="text-red-600">*</span>
+                      </label>
+                      <input
+                        id={`mortgage-prop-video-${p.id}`}
+                        type="url"
+                        value={p.videoUrl}
+                        onChange={(e) => updatePropertyVideoUrl(p.id, e.target.value)}
+                        placeholder="https://youtube.com/…"
+                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 ${
+                          p.videoUrl.trim() ? "border-gray-200" : "border-red-300"
+                        }`}
+                      />
+                      {!p.videoUrl.trim() ? (
+                        <p className="text-xs text-red-600">Required for this property.</p>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>

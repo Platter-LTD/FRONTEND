@@ -21,6 +21,13 @@ import {
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import { validateAllCommoditySteps, validateCommodityStep } from "@/lib/productConfigureStepValidation"
 import {
+  displayStringFromApi,
+  filledOrExisting,
+  pickProductTab,
+  pickRecord,
+  previewUrlFromProduct,
+} from "@/lib/productConfigureHydrate"
+import {
   normalizeOtherRequirementRowFromApi,
   serializeOtherRequirementsForSubmit,
   shouldUseOtherRequirementFileUpload,
@@ -194,9 +201,9 @@ export default function ConfigureCommodityDrawer({
   const otherRequirementUploadRef = useRef<HTMLInputElement>(null)
 
   const resetForm = useCallback(() => {
-    const about = (commodityData?.about ?? {}) as Record<string, any>
-    const structure = (commodityData?.structure ?? {}) as Record<string, any>
-    const fees = (commodityData?.feesAndCharges ?? {}) as Record<string, any>
+    const about = pickProductTab((commodityData || {}) as Record<string, unknown>, "about")
+    const structure = pickProductTab((commodityData || {}) as Record<string, unknown>, "structure")
+    const fees = pickProductTab((commodityData || {}) as Record<string, unknown>, "feesAndCharges")
     const incomingTypeRows =
       (isInvestment ? commodityData?.investmentTypes : commodityData?.commodityTypes) ??
       commodityData?.typeRows ??
@@ -209,19 +216,17 @@ export default function ConfigureCommodityDrawer({
           [])
 
     setStep(1)
-    setName(commodityData?.name || "")
-    setDuration(String(commodityData?.duration ?? about?.duration ?? about?.tenure ?? ""))
-    setExistingPreviewAssetUrl(
-      String(about?.previewAssetUrl ?? commodityData?.previewAssetUrl ?? commodityData?.previewImage?.url ?? ""),
-    )
-    setDescription(commodityData?.description || "")
+    setName(displayStringFromApi(commodityData?.name) || commodityData?.name || "")
+    setDuration(displayStringFromApi(commodityData?.duration ?? about?.duration ?? about?.tenure))
+    setExistingPreviewAssetUrl(previewUrlFromProduct((commodityData || {}) as Record<string, unknown>))
+    setDescription(displayStringFromApi(commodityData?.description ?? about.description) || commodityData?.description || "")
     setTypeRows(
       Array.isArray(incomingTypeRows)
         ? incomingTypeRows.map((r: any) => ({ name: String(r?.name ?? ""), description: String(r?.description ?? "") }))
         : [],
     )
     setPreviewImage(null)
-    setWithdrawalFlexibility(String(commodityData?.withdrawalFlexibility ?? structure?.withdrawalFlexibility ?? ""))
+    setWithdrawalFlexibility(displayStringFromApi(commodityData?.withdrawalFlexibility ?? structure?.withdrawalFlexibility))
     if (isInvestment) {
       const invAmt = structure.investmentAmount as Record<string, unknown> | undefined
       if (invAmt && typeof invAmt === "object") {
@@ -261,7 +266,7 @@ export default function ConfigureCommodityDrawer({
         setOfferYieldOn(asBool(commodityData?.offerYieldOn ?? structure?.offerYieldOn))
         setOfferYieldValue(String(commodityData?.offerYieldValue ?? structure?.offerYieldValue ?? ""))
       }
-      setYieldMethod(String(structure.interestMethod ?? commodityData?.yieldMethod ?? structure.yieldMethod ?? ""))
+      setYieldMethod(displayStringFromApi(structure.interestMethod ?? commodityData?.yieldMethod ?? structure.yieldMethod))
       const explicitEnableUnit =
         commodityData?.enableUnitInvestmentPurchase ?? structure.enableUnitInvestmentPurchase
       const hasSavedUnitPrice = Boolean(resolvedUnitAmount.replace(/,/g, "").trim())
@@ -291,7 +296,7 @@ export default function ConfigureCommodityDrawer({
     } else {
       setMinInvestmentAmount("")
       setEnableUnitInvestmentPurchase(true)
-      setYieldMethod(String(commodityData?.yieldMethod ?? structure?.yieldMethod ?? ""))
+      setYieldMethod(displayStringFromApi(commodityData?.yieldMethod ?? structure?.yieldMethod))
       setOfferYieldOn(
         asBool(structure.offerYieldEnabled ?? structure.offerYieldOn ?? commodityData?.offerYieldOn),
       )
@@ -576,37 +581,56 @@ export default function ConfigureCommodityDrawer({
     if (step > 1) setStep((s) => s - 1)
   }
 
-  const commodityValidationBase = () => ({
+  const commodityValidationBase = () => {
+    const commodity = (commodityData || {}) as Record<string, unknown>
+    const about = pickProductTab(commodity, "about")
+    const structure = pickProductTab(commodity, "structure")
+    const fees = pickProductTab(commodity, "feesAndCharges")
+    const existingFees = Array.isArray(fees.fees) ? fees.fees : Array.isArray(fees.charges) ? fees.charges : []
+    const existingPrices = Array.isArray(commodity.commodityPrices)
+      ? commodity.commodityPrices
+      : Array.isArray(commodity.priceHistory)
+        ? commodity.priceHistory
+        : []
+    return {
     isInvestment,
-    name,
-    duration,
-    description,
+    name: filledOrExisting(name, commodity.name, about.name),
+    duration: filledOrExisting(duration, commodity.duration, about.duration, about.tenure),
+    description: filledOrExisting(description, commodity.description, about.description),
     typeRows,
     previewImage,
-    hasPreviewAsset: !!(
-      existingPreviewAssetUrl ||
-      (commodityData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ||
-      commodityData?.previewAssetUrl ||
-      commodityData?.previewImage?.url
-    ),
-    yieldMethod,
+    hasPreviewAsset: !!(existingPreviewAssetUrl || previewUrlFromProduct(commodity)),
+    yieldMethod: filledOrExisting(yieldMethod, commodity.yieldMethod, structure.yieldMethod, structure.interestMethod),
     offerYieldOn,
     offerYieldValue,
-    withdrawalFlexibility,
-    minInvestmentAmount: removeCommas(minInvestmentAmount),
+    withdrawalFlexibility: filledOrExisting(withdrawalFlexibility, commodity.withdrawalFlexibility, structure.withdrawalFlexibility),
+    minInvestmentAmount: removeCommas(filledOrExisting(minInvestmentAmount, commodity.minInvestmentAmount, pickRecord(structure.investmentAmount).min)),
     enableUnitInvestmentPurchase: isInvestment ? enableUnitInvestmentPurchase : undefined,
-    unitAmount: removeCommas(unitAmount),
-    minQuantityPurchase,
-    maxAmount: removeCommas(maxAmount),
-    termsAndConditions,
+    unitAmount: removeCommas(filledOrExisting(unitAmount, commodity.unitAmount, structure.unitAmount)),
+    minQuantityPurchase: filledOrExisting(minQuantityPurchase, commodity.minQuantityPurchase, structure.minQuantityPurchase),
+    maxAmount: removeCommas(filledOrExisting(maxAmount, commodity.maxAmount, structure.maxAmount, pickRecord(structure.investmentAmount).max)),
+    termsAndConditions: filledOrExisting(
+      termsAndConditions,
+      commodity.termsAndConditions,
+      structure.commodityTermsAndCondition,
+      structure.investmentTermsAndCondition,
+      structure.termsAndConditions,
+    ),
     moratoriumEnabled,
     moratoriumDays,
     contractId,
     airSignSecretKey,
     airSignUid,
-    charges,
-    priceRows: priceRows.map((r) => ({ price: removeCommas(r.price), date: r.date, source: r.source })),
-  })
+    charges: charges.length ? charges : existingFees,
+    priceRows: priceRows.length
+      ? priceRows.map((r) => ({ price: removeCommas(r.price), date: r.date, source: r.source }))
+      : existingPrices.map((r: Record<string, unknown>) => ({
+          price: String(r.price ?? ""),
+          date: String(r.date ?? ""),
+          source: String(r.source ?? ""),
+        })),
+  }
+  }
 
   const handleNext = async () => {
     if (step < steps.length) {

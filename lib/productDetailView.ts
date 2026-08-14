@@ -1,11 +1,13 @@
 /** Helpers for Product MS GET /api/v1/products/:id and dashboard product detail UI. */
 
+import { unwrapProductDocument } from "@/lib/productConfigureHydrate"
+
 export function extractProductFromResponse(json: unknown): Record<string, unknown> | null {
   if (!json || typeof json !== "object") return null
   const o = json as Record<string, unknown>
   const d = o.data
-  if (d && typeof d === "object" && !Array.isArray(d)) return d as Record<string, unknown>
-  if ("id" in o || "referenceNumber" in o || "_id" in o) return o
+  if (d && typeof d === "object" && !Array.isArray(d)) return unwrapProductDocument(d)
+  if ("id" in o || "referenceNumber" in o || "_id" in o) return unwrapProductDocument(o)
   return null
 }
 

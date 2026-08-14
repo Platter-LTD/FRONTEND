@@ -8,6 +8,7 @@ import {
   resolveProductIdFromAppProducts,
 } from '@/lib/productDetailView';
 import { normalizeOtherRequirementContentTypeForApi } from '@/lib/otherRequirementPayload';
+import { mergePreferExisting, pickProductTab, pickRecord } from '@/lib/productConfigureHydrate';
 
 const decodeTokenMerchantId = (token: string | null): string | null => {
   if (!token) return null;
@@ -691,14 +692,15 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     structure = compactObject(structureBase);
   }
 
+  const selectedSecurityRequirements = Array.isArray(configuration?.securityRequirements)
+    ? configuration.securityRequirements
+    : [];
   const requirements = compactObject(
     isMortgage
       ? {
-          security: compactObject(
-            mortgageSecurityBooleansFromSelection(
-              Array.isArray(configuration?.securityRequirements) ? configuration.securityRequirements : [],
-            ),
-          ),
+          security: selectedSecurityRequirements.length
+            ? compactObject(mortgageSecurityBooleansFromSelection(selectedSecurityRequirements))
+            : undefined,
           documentsToDownload: mapDocumentsToDownloadForLoan(
             configuration?.documentsToDownload ?? configuration?.documentRequirements,
           ),
@@ -706,11 +708,9 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
         }
       : isLoan
         ? {
-            security: compactObject(
-              loanSecurityBooleansFromSelection(
-                Array.isArray(configuration?.securityRequirements) ? configuration.securityRequirements : [],
-              ),
-            ),
+            security: selectedSecurityRequirements.length
+              ? compactObject(loanSecurityBooleansFromSelection(selectedSecurityRequirements))
+              : undefined,
             documentsToDownload: mapDocumentsToDownloadForLoan(
               configuration?.documentsToDownload ?? configuration?.documentRequirements,
             ),
@@ -906,17 +906,38 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
       })
     : {};
 
+  const existing = pickRecord(configuration);
+  const existingAbout = pickProductTab(existing, 'about');
+  const existingStructure = pickProductTab(existing, 'structure');
+  const existingRequirements = pickProductTab(existing, 'requirements');
+  const existingFees = pickProductTab(existing, 'feesAndCharges');
+  const existingProperties = Array.isArray(existing.properties) ? existing.properties : [];
+  const mergedRequirements = requirements && Object.keys(requirements).length
+    ? mergePreferExisting(existingRequirements, requirements)
+    : existingRequirements;
+  const mergedProperties = isMortgage
+    ? (normalizedProperties.length
+        ? normalizedProperties
+        : existingProperties.length
+          ? mapMortgagePropertiesForApi(existingProperties)
+          : normalizedProperties)
+    : undefined;
+
   return compactObject({
     ...common,
     // Loan/mortgage product config no longer depends on AirSign / applicant signature.
     requireApplicantSignature:
       isLoan || isMortgage ? false : toBool(configuration?.requireApplicantSignature),
-    about,
-    structure,
-    ...(requirements && Object.keys(requirements).length ? { requirements } : {}),
-    feesAndCharges,
-    ...(isMortgage ? { properties: normalizedProperties } : {}),
-    ...(commodityPricesNormalized ? { commodityPrices: commodityPricesNormalized } : {}),
+    about: mergePreferExisting(existingAbout, about),
+    structure: mergePreferExisting(existingStructure, structure),
+    ...(mergedRequirements && Object.keys(mergedRequirements).length ? { requirements: mergedRequirements } : {}),
+    feesAndCharges: mergePreferExisting(existingFees, feesAndCharges),
+    ...(isMortgage ? { properties: mergedProperties } : {}),
+    ...(commodityPricesNormalized
+      ? { commodityPrices: commodityPricesNormalized }
+      : Array.isArray(existing.commodityPrices) && existing.commodityPrices.length
+        ? { commodityPrices: mapCommodityPricesForApi(existing.commodityPrices) }
+        : {}),
     ...loanTopLevel,
     ...mortgageTopLevel,
     ...commodityTopLevel,

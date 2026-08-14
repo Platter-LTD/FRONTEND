@@ -40,6 +40,14 @@ import {
   serializeSecurityRequirements,
   splitStoredSecurityRequirements,
 } from "@/lib/securityRequirementOptions"
+import {
+  displayStringFromApi,
+  filledOrExisting,
+  interestRateFromApi,
+  pickProductTab,
+  pickRecord,
+  previewUrlFromProduct,
+} from "@/lib/productConfigureHydrate"
 
 interface ConfigureLoanDrawerProps {
   isOpen: boolean
@@ -133,50 +141,20 @@ function extractMoratoriumPrefill(raw: unknown): string {
   return ""
 }
 
-/** API may return numeric interest; drawer state expects a %-suffixed display string when applicable. */
-function normalizeInterestRateHydrate(raw: unknown): string {
-  if (raw == null || raw === "") return ""
-  if (typeof raw === "number" && Number.isFinite(raw)) return `${raw}%`
-  const s = String(raw).trim()
-  if (!s) return ""
-  if (s.includes("%")) return s
-  const n = Number(s.replace(/%/g, ""))
-  if (!Number.isNaN(n)) return `${n}%`
-  return s
-}
-
-function pickRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>
-  return {}
-}
-
-/** Product MS may return tabs at root or nested under `configuration`. */
 function pickAboutFromLoan(loanData: Record<string, unknown>): Record<string, unknown> {
-  const direct = pickRecord(loanData.about)
-  if (Object.keys(direct).length) return direct
-  const cfg = pickRecord(loanData.configuration)
-  return pickRecord(cfg.about)
+  return pickProductTab(loanData, "about")
 }
 
 function pickStructureFromLoan(loanData: Record<string, unknown>): Record<string, unknown> {
-  const direct = pickRecord(loanData.structure)
-  if (Object.keys(direct).length) return direct
-  const cfg = pickRecord(loanData.configuration)
-  return pickRecord(cfg.structure)
+  return pickProductTab(loanData, "structure")
 }
 
 function pickRequirementsFromLoan(loanData: Record<string, unknown>): Record<string, unknown> {
-  const direct = pickRecord(loanData.requirements)
-  if (Object.keys(direct).length) return direct
-  const cfg = pickRecord(loanData.configuration)
-  return pickRecord(cfg.requirements)
+  return pickProductTab(loanData, "requirements")
 }
 
 function pickFeesAndChargesFromLoan(loanData: Record<string, unknown>): Record<string, unknown> {
-  const direct = pickRecord(loanData.feesAndCharges)
-  if (Object.keys(direct).length) return direct
-  const cfg = pickRecord(loanData.configuration)
-  return pickRecord(cfg.feesAndCharges)
+  return pickProductTab(loanData, "feesAndCharges")
 }
 
 /** Stored enum / snake_case → UI workflow label used by `ProductConfigRepaymentWorkflowPanel`. */
@@ -440,12 +418,10 @@ export default function ConfigureLoanDrawer({
     const requirements = pickRequirementsFromLoan(loan) as Record<string, any>
     const fees = pickFeesAndChargesFromLoan(loan) as Record<string, any>
 
-    setName(String(loanData.name ?? ""))
-    setTenure(String(loanData.tenure ?? about.tenure ?? ""))
-    setExistingPreviewAssetUrl(
-      String(about.previewAssetUrl ?? loanData.previewAssetUrl ?? loanData.previewImage?.url ?? ""),
-    )
-    setDescription(String(loanData.description ?? ""))
+    setName(displayStringFromApi(loanData.name ?? about.name) || String(loanData.name ?? ""))
+    setTenure(displayStringFromApi(loanData.tenure ?? about.tenure ?? about.duration))
+    setExistingPreviewAssetUrl(previewUrlFromProduct(loan))
+    setDescription(displayStringFromApi(loanData.description ?? about.description ?? about.productDescription))
     const loanTypesHydrated: LoanTypeItem[] = Array.isArray(loanData.loanTypes ?? about.loanTypes)
       ? (loanData.loanTypes ?? about.loanTypes).map((t: any) => ({
           name: String(t?.name ?? "").trim(),
@@ -462,7 +438,7 @@ export default function ConfigureLoanDrawer({
     }
 
     setInterestRate(
-      normalizeInterestRateHydrate(
+      interestRateFromApi(
         (loanData.interestRate as unknown) ??
           (structure.interestRate as unknown) ??
           (about as Record<string, unknown>).interestRate,
@@ -738,6 +714,10 @@ export default function ConfigureLoanDrawer({
     if (npaRaw && acceptableNpaOptions.length) {
       setAcceptableNpa((prev) => resolveOptionLabel(npaRaw, acceptableNpaOptions) || prev)
     }
+    const tenureRaw = displayStringFromApi(loanData.tenure ?? structure.tenure ?? pickAboutFromLoan(loanData as Record<string, unknown>).tenure)
+    if (tenureRaw && tenureOptions.length) {
+      setTenure((prev) => resolveOptionLabel(tenureRaw, tenureOptions) || prev || tenureRaw)
+    }
   }, [
     isOpen,
     loanData,
@@ -750,6 +730,7 @@ export default function ConfigureLoanDrawer({
     amortizationScheduleOptions,
     repaymentFrequencyOptions,
     acceptableNpaOptions,
+    tenureOptions,
   ])
 
   const addLoanType = () => {
@@ -879,41 +860,72 @@ export default function ConfigureLoanDrawer({
     if (step > 1) setStep((prev) => prev - 1)
   }
 
-  const loanValidationBase = () => ({
-    name,
-    tenure,
-    description,
-    loanTypes,
-    previewImage,
-    hasPreviewAsset: !!(
-      existingPreviewAssetUrl ||
-      (loanData?.about as Record<string, unknown> | undefined)?.previewAssetUrl ||
-      loanData?.previewAssetUrl ||
-      loanData?.previewImage?.url
-    ),
-    structure: {
-      interestRate,
-      interestMethod,
-      repaymentWorkflow,
-      minAmount: minLoanAmount,
-      maxAmount: maxLoanAmount,
-      repaymentSchedule,
-      amortizationSchedule,
-      repaymentFrequency,
-      acceptableNpa,
-      equityRequirement,
-      equityRequirementMode,
-      equityFixedAmount,
-      equityPercentage,
-    },
-    selectedSecurities,
-    securityOtherSpecification,
-    documents,
-    otherRequirements,
-    charges,
-    enableLateRepaymentCharges,
-    penalties,
-  })
+  const loanValidationBase = () => {
+    const loan = (loanData || {}) as Record<string, unknown>
+    const about = pickAboutFromLoan(loan)
+    const structure = pickStructureFromLoan(loan)
+    const fees = pickFeesAndChargesFromLoan(loan)
+    const requirements = pickRequirementsFromLoan(loan)
+    const existingFees = Array.isArray(fees.fees)
+      ? fees.fees
+      : Array.isArray(fees.charges)
+        ? fees.charges
+        : []
+    const existingSec = requirements.security
+    const hasExistingSecurity =
+      selectedSecurities.length > 0 ||
+      (existingSec && typeof existingSec === "object" && Object.values(existingSec as Record<string, unknown>).some(Boolean)) ||
+      (Array.isArray(requirements.securityRequirements) && requirements.securityRequirements.length > 0)
+    return {
+      name: filledOrExisting(name, loan.name, about.name),
+      tenure: filledOrExisting(tenure, loan.tenure, about.tenure, about.duration),
+      description: filledOrExisting(description, loan.description, about.description),
+      loanTypes,
+      previewImage,
+      hasPreviewAsset: !!(existingPreviewAssetUrl || previewUrlFromProduct(loan)),
+      structure: {
+        interestRate: filledOrExisting(interestRate, loan.interestRate, structure.interestRate),
+        interestMethod: filledOrExisting(interestMethod, loan.interestMethod, structure.interestMethod),
+        repaymentWorkflow: filledOrExisting(repaymentWorkflow, loan.repaymentWorkflow, structure.repaymentWorkflow),
+        minAmount: filledOrExisting(
+          minLoanAmount,
+          loan.minLoanAmount,
+          structure.minLoanAmount,
+          pickRecord(structure.loanAmount).min,
+        ),
+        maxAmount: filledOrExisting(
+          maxLoanAmount,
+          loan.maxLoanAmount,
+          structure.maxLoanAmount,
+          pickRecord(structure.loanAmount).max,
+        ),
+        repaymentSchedule: filledOrExisting(repaymentSchedule, loan.repaymentSchedule, structure.repaymentSchedule),
+        amortizationSchedule: filledOrExisting(
+          amortizationSchedule,
+          loan.amortizationSchedule,
+          structure.amortizationSchedule,
+        ),
+        repaymentFrequency: filledOrExisting(repaymentFrequency, loan.repaymentFrequency, structure.repaymentFrequency),
+        acceptableNpa: filledOrExisting(
+          acceptableNpa,
+          loan.acceptableNpa,
+          structure.acceptableNPA,
+          structure.acceptableNpa,
+        ),
+        equityRequirement: filledOrExisting(equityRequirement, loan.equityRequirement, structure.equityRequirement),
+        equityRequirementMode,
+        equityFixedAmount,
+        equityPercentage,
+      },
+      selectedSecurities: selectedSecurities.length ? selectedSecurities : hasExistingSecurity ? ["__existing__"] : [],
+      securityOtherSpecification,
+      documents,
+      otherRequirements,
+      charges: charges.length ? charges : existingFees,
+      enableLateRepaymentCharges,
+      penalties,
+    }
+  }
 
   const handleNext = async () => {
     if (step < STEPS.length) {

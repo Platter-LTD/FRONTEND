@@ -153,14 +153,26 @@ export function ProductConfigSelect({
   requirementMark = "text",
 }: ProductConfigSelectProps) {
   const normalized = normalizeSelectOptions(options)
+  const optionsWithCurrent = (() => {
+    if (!value) return normalized
+    const target = normalizeOptionToken(value)
+    const matched = normalized.some(
+      (option) =>
+        option.value === value ||
+        normalizeOptionToken(option.value) === target ||
+        normalizeOptionToken(option.label) === target,
+    )
+    if (matched) return normalized
+    return [...normalized, { value, label: value }]
+  })()
   const resolvedValue = (() => {
     if (!value) return ""
-    if (normalized.some((option) => option.value === value)) return value
+    if (optionsWithCurrent.some((option) => option.value === value)) return value
     const target = normalizeOptionToken(value)
-    const byValue = normalized.find((option) => normalizeOptionToken(option.value) === target)
+    const byValue = optionsWithCurrent.find((option) => normalizeOptionToken(option.value) === target)
     if (byValue) return byValue.value
-    const byLabel = normalized.find((option) => normalizeOptionToken(option.label) === target)
-    return byLabel?.value ?? ""
+    const byLabel = optionsWithCurrent.find((option) => normalizeOptionToken(option.label) === target)
+    return byLabel?.value ?? value
   })()
 
   return (
@@ -187,7 +199,7 @@ export function ProductConfigSelect({
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent className="py-4">
-          {normalized.map((option) => (
+          {optionsWithCurrent.map((option) => (
             <SelectItem key={option.value} value={option.value}>
               {option.label}
             </SelectItem>

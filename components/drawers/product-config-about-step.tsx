@@ -197,7 +197,9 @@ export function ProductConfigAboutStep({
   const handleTenureSelectChange = (value: string) => {
     if (value.trim().toLowerCase() === "custom") {
       setCustomTenureActive(true)
-      onDurationChange("")
+      if (matchesPresetDuration(durationValue, presetTenureOptions)) {
+        onDurationChange("")
+      }
       return
     }
     setCustomTenureActive(false)

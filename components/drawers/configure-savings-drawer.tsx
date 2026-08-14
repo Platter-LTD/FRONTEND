@@ -21,6 +21,14 @@ import {
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import { validateAllSavingsSteps, validateSavingsStep } from "@/lib/productConfigureStepValidation"
 import {
+  displayStringFromApi,
+  filledOrExisting,
+  interestRateFromApi,
+  pickProductTab,
+  pickRecord,
+  previewUrlFromProduct,
+} from "@/lib/productConfigureHydrate"
+import {
   normalizeOtherRequirementRowFromApi,
   serializeOtherRequirementsForSubmit,
   shouldUseOtherRequirementFileUpload,
@@ -255,22 +263,21 @@ export default function ConfigureSavingsDrawer({
     } else {
       savingsHydratedKeyRef.current = "__noid__"
     }
-    const about = (savingsData.about ?? {}) as Record<string, any>
-    const structure = (savingsData.structure ?? {}) as Record<string, any>
-    const fees = (savingsData.feesAndCharges ?? {}) as Record<string, any>
-    const requirements = (savingsData.requirements ?? {}) as Record<string, unknown>
+    const about = pickProductTab(savingsData as Record<string, unknown>, "about")
+    const structure = pickProductTab(savingsData as Record<string, unknown>, "structure")
+    const fees = pickProductTab(savingsData as Record<string, unknown>, "feesAndCharges")
+    const requirements = pickProductTab(savingsData as Record<string, unknown>, "requirements")
 
-    setName(String(savingsData.name ?? ""))
+    setName(displayStringFromApi(savingsData.name ?? about.name) || String(savingsData.name ?? ""))
     setDurationOfSavings(
-      String(
+      displayStringFromApi(
         savingsData.durationOfSavings ??
           savingsData.duration ??
           about.duration ??
-          about.tenure ??
-          "",
+          about.tenure,
       ),
     )
-    setDescription(String(savingsData.description ?? ""))
+    setDescription(displayStringFromApi(savingsData.description ?? about.description))
     setSavingsTypes(
       Array.isArray(savingsData.savingsTypes ?? about.savingsTypes)
         ? (savingsData.savingsTypes ?? about.savingsTypes).map((t: any) => ({
@@ -281,14 +288,12 @@ export default function ConfigureSavingsDrawer({
     )
 
     const savingsAmount = (structure.savingsAmount ?? {}) as Record<string, unknown>
-    setExistingPreviewAssetUrl(
-      String(about.previewAssetUrl ?? savingsData.previewAssetUrl ?? savingsData.previewImage?.url ?? ""),
-    )
+    setExistingPreviewAssetUrl(previewUrlFromProduct(savingsData as Record<string, unknown>))
 
-    setInterestRate(String(savingsData.interestRate ?? structure.interestRate ?? ""))
-    setInterestMethod(String(savingsData.interestMethod ?? structure.interestMethod ?? ""))
-    setSavingsType(String(savingsData.savingsType ?? structure.savingsType ?? ""))
-    setWithdrawalFlexibility(String(savingsData.withdrawalFlexibility ?? structure.withdrawalFlexibility ?? ""))
+    setInterestRate(interestRateFromApi(savingsData.interestRate ?? structure.interestRate))
+    setInterestMethod(displayStringFromApi(savingsData.interestMethod ?? structure.interestMethod ?? structure.yieldMethod))
+    setSavingsType(displayStringFromApi(savingsData.savingsType ?? structure.savingsType))
+    setWithdrawalFlexibility(displayStringFromApi(savingsData.withdrawalFlexibility ?? structure.withdrawalFlexibility))
     setMinSavingsAmount(
       formatAmountDisplayFromUnknown(
         savingsData.minSavingsAmount ?? structure.minSavingsAmount ?? savingsAmount.min ?? "",
@@ -299,7 +304,7 @@ export default function ConfigureSavingsDrawer({
         savingsData.maxSavingsAmount ?? structure.maxSavingsAmount ?? savingsAmount.max ?? "",
       ),
     )
-    setTermsAndConditions(String(savingsData.termsAndConditions ?? structure.termsAndConditions ?? ""))
+    setTermsAndConditions(displayStringFromApi(savingsData.termsAndConditions ?? structure.termsAndConditions ?? structure.savingsTermsAndCondition))
     setContractId(String(savingsData.contractId ?? structure.contractId ?? ""))
     setAirSignSecretKey(String(savingsData.airSignSecretKey ?? structure.airSignSecretKey ?? ""))
     setAirSignUid(String(savingsData.airSignUid ?? structure.airSignUid ?? ""))
@@ -433,32 +438,34 @@ export default function ConfigureSavingsDrawer({
     if (step > 1) setStep((s) => s - 1)
   }
 
-  const savingsValidationBase = () => ({
-    name,
-    duration: durationOfSavings,
-    description,
+  const savingsValidationBase = () => {
+    const savings = (savingsData || {}) as Record<string, unknown>
+    const about = pickProductTab(savings, "about")
+    const structure = pickProductTab(savings, "structure")
+    const fees = pickProductTab(savings, "feesAndCharges")
+    const existingFees = Array.isArray(fees.fees) ? fees.fees : Array.isArray(fees.charges) ? fees.charges : []
+    return {
+    name: filledOrExisting(name, savings.name, about.name),
+    duration: filledOrExisting(durationOfSavings, savings.durationOfSavings, savings.duration, about.duration, about.tenure),
+    description: filledOrExisting(description, savings.description, about.description),
     savingsTypes,
     previewImage,
-    hasPreviewAsset: !!(
-      existingPreviewAssetUrl ||
-      savingsData?.previewAssetUrl ||
-      savingsData?.previewImage?.url ||
-      (savingsData?.about as Record<string, unknown> | undefined)?.previewAssetUrl
-    ),
-    interestRate,
-    interestMethod,
-    savingsType,
-    withdrawalFlexibility,
-    minSavingsAmount: removeCommas(minSavingsAmount),
-    maxSavingsAmount: removeCommas(maxSavingsAmount),
-    termsAndConditions,
+    hasPreviewAsset: !!(existingPreviewAssetUrl || previewUrlFromProduct(savings)),
+    interestRate: filledOrExisting(interestRate, savings.interestRate, structure.interestRate),
+    interestMethod: filledOrExisting(interestMethod, savings.interestMethod, structure.interestMethod, structure.yieldMethod),
+    savingsType: filledOrExisting(savingsType, savings.savingsType, structure.savingsType),
+    withdrawalFlexibility: filledOrExisting(withdrawalFlexibility, savings.withdrawalFlexibility, structure.withdrawalFlexibility),
+    minSavingsAmount: removeCommas(filledOrExisting(minSavingsAmount, savings.minSavingsAmount, structure.minSavingsAmount, pickRecord(structure.savingsAmount).min)),
+    maxSavingsAmount: removeCommas(filledOrExisting(maxSavingsAmount, savings.maxSavingsAmount, structure.maxSavingsAmount, pickRecord(structure.savingsAmount).max)),
+    termsAndConditions: filledOrExisting(termsAndConditions, savings.termsAndConditions, structure.termsAndConditions, structure.savingsTermsAndCondition),
     contractId,
     airSignSecretKey,
     airSignUid,
-    charges,
+    charges: charges.length ? charges : existingFees,
     chargeForcefulWithdrawal,
     withdrawalPenalties,
-  })
+  }
+  }
 
   const handleNext = async () => {
     if (step < STEPS.length) {
