@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState, useRef, ChangeEvent } from "react"
-import { ChevronDown, Loader2, Upload, X } from "lucide-react"
+import { Loader2, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { getImageFileValidationError, getPdfFileValidationError } from "@/lib/fileValidation"
