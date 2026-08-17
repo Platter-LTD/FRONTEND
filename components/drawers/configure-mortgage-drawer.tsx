@@ -243,6 +243,50 @@ function pickPropertiesFromMortgage(mortgageData: Record<string, unknown>): Reco
   return []
 }
 
+function collectPropertyImageUrls(p: Record<string, unknown>): string[] {
+  const urls: string[] = []
+  const push = (value: unknown) => {
+    if (typeof value === "string" && value.trim()) urls.push(value.trim())
+  }
+  const pushMedia = (entry: unknown) => {
+    if (typeof entry === "string") {
+      push(entry)
+      return
+    }
+    const media = pickRecord(entry)
+    push(media.url ?? media.fileUrl ?? media.src ?? media.previewUrl ?? media.imageUrl)
+  }
+
+  if (Array.isArray(p.imageUrls)) p.imageUrls.forEach(pushMedia)
+  if (Array.isArray(p.previewImages)) p.previewImages.forEach(pushMedia)
+  if (Array.isArray(p.images)) p.images.forEach(pushMedia)
+  pushMedia(p.previewImage)
+  push(p.imageUrl ?? p.image ?? p.fileUrl)
+  return Array.from(new Set(urls))
+}
+
+function propertyHasImages(p: { previewFiles?: unknown[]; imageUrls?: unknown[]; previewObjectUrls?: unknown[] }): boolean {
+  return Boolean(p.previewFiles?.length || p.imageUrls?.length || p.previewObjectUrls?.length)
+}
+
+function applyDraftPropertyImages(
+  items: PropertyItem[],
+  files: File[],
+  objectUrls: string[],
+): PropertyItem[] {
+  if (!files.length && !objectUrls.length) return items
+  let used = false
+  return items.map((p) => {
+    if (used || propertyHasImages(p)) return p
+    used = true
+    return {
+      ...p,
+      previewFiles: files.length ? [...files] : p.previewFiles,
+      previewObjectUrls: objectUrls.length ? [...objectUrls] : p.previewObjectUrls,
+    }
+  })
+}
+
 function pickPropertyVideoUrl(p: Record<string, unknown>): string {
   const nested = pickRecord(p.video)
   const candidates = [
@@ -726,7 +770,7 @@ export default function ConfigureMortgageDrawer({
             customFacilities: Array.isArray(p.customFacilities)
               ? (p.customFacilities as string[]).map(String)
               : [],
-            imageUrls: Array.isArray(p.imageUrls) ? (p.imageUrls as string[]).map(String) : [],
+            imageUrls: collectPropertyImageUrls(p),
             videoUrl: pickPropertyVideoUrl(p),
             previewFiles: [],
             previewObjectUrls: [],
@@ -1063,10 +1107,29 @@ export default function ConfigureMortgageDrawer({
       event.target.value = ""
       return
     }
-    setPropertyPreviewFiles((prev) => [...prev, ...accepted])
-    setPropertyPreviewUrls((prev) => [...prev, ...accepted.map((f) => URL.createObjectURL(f))])
+    const objectUrls = accepted.map((f) => URL.createObjectURL(f))
     setPropertyFormError("")
     event.target.value = ""
+
+    const missingIndex = properties.findIndex((p) => !propertyHasImages(p))
+    if (missingIndex >= 0) {
+      setProperties((prev) =>
+        prev.map((p, i) =>
+          i === missingIndex
+            ? {
+                ...p,
+                previewFiles: [...p.previewFiles, ...accepted],
+                previewObjectUrls: [...p.previewObjectUrls, ...objectUrls],
+              }
+              : p,
+        ),
+      )
+      toast.success("Property image added")
+      return
+    }
+
+    setPropertyPreviewFiles((prev) => [...prev, ...accepted])
+    setPropertyPreviewUrls((prev) => [...prev, ...objectUrls])
   }
 
   const removeSelectedPropertyPreview = (index: number) => {
@@ -1085,6 +1148,10 @@ export default function ConfigureMortgageDrawer({
     }
     if (!propertyVideoUrl.trim()) {
       setPropertyFormError("Property video URL is required before adding.")
+      return
+    }
+    if (!propertyPreviewFiles.length) {
+      setPropertyFormError("Upload at least one property image before adding.")
       return
     }
     setPropertyFormError("")
@@ -1239,7 +1306,46 @@ export default function ConfigureMortgageDrawer({
     if (step > 1) setStep((prev) => prev - 1)
   }
 
-  const resolvedProperties = applyDraftVideoUrl(properties, propertyVideoUrl)
+  const resolvedProperties = (() => {
+    const withMedia = applyDraftPropertyImages(
+      applyDraftVideoUrl(properties, propertyVideoUrl),
+      propertyPreviewFiles,
+      propertyPreviewUrls,
+    )
+    if (withMedia.length) return withMedia
+    if (
+      propertyName.trim() &&
+      propertyType &&
+      propertyValue.trim() &&
+      propertyLocation.trim() &&
+      propertyVideoUrl.trim() &&
+      propertyPreviewFiles.length
+    ) {
+      return [
+        {
+          id: "draft-property",
+          name: propertyName.trim(),
+          type: propertyType,
+          value: propertyValue.trim(),
+          location: propertyLocation.trim(),
+          description: propertyDescription.trim(),
+          facilities: [...propertyFacilities],
+          videoUrl: propertyVideoUrl.trim(),
+          previewFiles: [...propertyPreviewFiles],
+          previewObjectUrls: [...propertyPreviewUrls],
+          imageUrls: [] as string[],
+          customFacilities: [] as string[],
+          propertyDocumentation: propertyDocDrafts
+            .filter((doc) => doc.documentType.trim())
+            .map((doc) => ({
+              id: doc.id,
+              documentType: doc.documentType.trim(),
+            })),
+        },
+      ]
+    }
+    return withMedia
+  })()
 
   const mortgageValidationBase = () => {
     const mortgage = (mortgageData || {}) as Record<string, unknown>
@@ -1258,7 +1364,7 @@ export default function ConfigureMortgageDrawer({
           description: String(p.propertyDescription ?? p.description ?? ""),
           facilities: Array.isArray(p.facilities) ? (p.facilities as string[]) : ["__existing__"],
           previewFiles: [],
-          imageUrls: Array.isArray(p.imageUrls) ? (p.imageUrls as string[]) : [],
+          imageUrls: collectPropertyImageUrls(p),
           videoUrl: pickPropertyVideoUrl(p),
           propertyDocumentation: Array.isArray(p.propertyDocumentation)
             ? (p.propertyDocumentation as { documentType?: string }[]).map((doc) => ({
@@ -1398,9 +1504,71 @@ export default function ConfigureMortgageDrawer({
     return next
   }
 
+  const persistDraftImagesIfNeeded = (items: PropertyItem[]) => {
+    if (!propertyPreviewFiles.length && !propertyPreviewUrls.length) return items
+    const next = applyDraftPropertyImages(items, propertyPreviewFiles, propertyPreviewUrls)
+    const changed = next.some(
+      (p, i) =>
+        p.previewFiles !== items[i]?.previewFiles || p.previewObjectUrls !== items[i]?.previewObjectUrls,
+    )
+    if (changed) {
+      setProperties(next)
+      setPropertyPreviewFiles([])
+      setPropertyPreviewUrls([])
+    }
+    return next
+  }
+
+  const persistPropertyDrafts = () => {
+    const withMedia = persistDraftImagesIfNeeded(persistDraftVideoIfNeeded())
+    if (withMedia.length) return withMedia
+    if (
+      !propertyName.trim() ||
+      !propertyType ||
+      !propertyValue.trim() ||
+      !propertyLocation.trim() ||
+      !propertyVideoUrl.trim() ||
+      !propertyPreviewFiles.length
+    ) {
+      return withMedia
+    }
+    const draft: PropertyItem = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: propertyName.trim(),
+      type: propertyType,
+      value: propertyValue.trim(),
+      location: propertyLocation.trim(),
+      description: propertyDescription.trim(),
+      facilities: [...propertyFacilities],
+      videoUrl: propertyVideoUrl.trim(),
+      previewFiles: [...propertyPreviewFiles],
+      previewObjectUrls: [...propertyPreviewUrls],
+      imageUrls: [],
+      customFacilities: [],
+      propertyDocumentation: propertyDocDrafts
+        .filter((doc) => doc.documentType.trim())
+        .map((doc) => ({
+          id: doc.id,
+          documentType: doc.documentType.trim(),
+        })),
+    }
+    setProperties([draft])
+    setPropertyName("")
+    setPropertyType("")
+    setPropertyValue("")
+    setPropertyLocation("")
+    setPropertyDescription("")
+    setPropertyFacilities([])
+    setPropertyVideoUrl("")
+    setPropertyPreviewFiles([])
+    setPropertyPreviewUrls([])
+    setPropertyDocDrafts([])
+    return [draft]
+  }
+
   const handleNext = async () => {
     if (step < STEPS.length) {
-      persistDraftVideoIfNeeded()
+      persistPropertyDrafts()
       const { ok, errors } = validateMortgageStep({ step, ...mortgageValidationBase() })
       if (!ok) {
         setStepErrors(errors)
@@ -1437,7 +1605,7 @@ export default function ConfigureMortgageDrawer({
       }
 
       const propertiesPayload = await Promise.all(
-        persistDraftVideoIfNeeded().map(async (p) => {
+        persistPropertyDrafts().map(async (p) => {
           const previewImages = await Promise.all(
             p.previewFiles.map(async (file) => ({
               fileName: file.name,
@@ -1446,6 +1614,7 @@ export default function ConfigureMortgageDrawer({
               url: await uploadProductMediaToUrl(file),
             })),
           )
+          const uploadedUrls = previewImages.map((img) => img.url).filter(Boolean)
           const custom = p.customFacilities ?? []
           const facilitiesOnly = p.facilities.filter((f) => !custom.includes(f))
           return {
@@ -1458,7 +1627,7 @@ export default function ConfigureMortgageDrawer({
             description: p.description,
             facilities: facilitiesOnly.length ? facilitiesOnly : [...p.facilities],
             customFacilities: custom,
-            imageUrls: [...(p.imageUrls ?? [])],
+            imageUrls: Array.from(new Set([...(p.imageUrls ?? []), ...uploadedUrls])),
             videoUrl: p.videoUrl,
             previewImages,
             previewImage: previewImages[0] ?? null,
@@ -2276,7 +2445,14 @@ export default function ConfigureMortgageDrawer({
                         >
                           Files ({p.previewObjectUrls.length})
                         </a>
-                      ) : null}
+                      ) : p.imageUrls?.length ? (
+                        <p>
+                          <span className="font-medium text-gray-700">{p.imageUrls.length}</span>{" "}
+                          {p.imageUrls.length === 1 ? "image" : "images"}
+                        </p>
+                      ) : (
+                        <p className="text-red-600">No images</p>
+                      )}
                     </div>
                     <div className="flex justify-end pt-1 md:pt-0">
                       <button type="button" onClick={() => removeProperty(p.id)} className="text-red-600 hover:text-red-700" aria-label="Remove">
