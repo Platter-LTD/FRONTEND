@@ -9,7 +9,7 @@ import {
 } from '@/lib/productDetailView';
 import { normalizeOtherRequirementContentTypeForApi } from '@/lib/otherRequirementPayload';
 import { mergePreferExisting, pickProductTab, pickRecord } from '@/lib/productConfigureHydrate';
-import { lendingSecurityBooleansFromSelection } from '@/lib/securityRequirementOptions';
+import { lendingSecurityBooleansFromSelection, securitySelectionRecordFromLabels } from '@/lib/securityRequirementOptions';
 
 const decodeTokenMerchantId = (token: string | null): string | null => {
   if (!token) return null;
@@ -884,6 +884,7 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
       ? {
           ...existingMetadata,
           securityOtherSpecification: otherSecuritySpecification,
+          securitySelection: securitySelectionRecordFromLabels(selectedSecurityRequirements),
         }
       : Object.keys(existingMetadata).length
         ? existingMetadata

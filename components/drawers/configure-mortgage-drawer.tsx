@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState, useRef, ChangeEvent } from "react"
-import { ChevronDown, Loader2, Upload, X } from "lucide-react"
+import { Loader2, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { getImageFileValidationError, getPdfFileValidationError } from "@/lib/fileValidation"
@@ -830,6 +830,7 @@ export default function ConfigureMortgageDrawer({
     const { toggles, otherSpecification } = hydrateSecurityRequirementSelection({
       security: requirements.security ?? mortgageData.security,
       securityRequirements: requirements.securityRequirements ?? mortgageData.securityRequirements,
+      securitySelection: metadata.securitySelection,
       extra: [mortgageData.securityRequirements, requirements.securityRequirements],
       options: securityOptions,
       otherSpecificationFallback: displayStringFromApi(metadata.securityOtherSpecification),

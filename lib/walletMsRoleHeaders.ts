@@ -8,11 +8,6 @@ function pushArr(candidates: string[], v: unknown) {
   if (Array.isArray(v)) v.forEach((x) => pushStr(candidates, x));
 }
 
-/**
- * wallet-ms often validates merchant access from JWT claims; some tokens omit `userType`/`role`
- * but include `userMerchantId`. Mirror `app/api/apps` proxy: send explicit role hints so refresh
- * and direct browser calls behave like server-forwarded requests.
- */
 export function getWalletMsRoleHeaders(): Record<string, string> {
   const token = typeof window !== 'undefined' ? getAccessToken() : null;
   if (!token) {
