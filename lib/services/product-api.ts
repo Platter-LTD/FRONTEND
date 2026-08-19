@@ -10,6 +10,11 @@ import {
 import { normalizeOtherRequirementContentTypeForApi } from '@/lib/otherRequirementPayload';
 import { mergePreferExisting, pickProductTab, pickRecord } from '@/lib/productConfigureHydrate';
 import { lendingSecurityBooleansFromSelection, securitySelectionRecordFromLabels } from '@/lib/securityRequirementOptions';
+import {
+  buildProductListSearchParams,
+  extractProductItems,
+  type ListProductsParams,
+} from '@/lib/productOverview';
 
 const decodeTokenMerchantId = (token: string | null): string | null => {
   if (!token) return null;
@@ -921,8 +926,9 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
 
 export const productApi = {
   async getProductOverview(appId: string, signal?: AbortSignal) {
+    const q = new URLSearchParams({ appId });
     const response = await plataAuthFetch(
-      `/api/v1/products/app/${encodeURIComponent(appId)}/product-overview`,
+      `/api/v1/products/overview?${q.toString()}`,
       { headers: getAuthHeaders(), signal },
     );
 
@@ -933,34 +939,16 @@ export const productApi = {
     return data;
   },
 
-  async getProductOverviewByType(
-    appId: string,
-    productType: string,
-    signal?: AbortSignal,
-    opts?: {
-      portfolioStatus?: 'all' | 'active' | 'inactive' | 'non_performing' | 'bad'
-      limit?: number
-      skip?: number
-    },
-  ) {
-    const type = encodeURIComponent(String(productType || '').trim().toUpperCase());
-    const q = new URLSearchParams();
-    if (opts?.portfolioStatus && opts.portfolioStatus !== 'all') {
-      q.set('portfolioStatus', opts.portfolioStatus);
-    } else if (opts?.portfolioStatus === 'all') {
-      q.set('portfolioStatus', 'all');
-    }
-    if (typeof opts?.limit === 'number') q.set('limit', String(Math.min(200, Math.max(1, opts.limit))));
-    if (typeof opts?.skip === 'number' && opts.skip > 0) q.set('skip', String(opts.skip));
-    const qs = q.toString();
+  async listProducts(params: ListProductsParams, signal?: AbortSignal) {
+    const qs = buildProductListSearchParams(params).toString();
     const response = await plataAuthFetch(
-      `/api/v1/products/app/${encodeURIComponent(appId)}/product-overview/by-type/${type}${qs ? `?${qs}` : ''}`,
+      `/api/v1/products?${qs}`,
       { headers: getAuthHeaders(), signal },
     );
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error((data as { error?: string }).error || 'Failed to fetch product overview by type');
+      throw new Error((data as { error?: string }).error || 'Failed to fetch products');
     }
     return data;
   },
@@ -1276,9 +1264,9 @@ export const productApi = {
     return data;
   },
 
-  /** Full catalog — GET /api/v1/products (all products, not app-filtered). */
+  /** Full catalog — GET /api/v1/products (paginated `{ items }`; returned as `{ data: items }` for callers). */
   async getAllProducts() {
-    const response = await fetch('/api/v1/products', {
+    const response = await fetch('/api/v1/products?page=1&limit=100', {
       headers: getAuthHeaders(),
       credentials: 'include',
     });
@@ -1289,7 +1277,9 @@ export const productApi = {
       throw new Error((data as { error?: string }).error || 'Failed to fetch products');
     }
 
-    return data;
+    const items = extractProductItems(data);
+    if (Array.isArray((data as { data?: unknown })?.data)) return data;
+    return { ...data, data: items };
   },
 
   // Get all products from PLATA (global pool)

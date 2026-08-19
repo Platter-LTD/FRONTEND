@@ -10,6 +10,6 @@ export async function GET(
   const { appId } = await params
   return proxyProductOverviewGet(
     request,
-    `/api/v1/products/app/${encodeURIComponent(appId)}/product-overview`,
+    `/api/v1/products/overview?appId=${encodeURIComponent(appId)}`,
   )
 }

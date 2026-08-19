@@ -154,7 +154,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const url = `${PRODUCT_SERVICE_URL}/api/v1/products`;
+    const qs = request.nextUrl.searchParams.toString();
+    const url = `${PRODUCT_SERVICE_URL}/api/v1/products${qs ? `?${qs}` : ''}`;
 
     let response;
     try {
