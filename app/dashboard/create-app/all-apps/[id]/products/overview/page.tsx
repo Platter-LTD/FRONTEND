@@ -5,7 +5,7 @@ import ProductOverviewDashboard from "@/components/analytics/ProductOverviewDash
 
 /**
  * Products → Product Overview
- * Live activity by product type (loan, mortgage, savings, investment, commodity).
+ * Catalog counts (cards) + filtered product list from Product MS.
  */
 export default function ProductsOverviewPage() {
   const params = useParams<{ id: string }>()
