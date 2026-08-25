@@ -24,8 +24,14 @@ function normalizeFeeRow(raw: unknown): ManagementFeeRow | null {
   if (!name) return null
   const feeType = String(row.feeType ?? row.type ?? "Flat").trim() || "Flat"
   const valueRaw = row.value
+  // Preserve "" so merchants can clear the Management Fee value while typing.
+  // Only default to "0" when the field is missing (null/undefined).
   const value =
-    valueRaw != null && String(valueRaw).trim() !== "" ? String(valueRaw).trim() : "0"
+    valueRaw === undefined || valueRaw === null
+      ? isManagementFeeName(name)
+        ? "0"
+        : ""
+      : String(valueRaw).trim()
   return {
     name: isManagementFeeName(name) ? MANAGEMENT_FEE_NAME : name,
     feeType,
@@ -52,4 +58,21 @@ export function ensureManagementFeePinned<T extends ManagementFeeRow>(
 
   const rest = mapped.filter((_, index) => index !== mgmtIdx)
   return [management, ...rest] as T[]
+}
+
+/** Coerce empty Management Fee value to 0 / 0% for PUT (UI may temporarily be blank). */
+export function finalizeFeesForSubmit<T extends ManagementFeeRow>(
+  fees: unknown[] | null | undefined,
+): T[] {
+  return ensureManagementFeePinned<T>(fees).map((row) => {
+    if (!isManagementFeeName(row.name)) return row
+    const trimmed = String(row.value ?? "").trim()
+    if (trimmed) return { ...row, name: MANAGEMENT_FEE_NAME }
+    const isPercent = String(row.feeType || "").toLowerCase().includes("percent")
+    return {
+      ...row,
+      name: MANAGEMENT_FEE_NAME,
+      value: isPercent ? "0%" : "0",
+    }
+  })
 }

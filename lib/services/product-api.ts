@@ -15,7 +15,7 @@ import {
   extractProductItems,
   type ListProductsParams,
 } from '@/lib/productOverview';
-import { ensureManagementFeePinned } from '@/lib/managementFee';
+import { finalizeFeesForSubmit } from '@/lib/managementFee';
 
 const decodeTokenMerchantId = (token: string | null): string | null => {
   if (!token) return null;
@@ -319,7 +319,7 @@ const mapMortgagePropertiesForApi = (items: any[]) => {
 };
 
 const mapFeesFromCharges = (raw: any[]) =>
-  ensureManagementFeePinned(raw).map((c) =>
+  finalizeFeesForSubmit(raw).map((c) =>
     compactObject({
       name: c?.name,
       feeType: c?.feeType,

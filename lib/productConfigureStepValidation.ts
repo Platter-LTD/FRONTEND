@@ -66,7 +66,7 @@ function pushLoanLikeStructureErrors(
   if (!has(s.repaymentSchedule)) errors.push(`${prefix}Repayment Structure is required.`)
   if (!has(s.amortizationSchedule)) errors.push(`${prefix}Amortization Schedule is required.`)
   if (!has(s.repaymentFrequency)) errors.push(`${prefix}Repayment Frequency is required.`)
-  if (!has(s.acceptableNpa)) errors.push(`${prefix}Acceptable NPA is required.`)
+  // Acceptable NPL (API: acceptableNpa / acceptableNPA) is optional.
   if (!has(s.equityRequirement)) errors.push(`${prefix}Equity Requirement is required.`)
   if (s.equityRequirementMode === "fixed" && !has(s.equityFixedAmount)) {
     errors.push(`${prefix}Equity amount is required for the selected equity requirement.`)
