@@ -92,8 +92,19 @@ export function mapProductToConfigurationView(product: Record<string, unknown> |
   return {
     purpose: (product.description as string) || (about.description as string),
     currency: meta?.currency as string | undefined,
-    minimumFacilityAmount: num(structure.minLoanAmount ?? structure.minFacilityAmount),
-    maximumFacilityAmount: num(structure.maxLoanAmount ?? structure.maxFacilityAmount),
+    minimumFacilityAmount: num(
+      structure.mortgageAmount ??
+        structure.minLoanAmount ??
+        structure.minFacilityAmount ??
+        (structure.loanAmount as { min?: unknown } | undefined)?.min,
+    ),
+    maximumFacilityAmount: num(
+      structure.mortgageAmount ??
+        structure.maxLoanAmount ??
+        structure.maxFacilityAmount ??
+        (structure.loanAmount as { max?: unknown } | undefined)?.max,
+    ),
+    mortgageAmount: num(structure.mortgageAmount),
     interestRate,
     loanTenure,
     repaymentCycle: (structure.repaymentFrequency || structure.repaymentSchedule) as string | undefined,

@@ -18,8 +18,11 @@ export type LoanLikeStructureInput = {
   interestRate: string
   interestMethod: string
   repaymentWorkflow: string
+  /** LOAN: min/max facility. MORTGAGE: leave empty and use mortgageAmount. */
   minAmount: string
   maxAmount: string
+  /** MORTGAGE only — single facility amount (`structure.mortgageAmount`). */
+  mortgageAmount?: string
   repaymentSchedule: string
   amortizationSchedule: string
   repaymentFrequency: string
@@ -30,17 +33,36 @@ export type LoanLikeStructureInput = {
   equityPercentage: string
 }
 
-function pushLoanLikeStructureErrors(prefix: string, s: LoanLikeStructureInput, errors: string[]) {
+function pushLoanLikeStructureErrors(
+  prefix: string,
+  s: LoanLikeStructureInput,
+  errors: string[],
+  options?: { amountMode?: "range" | "single" },
+) {
+  const amountMode = options?.amountMode ?? "range"
   if (!has(s.interestRate)) errors.push(`${prefix}Interest Rate is required.`)
   if (!has(s.interestMethod)) errors.push(`${prefix}Interest Method is required.`)
   if (!has(s.repaymentWorkflow)) errors.push(`${prefix}Repayment Workflow is required.`)
-  if (!has(s.minAmount)) errors.push(`${prefix}Minimum loan amount is required.`)
-  if (!has(s.maxAmount)) errors.push(`${prefix}Maximum loan amount is required.`)
-  const minN = parseNum(s.minAmount)
-  const maxN = parseNum(s.maxAmount)
-  if (has(s.minAmount) && has(s.maxAmount) && Number.isFinite(minN) && Number.isFinite(maxN) && maxN < minN) {
-    errors.push(`${prefix}Maximum loan amount must be greater than or equal to the minimum.`)
+
+  if (amountMode === "single") {
+    if (!has(s.mortgageAmount || "")) {
+      errors.push(`${prefix}Mortgage Amount is required.`)
+    } else {
+      const amountN = parseNum(s.mortgageAmount || "")
+      if (!Number.isFinite(amountN) || amountN <= 0) {
+        errors.push(`${prefix}Mortgage Amount must be greater than 0.`)
+      }
+    }
+  } else {
+    if (!has(s.minAmount)) errors.push(`${prefix}Minimum loan amount is required.`)
+    if (!has(s.maxAmount)) errors.push(`${prefix}Maximum loan amount is required.`)
+    const minN = parseNum(s.minAmount)
+    const maxN = parseNum(s.maxAmount)
+    if (has(s.minAmount) && has(s.maxAmount) && Number.isFinite(minN) && Number.isFinite(maxN) && maxN < minN) {
+      errors.push(`${prefix}Maximum loan amount must be greater than or equal to the minimum.`)
+    }
   }
+
   if (!has(s.repaymentSchedule)) errors.push(`${prefix}Repayment Structure is required.`)
   if (!has(s.amortizationSchedule)) errors.push(`${prefix}Amortization Schedule is required.`)
   if (!has(s.repaymentFrequency)) errors.push(`${prefix}Repayment Frequency is required.`)
@@ -51,6 +73,14 @@ function pushLoanLikeStructureErrors(prefix: string, s: LoanLikeStructureInput, 
   }
   if (s.equityRequirementMode === "percentage" && !has(s.equityPercentage)) {
     errors.push(`${prefix}Equity percentage is required for the selected equity requirement.`)
+  }
+  // Block complete when % / fixed equity is set but mortgage amount is empty (MORTGAGE).
+  if (
+    amountMode === "single" &&
+    (s.equityRequirementMode === "fixed" || s.equityRequirementMode === "percentage") &&
+    !has(s.mortgageAmount || "")
+  ) {
+    errors.push(`${prefix}Mortgage Amount is required when equity contribution is configured.`)
   }
 }
 
@@ -166,7 +196,7 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
   }
 
   if (step === 2) {
-    pushLoanLikeStructureErrors("Structure: ", ctx.structure, errors)
+    pushLoanLikeStructureErrors("Structure: ", ctx.structure, errors, { amountMode: "single" })
   }
 
   if (step === 3) {
@@ -179,7 +209,12 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
   }
 
   if (step === 4) {
-    if (!ctx.charges.length) errors.push("Fees & Charges: Add at least one fee (name, type, and value).")
+    const hasManagementFee = ctx.charges.some(
+      (c) => String(c.name || "").trim().toLowerCase() === "management fee",
+    )
+    if (!hasManagementFee) {
+      errors.push('Fees & Charges: “Management Fee” is required (pinned; Flat or Percent + value).')
+    }
     // Name of Penalty optional per spec — do not require penalty rows when late repayment is on.
   }
 
@@ -189,7 +224,7 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
       const n = i + 1
       if (!has(p.name)) errors.push(`Properties: Property #${n} — Name is required.`)
       if (!has(p.type)) errors.push(`Properties: Property #${n} — Property type is required.`)
-      if (!has(p.value)) errors.push(`Properties: Property #${n} — Value is required.`)
+      // Property value is optional (listing display only — equity bases on Mortgage Amount).
       if (!has(p.location)) errors.push(`Properties: Property #${n} — Location is required.`)
       if (!has(p.description)) errors.push(`Properties: Property #${n} — Description is required.`)
       if (!Array.isArray(p.facilities) || p.facilities.length === 0) {

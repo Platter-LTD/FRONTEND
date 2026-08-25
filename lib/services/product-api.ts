@@ -15,6 +15,7 @@ import {
   extractProductItems,
   type ListProductsParams,
 } from '@/lib/productOverview';
+import { ensureManagementFeePinned } from '@/lib/managementFee';
 
 const decodeTokenMerchantId = (token: string | null): string | null => {
   if (!token) return null;
@@ -318,7 +319,7 @@ const mapMortgagePropertiesForApi = (items: any[]) => {
 };
 
 const mapFeesFromCharges = (raw: any[]) =>
-  raw.map((c: any) =>
+  ensureManagementFeePinned(raw).map((c) =>
     compactObject({
       name: c?.name,
       feeType: c?.feeType,
@@ -641,10 +642,23 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     }
 
     if (isMortgage) {
-      const minL = parseSavingsAmountNumber(configuration?.minLoanAmount);
-      const maxL = parseSavingsAmountNumber(configuration?.maxLoanAmount);
-      const loanAmount = compactObject({ min: minL, max: maxL });
-      if (Object.keys(loanAmount).length) structureBase.loanAmount = loanAmount;
+      // MORTGAGE: single facility amount — do not send loanAmount min/max.
+      const mortgageAmount =
+        parseSavingsAmountNumber(configuration?.mortgageAmount) ??
+        (() => {
+          const minL = parseSavingsAmountNumber(configuration?.minLoanAmount)
+          const maxL = parseSavingsAmountNumber(configuration?.maxLoanAmount)
+          if (minL != null && maxL != null && minL === maxL) return minL
+          if (maxL != null && maxL > 0) return maxL
+          if (minL != null && minL > 0) return minL
+          return undefined
+        })()
+      if (mortgageAmount != null && mortgageAmount > 0) {
+        structureBase.mortgageAmount = mortgageAmount
+      }
+      // Explicitly omit legacy range so it is not the source of truth.
+      delete (structureBase as { loanAmount?: unknown }).loanAmount
+
       if (typeof structureBase.interestRate === 'string') {
         structureBase.interestRate = structureBase.interestRate.replace(/%/g, '').trim();
       }
@@ -687,8 +701,7 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
     compactObject({
       fees: (() => {
         const raw = configuration?.charges ?? configuration?.fees ?? [];
-        if (!Array.isArray(raw) || !raw.length) return undefined;
-        return mapFeesFromCharges(raw);
+        return mapFeesFromCharges(Array.isArray(raw) ? raw : []);
       })(),
       deductAllChargesOnLoan: (() => {
         const customerPays =
@@ -795,15 +808,22 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
       ? configuration.properties
       : [];
 
-  // Product MS validates equityContribution at the document root (loan + mortgage).
-  const equityContributionTopLevel = isLoan || isMortgage
+  // Product MS validates equityContribution at the document root for LOAN.
+  // MORTGAGE: only send structure.equityContribution — dual top-level + structure → 400.
+  const equityContributionTopLevel = isLoan
     ? resolveEquityContribution(configuration)
     : undefined;
 
+  const mortgagePropertyValue = isMortgage
+    ? parseSavingsAmountNumber(configuration?.propertyValue)
+    : undefined
+
   const mortgageTopLevel = isMortgage
     ? compactObject({
-        equityContribution: equityContributionTopLevel,
-        propertyValue: parseSavingsAmountNumber(configuration?.propertyValue),
+        // Omit empty/zero propertyValue — optional display field only.
+        ...(mortgagePropertyValue != null && mortgagePropertyValue > 0
+          ? { propertyValue: mortgagePropertyValue }
+          : {}),
         mortgageWorkflowStepOrder: Array.isArray(configuration?.mortgageWorkflowStepOrder)
           ? configuration.mortgageWorkflowStepOrder
           : undefined,

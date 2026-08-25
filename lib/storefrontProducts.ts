@@ -18,7 +18,9 @@ export interface MobileProduct {
   withdrawalFlexibility?: string
   amountMin?: number
   amountMax?: number
+  equityRequirement?: string
   equityContribution?: number
+  mortgageAmount?: number
   propertyValue?: number
   price?: number
   minimumQuantity?: number
@@ -248,6 +250,7 @@ export function mapApiProductToMobileProduct(row: Record<string, unknown>): Mobi
   const merchantFeeAdditions = asRecord(row.merchantFeeAdditions)
 
   const loanAmount = asRange(structure.loanAmount)
+  const mortgageFacility = asNumber(structure.mortgageAmount)
   const investmentAmount = asRange(structure.investmentAmount)
   const savingsAmount = asRange(structure.savingsAmount)
   const unitPrice =
@@ -289,7 +292,9 @@ export function mapApiProductToMobileProduct(row: Record<string, unknown>): Mobi
     firstNamedDescription(about.commodityTypes) ||
     {}
   const amountRange =
-    loanAmount.min != null || loanAmount.max != null
+    mortgageFacility != null
+      ? { min: mortgageFacility, max: mortgageFacility }
+      : loanAmount.min != null || loanAmount.max != null
       ? loanAmount
       : investmentAmount.min != null || investmentAmount.max != null
         ? investmentAmount
@@ -342,9 +347,12 @@ export function mapApiProductToMobileProduct(row: Record<string, unknown>): Mobi
           ? row.unitOfMeasure
           : undefined,
     propertyValue:
-      typeof structure.propertyValue === "number" ? structure.propertyValue : undefined,
+      asNumber(row.propertyValue) ??
+      (typeof structure.propertyValue === "number" ? structure.propertyValue : undefined),
+    equityRequirement: asString(row.equityRequirement) ?? asString(structure.equityRequirement),
     equityContribution:
       asNumber(row.equityContribution) ?? asNumber(structure.equityContribution),
+    mortgageAmount: mortgageFacility,
     minimumQuantity:
       minimumQuantity,
     unitAmount: asNumber(unitAmount.amount ?? structure.unitAmount),
@@ -358,14 +366,28 @@ export function mapApiProductToMobileProduct(row: Record<string, unknown>): Mobi
     properties: mapProperties(row.properties),
     createdAt: String(row.createdAt ?? ""),
     updatedAt: String(row.updatedAt ?? ""),
-    ...(loanAmount.max != null ? { propertyValue: loanAmount.max } : {}),
-    ...(investmentAmount.min != null && loanAmount.max == null
+    // Do not invent propertyValue from loan/mortgage facility amounts.
+    ...(uiType !== "Mortgage" &&
+    asNumber(row.propertyValue) == null &&
+    structure.propertyValue == null &&
+    loanAmount.max != null
+      ? { propertyValue: loanAmount.max }
+      : {}),
+    ...(uiType !== "Mortgage" &&
+    asNumber(row.propertyValue) == null &&
+    structure.propertyValue == null &&
+    loanAmount.max == null &&
+    investmentAmount.min != null
       ? { propertyValue: investmentAmount.min }
       : {}),
-    ...(savingsAmount.min != null && loanAmount.max == null && investmentAmount.min == null
+    ...(uiType !== "Mortgage" &&
+    asNumber(row.propertyValue) == null &&
+    structure.propertyValue == null &&
+    loanAmount.max == null &&
+    investmentAmount.min == null &&
+    savingsAmount.min != null
       ? { propertyValue: savingsAmount.min }
       : {}),
-    ...(asNumber(row.propertyValue) != null ? { propertyValue: asNumber(row.propertyValue) } : {}),
   }
 
   return mapped
