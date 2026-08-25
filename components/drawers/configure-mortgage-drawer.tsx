@@ -36,6 +36,7 @@ import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import {
   DEFAULT_MANAGEMENT_FEE,
   ensureManagementFeePinned,
+  finalizeFeesForSubmit,
   isManagementFeeName,
   MANAGEMENT_FEE_NAME,
 } from "@/lib/managementFee"
@@ -1193,6 +1194,7 @@ export default function ConfigureMortgageDrawer({
       const pinned = ensureManagementFeePinned(prev)
       const [management, ...rest] = pinned
       const nextType = patch.feeType ?? management.feeType
+      // Allow clearing the value (empty string) so merchants can replace "0".
       const nextValue =
         patch.value !== undefined
           ? normalizeTypedValue(patch.value, nextType)
@@ -1203,7 +1205,7 @@ export default function ConfigureMortgageDrawer({
         {
           name: MANAGEMENT_FEE_NAME,
           feeType: nextType,
-          value: nextValue || (isPercentType(nextType) ? "0%" : "0"),
+          value: nextValue,
         },
         ...rest,
       ]
@@ -1896,7 +1898,7 @@ export default function ConfigureMortgageDrawer({
           securityOtherSpecification,
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
-          charges: ensureManagementFeePinned(charges),
+          charges: finalizeFeesForSubmit(charges),
           deductChargesOnLoan,
           customerPayChargesBeforeDisbursement,
           enableLateRepaymentCharges,
@@ -2109,12 +2111,12 @@ export default function ConfigureMortgageDrawer({
                 requirement="required"
               />
               <ProductConfigSelect
-                label="Acceptable NPA"
+                label="Acceptable NPL"
                 placeholder="Select Section"
                 value={acceptableNpa}
                 options={acceptableNpaOptions}
                 onChange={setAcceptableNpa}
-                requirement="required"
+                requirement="optional"
               />
               <ProductConfigSelect
                 label="Equity Requirement"

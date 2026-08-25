@@ -1191,12 +1191,12 @@ export default function ConfigureLoanDrawer({
               requirement="required"
             />
             <ProductConfigSelect
-              label="Acceptable NPA"
+              label="Acceptable NPL"
               placeholder="Select Section"
               value={acceptableNpa}
               options={acceptableNpaOptions}
               onChange={setAcceptableNpa}
-              requirement="required"
+              requirement="optional"
             />
             <ProductConfigSelect
               label="Equity Requirement"
