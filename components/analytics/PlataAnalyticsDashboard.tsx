@@ -230,8 +230,8 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
                 <div key={kpi.label} className="rounded-xl border border-[#E4E6EA] bg-white px-6 py-5">
                   <p className="mb-2.5 flex items-center gap-1.5 text-[13px] uppercase tracking-[0.02em] text-[#5B6472]">
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#C9A24B]" />
-                    {kpi.label}
-                  </p>
+                {kpi.label}
+              </p>
                   <p className="m-0 text-[26px] font-semibold text-[#0B1E3B] sm:text-2xl">{kpi.value}</p>
                   <p
                     className={`mt-2 text-xs ${
@@ -241,12 +241,12 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
                           ? "text-[#C9852E]"
                           : "text-[#5B6472]"
                     }`}
-                  >
-                    {kpi.delta}
-                  </p>
-                </div>
-              ))}
+              >
+                {kpi.delta}
+              </p>
             </div>
+          ))}
+        </div>
 
             <div className="mb-8 rounded-xl border border-[#E4E6EA] bg-white p-6">
               <p className="mb-4 text-lg font-medium">{volumeCaption(range)}</p>
@@ -254,51 +254,51 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
                 <p className="py-16 text-center text-sm text-[#5B6472]">No weekly volume for this period.</p>
               ) : (
                 <div className="h-[240px] w-full min-w-0 sm:h-[260px]">
-                  <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                      <defs>
+                <defs>
                         <linearGradient id="plataTrendFill" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="0%" stopColor="#C9A24B" stopOpacity={0.2} />
                           <stop offset="100%" stopColor="#C9A24B" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
+                  </linearGradient>
+                </defs>
                       <CartesianGrid stroke="#E4E6EA" vertical={false} />
-                      <XAxis
-                        dataKey="label"
+                <XAxis
+                  dataKey="label"
                         tick={{ fill: "#9AA1AC", fontSize: 11 }}
                         axisLine={false}
-                        tickLine={false}
-                      />
-                      <YAxis
+                  tickLine={false}
+                />
+                <YAxis
                         tick={{ fill: "#9AA1AC", fontSize: 11 }}
                         axisLine={false}
-                        tickLine={false}
+                  tickLine={false}
                         width={56}
                         tickFormatter={(v: number) => formatNairaCompact(v)}
-                      />
-                      <Tooltip
-                        contentStyle={{
+                />
+                <Tooltip
+                  contentStyle={{
                           background: "#0B1E3B",
-                          border: "none",
-                          borderRadius: 8,
-                          color: "#fff",
-                          fontSize: 12,
-                        }}
-                        labelStyle={{ color: "#fff" }}
+                    border: "none",
+                    borderRadius: 8,
+                    color: "#fff",
+                    fontSize: 12,
+                  }}
+                  labelStyle={{ color: "#fff" }}
                         formatter={(value: number | string) => [formatNaira(Number(value)), "Volume"]}
-                      />
-                      <Area
-                        type="monotone"
+                />
+                <Area
+                  type="monotone"
                         dataKey="value"
                         stroke="#0B1E3B"
-                        strokeWidth={2}
+                  strokeWidth={2}
                         fill="url(#plataTrendFill)"
                         dot={{ r: 3, fill: "#C9A24B", stroke: "#0B1E3B", strokeWidth: 1 }}
-                        activeDot={{ r: 5 }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                  activeDot={{ r: 5 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
               )}
             </div>
 
@@ -307,7 +307,7 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
               {pillars.length === 0 ? (
                 <p className="py-10 text-center text-sm text-[#5B6472]">No product breakdown yet.</p>
               ) : (
-                <div className="space-y-4">
+          <div className="space-y-4">
                   {pillars.map((p) => {
                     const color = PRODUCT_PILLAR_COLORS[String(p.productType || "").toUpperCase()] || "#5B6472"
                     const width = Math.max(0, Math.min(100, p.percentage ?? 0))
@@ -317,11 +317,11 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
                           <span className="flex items-center gap-2 font-medium">
                             <span className="h-2.5 w-2.5 rounded-[3px]" style={{ background: color }} />
                             {p.label || p.productType}
-                          </span>
+                  </span>
                           <span className="text-[#5B6472]">
                             {formatNairaCompact(p.amount)} · {formatCount(p.transactionCount)} txns · {p.percentage ?? 0}%
-                          </span>
-                        </div>
+                  </span>
+                </div>
                         <div className="h-2 overflow-hidden rounded bg-[#F7F7F5]">
                           <div className="h-full rounded" style={{ width: `${width}%`, background: color }} />
                         </div>
@@ -330,13 +330,13 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
                   })}
                 </div>
               )}
-            </div>
+          </div>
 
             <div className="mb-8 overflow-x-auto rounded-xl border border-[#E4E6EA] bg-white p-6">
               <p className="mb-4 text-lg font-medium">Volume per customer, top accounts</p>
-              <table className="w-full min-w-[640px] border-collapse text-sm">
-                <thead>
-                  <tr>
+          <table className="w-full min-w-[640px] border-collapse text-sm">
+            <thead>
+              <tr>
                     {["Customer", "Product", "Volume", "Txns", "Avg. ticket", "Status"].map((h, i) => (
                       <th
                         key={h}
@@ -345,11 +345,11 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
                         }`}
                       >
                         {h}
-                      </th>
+                    </th>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
+              </tr>
+            </thead>
+            <tbody>
                   {topAccounts.map((row) => {
                     const active = String(row.status || "").toLowerCase() === "active"
                     return (
@@ -358,43 +358,43 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
                         <td className="border-b border-[#E4E6EA] px-3 py-3.5">{row.product || row.productType}</td>
                         <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
                           {formatNairaCompact(row.volume)}
-                        </td>
+                  </td>
                         <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
                           {formatCount(row.transactionCount)}
-                        </td>
+                  </td>
                         <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
                           {formatNairaCompact(row.averageTicket)}
-                        </td>
+                  </td>
                         <td className="border-b border-[#E4E6EA] px-3 py-3.5">
-                          <span
+                    <span
                             className={`inline-block rounded-full px-2.5 py-[3px] text-[11px] font-medium ${
                               active
-                                ? "bg-[rgba(29,158,117,0.12)] text-[#1D9E75]"
+                          ? "bg-[rgba(29,158,117,0.12)] text-[#1D9E75]"
                                 : "bg-[rgba(192,57,43,0.12)] text-[#C0392B]"
                             }`}
-                          >
+                    >
                             {row.status || "—"}
-                          </span>
-                        </td>
-                      </tr>
+                    </span>
+                  </td>
+                </tr>
                     )
                   })}
                   {topAccounts.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-3 py-10 text-center text-sm text-[#5B6472]">
                         No customer volume yet.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
             </div>
 
             <div className="overflow-x-auto rounded-xl border border-[#E4E6EA] bg-white p-6">
               <p className="mb-4 text-lg font-medium">Pending transactions by product</p>
-              <table className="w-full min-w-[480px] border-collapse text-sm">
-                <thead>
-                  <tr>
+          <table className="w-full min-w-[480px] border-collapse text-sm">
+            <thead>
+              <tr>
                     {["Product", "Pending", "Value", "Oldest"].map((h, i) => (
                       <th
                         key={h}
@@ -403,38 +403,38 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
                         }`}
                       >
                         {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
                   {pendingRows.map((row) => (
                     <tr key={`${row.productType}-${row.label}`}>
                       <td className="border-b border-[#E4E6EA] px-3 py-3.5">{row.label || row.productType}</td>
                       <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
                         {formatCount(row.pendingCount)}
-                      </td>
+                  </td>
                       <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
                         {formatNairaCompact(row.value)}
-                      </td>
+                  </td>
                       <td className="border-b border-[#E4E6EA] px-3 py-3.5">
                         <span
                           className={`inline-block rounded-full px-2.5 py-[3px] text-[11px] font-medium ${BADGE_TONE[oldestTone(row.oldest)]}`}
                         >
                           {row.oldest || "—"}
                         </span>
-                      </td>
-                    </tr>
-                  ))}
+                  </td>
+                </tr>
+              ))}
                   {pendingRows.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-3 py-10 text-center text-sm text-[#5B6472]">
                         No pending transactions.
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
             </div>
           </>
         )}

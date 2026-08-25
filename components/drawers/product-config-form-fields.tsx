@@ -278,10 +278,18 @@ export interface ProductConfigRepaymentWorkflowPanelProps {
   maxPlaceholder?: string
   workflowRequirement?: "required" | "optional"
   amountFieldsRequirement?: "required" | "optional"
+  /**
+   * `range` (default): Minimum + Maximum — used by LOAN.
+   * `single`: one amount field — used by MORTGAGE (`structure.mortgageAmount`).
+   */
+  amountMode?: "range" | "single"
+  singleAmount?: string
+  onSingleAmountChange?: (value: string) => void
+  singleAmountPlaceholder?: string
 }
 
 /**
- * Single container: left = repayment options as mutually exclusive switches; right = min/max amount.
+ * Single container: left = repayment options as mutually exclusive switches; right = amount fields.
  * Use on loan & mortgage configure drawers (and any future product with the same pattern).
  */
 export function ProductConfigRepaymentWorkflowPanel({
@@ -297,6 +305,10 @@ export function ProductConfigRepaymentWorkflowPanel({
   maxPlaceholder = "Max Amount",
   workflowRequirement = "required",
   amountFieldsRequirement = "required",
+  amountMode = "range",
+  singleAmount = "",
+  onSingleAmountChange,
+  singleAmountPlaceholder = "Enter amount",
 }: ProductConfigRepaymentWorkflowPanelProps) {
   const list = workflows.length ? workflows : [...DEFAULT_REPAYMENT_WORKFLOWS]
 
@@ -342,26 +354,38 @@ export function ProductConfigRepaymentWorkflowPanel({
             {amountLabel}
             <span className="font-normal text-gray-500">{requirementSuffix(amountFieldsRequirement)}</span>
           </h3>
-          <div className="space-y-2">
+          {amountMode === "single" ? (
             <ProductConfigInput
-              label="Minimum"
-              placeholder={minPlaceholder}
-              value={minAmount}
-              onChange={onMinAmountChange}
+              label="Amount"
+              placeholder={singleAmountPlaceholder}
+              value={singleAmount}
+              onChange={onSingleAmountChange ?? (() => {})}
               numericOnly
               formatThousands
               requirement={amountFieldsRequirement}
             />
-            <ProductConfigInput
-              label="Maximum"
-              placeholder={maxPlaceholder}
-              value={maxAmount}
-              onChange={onMaxAmountChange}
-              numericOnly
-              formatThousands
-              requirement={amountFieldsRequirement}
-            />
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <ProductConfigInput
+                label="Minimum"
+                placeholder={minPlaceholder}
+                value={minAmount}
+                onChange={onMinAmountChange}
+                numericOnly
+                formatThousands
+                requirement={amountFieldsRequirement}
+              />
+              <ProductConfigInput
+                label="Maximum"
+                placeholder={maxPlaceholder}
+                value={maxAmount}
+                onChange={onMaxAmountChange}
+                numericOnly
+                formatThousands
+                requirement={amountFieldsRequirement}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

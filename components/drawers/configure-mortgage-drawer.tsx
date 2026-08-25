@@ -34,6 +34,12 @@ import {
 import { validateAllMortgageSteps, validateMortgageStep } from "@/lib/productConfigureStepValidation"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import {
+  DEFAULT_MANAGEMENT_FEE,
+  ensureManagementFeePinned,
+  isManagementFeeName,
+  MANAGEMENT_FEE_NAME,
+} from "@/lib/managementFee"
+import {
   hydrateSecurityRequirementSelection,
   isOtherSecurityOption,
   isOtherSecuritySelected,
@@ -165,6 +171,72 @@ function classifyEquityRequirementMode(selected: string): "zero" | "fixed" | "pe
   if (s.includes("percentage") || (s.includes("percent") && s.includes("based"))) return "percentage"
   if (s.includes("fixed") && s.includes("amount")) return "fixed"
   return "none"
+}
+
+/** Equity preview bases on Mortgage Amount only — never property listing value. */
+function MortgageEquityPreview({
+  mortgageAmount,
+  equityRequirementMode,
+  equityFixedAmount,
+  equityPercentage,
+}: {
+  mortgageAmount: string
+  equityRequirementMode: "zero" | "fixed" | "percentage" | "none"
+  equityFixedAmount: string
+  equityPercentage: string
+}) {
+  const facility = Number.parseFloat(String(mortgageAmount).replace(/,/g, "").trim())
+  const pct = Number.parseFloat(String(equityPercentage).replace(/%/g, "").trim())
+  const fixed = Number.parseFloat(String(equityFixedAmount).replace(/,/g, "").trim())
+
+  let equityRequired: number | null = null
+  if (equityRequirementMode === "percentage" && Number.isFinite(facility) && facility > 0 && Number.isFinite(pct)) {
+    equityRequired = (facility * pct) / 100
+  } else if (equityRequirementMode === "fixed" && Number.isFinite(fixed) && fixed >= 0) {
+    equityRequired = fixed
+  }
+
+  if (equityRequired == null || !Number.isFinite(facility) || facility <= 0) {
+    return (
+      <p className="rounded-xl border border-amber-100 bg-amber-50/80 px-4 py-3 text-xs text-amber-900">
+        Enter a Mortgage Amount to preview equity. Equity is calculated from Mortgage Amount
+        {equityRequirementMode === "percentage" ? " (not Property Value)." : "."}
+      </p>
+    )
+  }
+
+  const financed = Math.max(0, facility - equityRequired)
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n)
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+      <p className="text-xs font-medium text-slate-500">
+        {equityRequirementMode === "percentage"
+          ? `Equity is ${Number.isFinite(pct) ? pct : "—"}% of Mortgage Amount.`
+          : "Equity is a fixed amount of Mortgage Amount."}
+      </p>
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-slate-400">Mortgage Amount</p>
+          <p className="font-semibold text-slate-800">{fmt(facility)}</p>
+        </div>
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-slate-400">Estimated down payment</p>
+          <p className="font-semibold text-slate-800">{fmt(equityRequired)}</p>
+        </div>
+        <div>
+          <p className="text-[11px] uppercase tracking-wide text-slate-400">Estimated financed</p>
+          <p className="font-semibold text-slate-800">{fmt(financed)}</p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function asBool(value: unknown) {
@@ -390,8 +462,7 @@ export default function ConfigureMortgageDrawer({
   const [moratoriumDurationOf, setMoratoriumDurationOf] = useState("")
   const [moratoriumType, setMoratoriumType] = useState("")
   const [repaymentWorkflow, setRepaymentWorkflow] = useState<string>(DEFAULT_REPAYMENT_WORKFLOWS[0])
-  const [minLoanAmount, setMinLoanAmount] = useState("")
-  const [maxLoanAmount, setMaxLoanAmount] = useState("")
+  const [mortgageAmount, setMortgageAmount] = useState("")
   const [repaymentSchedule, setRepaymentSchedule] = useState("")
   const [amortizationSchedule, setAmortizationSchedule] = useState("")
   const [repaymentFrequency, setRepaymentFrequency] = useState("")
@@ -425,7 +496,7 @@ export default function ConfigureMortgageDrawer({
   const [chargeName, setChargeName] = useState("")
   const [chargeFeeType, setChargeFeeType] = useState("")
   const [chargeValue, setChargeValue] = useState("")
-  const [charges, setCharges] = useState<FeeItem[]>([])
+  const [charges, setCharges] = useState<FeeItem[]>(() => [{ ...DEFAULT_MANAGEMENT_FEE }])
   const [deductChargesOnLoan, setDeductChargesOnLoan] = useState(true)
   const [customerPayChargesBeforeDisbursement, setCustomerPayChargesBeforeDisbursement] = useState(false)
   const [enableLateRepaymentCharges, setEnableLateRepaymentCharges] = useState(true)
@@ -673,14 +744,20 @@ export default function ConfigureMortgageDrawer({
       ) || DEFAULT_REPAYMENT_WORKFLOWS[0],
     )
     const loanAmount = (structure.loanAmount ?? {}) as Record<string, unknown>
-    setMinLoanAmount(
+    // Prefer structure.mortgageAmount; migrate legacy equal min===max (or max) into one field.
+    const legacyMin = Number(loanAmount.min ?? structure.minLoanAmount ?? mortgageData.minLoanAmount)
+    const legacyMax = Number(loanAmount.max ?? structure.maxLoanAmount ?? mortgageData.maxLoanAmount)
+    const legacySingle =
+      Number.isFinite(legacyMin) && Number.isFinite(legacyMax) && legacyMin === legacyMax
+        ? legacyMin
+        : Number.isFinite(legacyMax) && legacyMax > 0
+          ? legacyMax
+          : Number.isFinite(legacyMin) && legacyMin > 0
+            ? legacyMin
+            : ""
+    setMortgageAmount(
       formatAmountDisplayFromUnknown(
-        mortgageData.minLoanAmount ?? structure.minLoanAmount ?? loanAmount.min ?? "",
-      ),
-    )
-    setMaxLoanAmount(
-      formatAmountDisplayFromUnknown(
-        mortgageData.maxLoanAmount ?? structure.maxLoanAmount ?? loanAmount.max ?? "",
+        mortgageData.mortgageAmount ?? structure.mortgageAmount ?? legacySingle ?? "",
       ),
     )
     setRepaymentSchedule(
@@ -825,9 +902,11 @@ export default function ConfigureMortgageDrawer({
     // setAirSignUid(...)
     // setRequireApplicantSignature(...)
     setCharges(
-      Array.isArray(mortgageData.charges ?? fees.charges ?? fees.fees)
-        ? (mortgageData.charges ?? fees.charges ?? fees.fees)
-        : [],
+      ensureManagementFeePinned(
+        Array.isArray(mortgageData.charges ?? fees.charges ?? fees.fees)
+          ? (mortgageData.charges ?? fees.charges ?? fees.fees)
+          : [],
+      ),
     )
     setDeductChargesOnLoan(asBool(mortgageData.deductChargesOnLoan ?? fees.deductChargesOnLoan))
     setCustomerPayChargesBeforeDisbursement(
@@ -861,6 +940,46 @@ export default function ConfigureMortgageDrawer({
     acceptableNpaOptions,
     equityRequirementOptions,
   ])
+
+  // Remap property doc types once options arrive (hydrate may run before options load).
+  useEffect(() => {
+    if (!isOpen || propertyDocumentationOptions.length === 0) return
+    const normalizeType = (raw: string) => {
+      const trimmed = raw.trim()
+      if (!trimmed) return trimmed
+      const match = propertyDocumentationOptions.find(
+        (opt) =>
+          opt.value === trimmed ||
+          opt.label === trimmed ||
+          opt.value.toLowerCase() === trimmed.toLowerCase() ||
+          opt.label.toLowerCase() === trimmed.toLowerCase(),
+      )
+      return match?.value || trimmed
+    }
+    setProperties((prev) => {
+      let anyChanged = false
+      const next = prev.map((p) => {
+        let docsChanged = false
+        const docs = p.propertyDocumentation.map((doc) => {
+          const documentType = normalizeType(doc.documentType)
+          if (documentType !== doc.documentType) docsChanged = true
+          return documentType === doc.documentType ? doc : { ...doc, documentType }
+        })
+        if (docsChanged) anyChanged = true
+        return docsChanged ? { ...p, propertyDocumentation: docs } : p
+      })
+      return anyChanged ? next : prev
+    })
+    setPropertyDocDrafts((prev) => {
+      let changed = false
+      const next = prev.map((doc) => {
+        const documentType = normalizeType(doc.documentType)
+        if (documentType !== doc.documentType) changed = true
+        return documentType === doc.documentType ? doc : { ...doc, documentType }
+      })
+      return changed ? next : prev
+    })
+  }, [isOpen, propertyDocumentationOptions])
 
   useEffect(() => {
     if (!isOpen) {
@@ -1046,14 +1165,49 @@ export default function ConfigureMortgageDrawer({
 
   const addCharge = () => {
     if (!chargeName.trim() || !chargeFeeType || !chargeValue.trim()) return
-    setCharges((prev) => [...prev, { name: chargeName.trim(), feeType: chargeFeeType, value: chargeValue.trim() }])
+    if (isManagementFeeName(chargeName)) {
+      toast.error(`“${MANAGEMENT_FEE_NAME}” is pinned — edit its type and value in the list below.`)
+      return
+    }
+    setCharges((prev) =>
+      ensureManagementFeePinned([
+        ...prev,
+        { name: chargeName.trim(), feeType: chargeFeeType, value: chargeValue.trim() },
+      ]),
+    )
     setChargeName("")
     setChargeFeeType("")
     setChargeValue("")
   }
 
   const removeCharge = (index: number) => {
-    setCharges((prev) => prev.filter((_, i) => i !== index))
+    setCharges((prev) => {
+      const target = prev[index]
+      if (target && isManagementFeeName(target.name)) return prev
+      return ensureManagementFeePinned(prev.filter((_, i) => i !== index))
+    })
+  }
+
+  const updateManagementFee = (patch: Partial<Pick<FeeItem, "feeType" | "value">>) => {
+    setCharges((prev) => {
+      const pinned = ensureManagementFeePinned(prev)
+      const [management, ...rest] = pinned
+      const nextType = patch.feeType ?? management.feeType
+      const nextValue =
+        patch.value !== undefined
+          ? normalizeTypedValue(patch.value, nextType)
+          : patch.feeType
+            ? normalizeTypedValue(management.value, nextType)
+            : management.value
+      return [
+        {
+          name: MANAGEMENT_FEE_NAME,
+          feeType: nextType,
+          value: nextValue || (isPercentType(nextType) ? "0%" : "0"),
+        },
+        ...rest,
+      ]
+    })
   }
 
   const addPenalty = () => {
@@ -1142,8 +1296,8 @@ export default function ConfigureMortgageDrawer({
   }
 
   const addProperty = () => {
-    if (!propertyName.trim() || !propertyType || !propertyValue.trim() || !propertyLocation.trim()) {
-      setPropertyFormError("Fill name, type, value and location before adding.")
+    if (!propertyName.trim() || !propertyType || !propertyLocation.trim()) {
+      setPropertyFormError("Fill name, type and location before adding.")
       return
     }
     if (!propertyVideoUrl.trim()) {
@@ -1261,6 +1415,26 @@ export default function ConfigureMortgageDrawer({
     return match?.label || documentType || "Document"
   }
 
+  /** Idle add-form → edit last property's docs so toggles stay on after Add / reopen. */
+  const isComposingNewProperty =
+    Boolean(propertyName.trim()) ||
+    Boolean(propertyType) ||
+    Boolean(propertyLocation.trim()) ||
+    Boolean(propertyDescription.trim()) ||
+    Boolean(propertyVideoUrl.trim()) ||
+    propertyFacilities.length > 0 ||
+    propertyPreviewFiles.length > 0
+
+  const documentationEditorPropertyId =
+    properties.length > 0 && !isComposingNewProperty
+      ? properties[properties.length - 1].id
+      : null
+
+  const documentationEditorRows =
+    documentationEditorPropertyId != null
+      ? properties.find((p) => p.id === documentationEditorPropertyId)?.propertyDocumentation ?? []
+      : propertyDocDrafts
+
   const renderPropertyDocumentationEditor = (
     rows: PropertyDocumentationItem[],
     propertyId: string | null,
@@ -1316,7 +1490,6 @@ export default function ConfigureMortgageDrawer({
     if (
       propertyName.trim() &&
       propertyType &&
-      propertyValue.trim() &&
       propertyLocation.trim() &&
       propertyVideoUrl.trim() &&
       propertyPreviewFiles.length
@@ -1383,8 +1556,22 @@ export default function ConfigureMortgageDrawer({
       interestRate: filledOrExisting(interestRate, mortgage.interestRate, structure.interestRate),
       interestMethod: filledOrExisting(interestMethod, mortgage.interestMethod, structure.interestMethod),
       repaymentWorkflow: filledOrExisting(repaymentWorkflow, mortgage.repaymentWorkflow, structure.repaymentWorkflow),
-      minAmount: filledOrExisting(minLoanAmount, mortgage.minLoanAmount, structure.minLoanAmount, pickRecord(structure.loanAmount).min),
-      maxAmount: filledOrExisting(maxLoanAmount, mortgage.maxLoanAmount, structure.maxLoanAmount, pickRecord(structure.loanAmount).max),
+      minAmount: "",
+      maxAmount: "",
+      mortgageAmount: filledOrExisting(
+        mortgageAmount,
+        mortgage.mortgageAmount,
+        structure.mortgageAmount,
+        (() => {
+          const la = pickRecord(structure.loanAmount)
+          const minN = Number(la.min)
+          const maxN = Number(la.max)
+          if (Number.isFinite(minN) && Number.isFinite(maxN) && minN === maxN) return minN
+          if (Number.isFinite(maxN) && maxN > 0) return maxN
+          if (Number.isFinite(minN) && minN > 0) return minN
+          return ""
+        })(),
+      ),
       repaymentSchedule: filledOrExisting(repaymentSchedule, mortgage.repaymentSchedule, structure.repaymentSchedule),
       amortizationSchedule: filledOrExisting(amortizationSchedule, mortgage.amortizationSchedule, structure.amortizationSchedule),
       repaymentFrequency: filledOrExisting(repaymentFrequency, mortgage.repaymentFrequency, structure.repaymentFrequency),
@@ -1401,7 +1588,7 @@ export default function ConfigureMortgageDrawer({
     securityOtherSpecification,
     documents,
     otherRequirements,
-    charges: charges.length ? charges : existingFees,
+    charges: ensureManagementFeePinned(charges.length ? charges : existingFees),
     enableLateRepaymentCharges,
     penalties,
     properties: propertiesForValidation.map((p) => ({
@@ -1525,7 +1712,6 @@ export default function ConfigureMortgageDrawer({
     if (
       !propertyName.trim() ||
       !propertyType ||
-      !propertyValue.trim() ||
       !propertyLocation.trim() ||
       !propertyVideoUrl.trim() ||
       !propertyPreviewFiles.length
@@ -1662,14 +1848,15 @@ export default function ConfigureMortgageDrawer({
       let propertyValueSubmit: number | undefined
       if (properties.length > 0) {
         const n = Number.parseFloat(removeCommas(properties[0].value))
-        if (Number.isFinite(n)) propertyValueSubmit = n
+        if (Number.isFinite(n) && n > 0) propertyValueSubmit = n
       }
       if (propertyValueSubmit === undefined && mortgageData?.propertyValue != null) {
         const pv = mortgageData.propertyValue
-        propertyValueSubmit =
+        const parsed =
           typeof pv === "number" && Number.isFinite(pv)
             ? pv
-            : Number.parseFloat(String(pv).replace(/,/g, "")) || undefined
+            : Number.parseFloat(String(pv).replace(/,/g, ""))
+        if (Number.isFinite(parsed) && parsed > 0) propertyValueSubmit = parsed
       }
 
       await Promise.resolve(
@@ -1681,12 +1868,11 @@ export default function ConfigureMortgageDrawer({
           /** Backward-compatible aliases for APIs expecting legacy mortgage drawer fields */
           purpose: description,
           mortgageTenure: tenure,
-          minFacilityAmount: minLoanAmount,
-          maxFacilityAmount: maxLoanAmount,
+          mortgageAmount,
           mortgageTypes,
           ...(previewImage ? { previewImage } : {}),
           previewAssetUrl: previewAssetUrlSubmit,
-          equityContribution: equityContributionSubmit,
+          // Equity lives under structure only (product-api) — avoid top-level conflict.
           propertyValue: propertyValueSubmit,
           interestRate,
           interestMethod,
@@ -1697,8 +1883,6 @@ export default function ConfigureMortgageDrawer({
           moratoriumDurationOf: allowMoratorium ? moratoriumDurationOf : "",
           moratoriumType: allowMoratorium ? moratoriumType : "",
           repaymentWorkflow,
-          minLoanAmount,
-          maxLoanAmount,
           repaymentStructure: repaymentSchedule,
           repaymentSchedule,
           amortizationSchedule,
@@ -1707,11 +1891,12 @@ export default function ConfigureMortgageDrawer({
           equityRequirement,
           equityFixedAmount: equityRequirementMode === "fixed" ? equityFixedAmount.trim() : "",
           equityPercentage: equityRequirementMode === "percentage" ? equityPercentage.trim() : "",
+          equityContribution: equityContributionSubmit,
           securityRequirements: serializeSecurityRequirements(selectedSecurities, securityOtherSpecification),
           securityOtherSpecification,
           documentRequirements: documentsPayload,
           otherRequirements: otherRequirementsPayload,
-          charges,
+          charges: ensureManagementFeePinned(charges),
           deductChargesOnLoan,
           customerPayChargesBeforeDisbursement,
           enableLateRepaymentCharges,
@@ -1887,11 +2072,15 @@ export default function ConfigureMortgageDrawer({
               workflows={repaymentWorkflowOptions}
               selectedWorkflow={repaymentWorkflow}
               onSelectWorkflow={setRepaymentWorkflow}
-              minAmount={minLoanAmount}
-              maxAmount={maxLoanAmount}
-              onMinAmountChange={setMinLoanAmount}
-              onMaxAmountChange={setMaxLoanAmount}
+              minAmount=""
+              maxAmount=""
+              onMinAmountChange={() => {}}
+              onMaxAmountChange={() => {}}
               amountLabel="Mortgage Amount"
+              amountMode="single"
+              singleAmount={mortgageAmount}
+              onSingleAmountChange={setMortgageAmount}
+              singleAmountPlaceholder="Enter mortgage amount"
             />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1956,6 +2145,14 @@ export default function ConfigureMortgageDrawer({
                 />
               ) : null}
             </div>
+            {equityRequirementMode === "percentage" || equityRequirementMode === "fixed" ? (
+              <MortgageEquityPreview
+                mortgageAmount={mortgageAmount}
+                equityRequirementMode={equityRequirementMode}
+                equityFixedAmount={equityFixedAmount}
+                equityPercentage={equityPercentage}
+              />
+            ) : null}
           </div>
         )}
 
@@ -2087,31 +2284,82 @@ export default function ConfigureMortgageDrawer({
               </Button>
             </div>
 
-            {charges.length > 0 && (
-              <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-                <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
-                  <span>Name</span>
-                  <span>Type</span>
-                  <span>Value</span>
-                  <span className="text-right" />
-                </div>
-                {charges.map((charge, index) => (
-                  <div
-                    key={`${charge.name}-${index}`}
-                    className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
-                  >
-                    <span className="pr-2">{charge.name}</span>
-                    <span>{charge.feeType}</span>
-                    <span>{charge.value}</span>
-                    <div className="flex justify-end">
-                      <button type="button" onClick={() => removeCharge(index)} className="text-red-600 hover:text-red-700" aria-label="Remove">
-                        <X size={18} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+            <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
+              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+                <span>Name</span>
+                <span>Type</span>
+                <span>Value</span>
+                <span className="text-right" />
               </div>
-            )}
+              {ensureManagementFeePinned(charges).map((charge, index) => {
+                const pinned = isManagementFeeName(charge.name)
+                return (
+                  <div
+                    key={pinned ? MANAGEMENT_FEE_NAME : `${charge.name}-${index}`}
+                    className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                  >
+                    <span className="pr-2 font-medium text-gray-900">
+                      {pinned ? MANAGEMENT_FEE_NAME : charge.name}
+                      {pinned ? (
+                        <span className="mt-0.5 block text-[10px] font-normal text-gray-400">Required · name fixed</span>
+                      ) : null}
+                    </span>
+                    {pinned ? (
+                      <>
+                        <select
+                          value={charge.feeType}
+                          onChange={(e) => updateManagementFee({ feeType: e.target.value })}
+                          className="h-9 w-full rounded-md border border-gray-200 bg-white px-2 text-sm outline-none focus:border-[#9A813F]"
+                          aria-label="Management Fee type"
+                        >
+                          {(
+                            feeTypeOptions.length
+                              ? feeTypeOptions.includes(charge.feeType)
+                                ? feeTypeOptions
+                                : [charge.feeType, ...feeTypeOptions]
+                              : ["Flat", "Percent"].includes(charge.feeType)
+                                ? ["Flat", "Percent"]
+                                : [charge.feeType, "Flat", "Percent"]
+                          )
+                            .filter(Boolean)
+                            .map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                        </select>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={charge.value}
+                          onChange={(e) => updateManagementFee({ value: e.target.value })}
+                          className="h-9 w-full rounded-md border border-gray-200 bg-white px-2 text-sm outline-none focus:border-[#9A813F]"
+                          aria-label="Management Fee value"
+                        />
+                        <div className="flex justify-end">
+                          <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Pinned</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span>{charge.feeType}</span>
+                        <span>{charge.value}</span>
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => removeCharge(index)}
+                            className="text-red-600 hover:text-red-700"
+                            aria-label="Remove"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <ProductConfigToggle
@@ -2237,12 +2485,12 @@ export default function ConfigureMortgageDrawer({
               />
               <ProductConfigInput
                 label="Value of Property"
-                placeholder="Enter Value"
+                placeholder="Enter Value (optional)"
                 value={propertyValue}
                 onChange={setPropertyValue}
                 numericOnly
                 formatThousands
-                requirement="required"
+                requirement="optional"
               />
             </div>
             <ProductConfigInput
@@ -2363,7 +2611,7 @@ export default function ConfigureMortgageDrawer({
               ) : null}
           </div>
 
-            {renderPropertyDocumentationEditor(propertyDocDrafts, null)}
+            {renderPropertyDocumentationEditor(documentationEditorRows, documentationEditorPropertyId)}
 
             <Button type="button" onClick={addProperty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
               Add
@@ -2460,7 +2708,6 @@ export default function ConfigureMortgageDrawer({
                       </button>
                     </div>
                     </div>
-                    {renderPropertyDocumentationEditor(p.propertyDocumentation, p.id)}
                     <div className="space-y-1">
                       <label className="block text-xs font-medium text-gray-600" htmlFor={`mortgage-prop-video-${p.id}`}>
                         Property video URL <span className="text-red-600">*</span>
