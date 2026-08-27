@@ -189,3 +189,338 @@ export function buildProductListSearchParams(params: ListProductsParams): URLSea
 
   return q
 }
+
+// ─── By-type portfolio overview (LOAN / MORTGAGE / …) ─────────────────────────
+
+export type PortfolioStatusFilter =
+  | "all"
+  | "active"
+  | "inactive"
+  | "non_performing"
+  | "bad"
+
+export type ProductOverviewByTypeParams = {
+  appId: string
+  productType: "LOAN" | "MORTGAGE" | "SAVINGS" | "INVESTMENT" | "COMMODITY" | string
+  portfolioStatus?: PortfolioStatusFilter
+  limit?: number
+  skip?: number
+}
+
+export type PortfolioKpiBucket = {
+  count: number
+  delta?: number
+  subtitle?: string
+}
+
+export type PortfolioLoanAccount = {
+  id?: string
+  loanRef?: string
+  customerName?: string
+  principal?: number
+  status?: string
+  portfolioStatus?: string
+  disbursedAt?: string
+}
+
+export type PortfolioRepaymentRow = {
+  id?: string
+  loanRef?: string
+  customerName?: string
+  amount?: number
+  date?: string
+  status?: string
+  reason?: string
+}
+
+export type PortfolioDueCallout = {
+  amount: number
+  repaymentCount?: number
+  activeLoanCount?: number
+  subtitle?: string
+  label?: string
+}
+
+export type ProductOverviewByTypeData = {
+  activeLoan: PortfolioKpiBucket
+  inactiveLoan: PortfolioKpiBucket
+  nonPerformingLoan: PortfolioKpiBucket
+  badLoan: PortfolioKpiBucket
+  repaymentDue?: PortfolioDueCallout | null
+  loanAccounts: PortfolioLoanAccount[]
+  repayments: PortfolioRepaymentRow[]
+  failedRepayments: PortfolioRepaymentRow[]
+  portfolioAccountsMeta?: {
+    portfolioStatus?: string
+    total?: number
+    limit?: number
+    skip?: number
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  return value as Record<string, unknown>
+}
+
+function pickNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value
+    if (typeof value === "string" && value.trim()) {
+      const n = Number(value.replace(/[^\d.-]/g, ""))
+      if (Number.isFinite(n)) return n
+    }
+  }
+  return undefined
+}
+
+function pickString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim()
+  }
+  return undefined
+}
+
+function normalizeKpiBucket(raw: unknown, fallbackSubtitle?: string): PortfolioKpiBucket {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return { count: raw, subtitle: fallbackSubtitle }
+  }
+  const obj = asRecord(raw)
+  if (!obj) return { count: 0, subtitle: fallbackSubtitle }
+  const delta = pickNumber(
+    obj.deltaThisMonth,
+    obj.delta,
+    obj.change,
+    obj.thisMonth,
+    obj.addedThisMonth,
+  )
+  // Prefer API-provided note; otherwise kpiDeltaLabel will format deltaThisMonth.
+  return {
+    count: pickNumber(obj.count, obj.total, obj.value, obj.amount) ?? 0,
+    delta,
+    subtitle: pickString(obj.subtitle, obj.note, obj.label, obj.description) || undefined,
+  }
+}
+
+function normalizeLoanAccount(raw: unknown): PortfolioLoanAccount | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    id: pickString(obj.id, obj.applicationId, obj.accountId),
+    loanRef: pickString(
+      obj.loanRef,
+      obj.reference,
+      obj.referenceNumber,
+      obj.globalProductReferenceNumber,
+      obj.id,
+    ),
+    customerName: pickString(
+      obj.customerName,
+      obj.userName,
+      obj.fullName,
+      obj.name,
+      obj.applicantName,
+    ),
+    principal: pickNumber(
+      obj.principal,
+      obj.principalAmount,
+      obj.outstanding,
+      obj.approvedAmount,
+      obj.approvedLoanAmount,
+      obj.amount,
+      obj.disbursedAmount,
+    ),
+    status: pickString(obj.status, obj.loanStatus, obj.accountStatus),
+    portfolioStatus: pickString(
+      obj.portfolioStatus,
+      obj.portfolio_status,
+      obj.statusBucket,
+      obj.status,
+    ),
+    disbursedAt: pickString(
+      obj.disbursedAt,
+      obj.disbursementDate,
+      obj.fundedAt,
+      obj.createdAt,
+    ),
+  }
+}
+
+function normalizeRepayment(raw: unknown): PortfolioRepaymentRow | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    id: pickString(obj.id, obj.reference),
+    loanRef: pickString(obj.loanRef, obj.reference, obj.referenceNumber, obj.loanId),
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    amount: pickNumber(obj.amount, obj.repaymentAmount, obj.value),
+    date: pickString(
+      obj.attemptedOn,
+      obj.date,
+      obj.paidAt,
+      obj.createdAt,
+      obj.failedAt,
+    ),
+    status: pickString(obj.status),
+    reason: pickString(obj.reason, obj.failureReason, obj.error, obj.message),
+  }
+}
+
+function normalizeDueCallout(raw: unknown, activeCount: number): PortfolioDueCallout | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  const amount = pickNumber(obj.amount, obj.totalAmount, obj.value, obj.dueAmount) ?? 0
+  const repaymentCount = pickNumber(
+    obj.scheduledCount,
+    obj.repaymentCount,
+    obj.count,
+    obj.repayments,
+  )
+  return {
+    amount,
+    repaymentCount,
+    activeLoanCount: pickNumber(obj.activeLoanCount, obj.activeLoans) ?? activeCount,
+    subtitle: pickString(obj.subtitle, obj.description, obj.note),
+    label: pickString(obj.label, obj.title) || "Repayment due this week",
+  }
+}
+
+/**
+ * Normalize by-type LOAN overview payloads from product-ms.
+ * Real shape nests portfolio KPIs / repayments under `data.loanPortfolio`.
+ */
+export function unwrapProductOverviewByType(res: unknown): ProductOverviewByTypeData {
+  const inner = unwrapApiData<Record<string, unknown>>(res) || asRecord(res) || {}
+  const portfolio =
+    asRecord(inner.loanPortfolio) ||
+    asRecord(inner.portfolio) ||
+    asRecord(inner.kpis) ||
+    asRecord(inner.buckets) ||
+    inner
+
+  const activeLoan = normalizeKpiBucket(
+    portfolio.activeLoan ?? portfolio.active ?? inner.activeLoan,
+  )
+  const inactiveLoan = normalizeKpiBucket(
+    portfolio.inactiveLoan ?? portfolio.inactive ?? inner.inactiveLoan,
+    "Matured or closed",
+  )
+  const nonPerformingLoan = normalizeKpiBucket(
+    portfolio.nonPerformingLoan ??
+      portfolio.non_performing ??
+      portfolio.nonPerforming ??
+      inner.nonPerformingLoan,
+    "90+ days overdue",
+  )
+  const badLoan = normalizeKpiBucket(
+    portfolio.badLoan ?? portfolio.bad ?? inner.badLoan,
+    "Written off",
+  )
+
+  const accountsRaw =
+    (Array.isArray(inner.loanAccounts) && inner.loanAccounts) ||
+    (Array.isArray(portfolio.loanAccounts) && portfolio.loanAccounts) ||
+    (Array.isArray(inner.accounts) && inner.accounts) ||
+    (Array.isArray(inner.portfolioAccounts) && inner.portfolioAccounts) ||
+    (Array.isArray(inner.items) && inner.items) ||
+    []
+
+  const repaymentsRaw =
+    (Array.isArray(portfolio.recentRepayments) && portfolio.recentRepayments) ||
+    (Array.isArray(inner.recentRepayments) && inner.recentRepayments) ||
+    (Array.isArray(portfolio.repayments) && portfolio.repayments) ||
+    (Array.isArray(inner.repayments) && inner.repayments) ||
+    []
+
+  const failedRaw =
+    (Array.isArray(portfolio.failedRepayments) && portfolio.failedRepayments) ||
+    (Array.isArray(inner.failedRepayments) && inner.failedRepayments) ||
+    (Array.isArray(portfolio.failed_repayments) && portfolio.failed_repayments) ||
+    []
+
+  const meta = asRecord(inner.portfolioAccountsMeta) || asRecord(inner.meta) || undefined
+
+  const dueRaw =
+    portfolio.repaymentsDueThisWeek ??
+    portfolio.repaymentDueThisWeek ??
+    portfolio.repaymentDue ??
+    inner.repaymentsDueThisWeek ??
+    inner.repaymentDueThisWeek ??
+    inner.repaymentDue ??
+    inner.dueThisWeek
+
+  return {
+    activeLoan,
+    inactiveLoan,
+    nonPerformingLoan,
+    badLoan,
+    repaymentDue: normalizeDueCallout(dueRaw, activeLoan.count),
+    loanAccounts: accountsRaw
+      .map(normalizeLoanAccount)
+      .filter((row): row is PortfolioLoanAccount => row != null),
+    repayments: repaymentsRaw
+      .map(normalizeRepayment)
+      .filter((row): row is PortfolioRepaymentRow => row != null),
+    failedRepayments: failedRaw
+      .map(normalizeRepayment)
+      .filter((row): row is PortfolioRepaymentRow => row != null),
+    portfolioAccountsMeta: meta
+      ? {
+          portfolioStatus: pickString(meta.portfolioStatus, meta.status),
+          total: pickNumber(meta.total, meta.count),
+          limit: pickNumber(meta.limit),
+          skip: pickNumber(meta.skip),
+        }
+      : undefined,
+  }
+}
+
+export function portfolioStatusLabel(status: PortfolioStatusFilter): string {
+  switch (status) {
+    case "active":
+      return "Active loans"
+    case "inactive":
+      return "Inactive loans"
+    case "non_performing":
+      return "Non-performing loans"
+    case "bad":
+      return "Bad loans"
+    default:
+      return "All loans"
+  }
+}
+
+export function portfolioAccountStatusTone(status?: string): OverviewTone {
+  const s = String(status || "").toLowerCase().replace(/[-\s]+/g, "_")
+  if (s.includes("non_performing") || s.includes("npl")) return "warning"
+  if (s.includes("bad") || s.includes("write")) return "danger"
+  if (s.includes("inactive") || s.includes("closed") || s.includes("matured")) return "muted"
+  if (s.includes("active") || s.includes("success") || s.includes("paid")) return "success"
+  return "muted"
+}
+
+export function formatPortfolioMoney(amount?: number | null): string {
+  if (amount == null || !Number.isFinite(amount)) return "—"
+  return `₦${amount.toLocaleString("en-NG", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+}
+
+export function formatPortfolioMoneyCompact(amount?: number | null): string {
+  if (amount == null || !Number.isFinite(amount)) return "—"
+  const abs = Math.abs(amount)
+  if (abs >= 1_000_000_000) return `₦${(amount / 1_000_000_000).toFixed(1)}B`
+  if (abs >= 1_000_000) return `₦${(amount / 1_000_000).toFixed(1)}M`
+  if (abs >= 1_000) return `₦${(amount / 1_000).toFixed(1)}K`
+  return formatPortfolioMoney(amount)
+}
+
+export function kpiDeltaLabel(bucket: PortfolioKpiBucket, fallback: string): string {
+  if (bucket.subtitle) return bucket.subtitle
+  if (typeof bucket.delta === "number" && Number.isFinite(bucket.delta)) {
+    const sign = bucket.delta >= 0 ? "+" : ""
+    return `${sign}${bucket.delta.toLocaleString("en-NG")} this month`
+  }
+  return fallback
+}

@@ -26,6 +26,8 @@ import {
   type SpringApplicantProfileResponse,
 } from "@/lib/springApplicantProfile"
 import { applicationCustomerInitials, resolveApplicationCustomerName } from "@/lib/applicationCustomer"
+import { extractSanctionsScreeningFromApplication } from "@/lib/sanctionsScreening"
+import { PepSearchBlock } from "@/components/workflow/PepSearchBlock"
 import { cn } from "@/lib/utils"
 
 function FieldGrid({ rows }: { rows: { label: string; value: string }[] }) {
@@ -236,6 +238,14 @@ export function SpringApplicantReviewPanel({
   const spouseKycEntries = collectSpouseKycEntries(mergedPayload)
   const showSpouseSection = hasSpouseDetails(customerInfo) || spouseKycEntries.length > 0
   const kycDocs = Array.isArray(kyc?.documents) ? kyc.documents : []
+  const sanctionsScreening = extractSanctionsScreeningFromApplication(plataApp)
+  const productTypeUpper = String(
+    app?.productType || plataApp?.productType || "",
+  )
+    .trim()
+    .toUpperCase()
+  const isLendingProduct = productTypeUpper === "LOAN" || productTypeUpper === "MORTGAGE"
+  const showCustomerInformation = customerInfoRows.length > 0 || isLendingProduct
 
   return (
     <div className="space-y-4">
@@ -312,9 +322,14 @@ export function SpringApplicantReviewPanel({
         </div>
       </Section>
 
-      {customerInfoRows.length > 0 ? (
+      {showCustomerInformation ? (
         <Section title="Customer information">
-          <FieldGrid rows={customerInfoRows} />
+          {customerInfoRows.length > 0 ? <FieldGrid rows={customerInfoRows} /> : null}
+          <PepSearchBlock
+            screening={sanctionsScreening}
+            showPendingWhenMissing={isLendingProduct && !sanctionsScreening}
+            withDivider={customerInfoRows.length > 0}
+          />
         </Section>
       ) : null}
 

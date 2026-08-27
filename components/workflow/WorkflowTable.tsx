@@ -51,6 +51,8 @@ export interface PlataWorkflowRow {
   status: LoanWorkflowStatus
   /** Merchant note for declined / blacklisted apps (`loanWorkflowReason`). */
   reason?: string
+  /** Chipper / OpenSanctions hit — review required. */
+  pepFlagged?: boolean
 }
 
 interface WorkflowTableProps {
@@ -95,6 +97,12 @@ function mapRecord(
   if (appId && String(x.appId || x.createAppId || "") !== appId) return null
   const id = String(x.id ?? x.applicationId ?? "")
   if (!id) return null
+  const screening =
+    x.sanctionsScreening && typeof x.sanctionsScreening === "object"
+      ? (x.sanctionsScreening as Record<string, unknown>)
+      : null
+  const pepFlagged =
+    screening?.flagged === true || String(screening?.status || "").toLowerCase() === "flagged"
   return {
     id,
     requestLabel: String(x.productName ?? x.globalProductName ?? x.reference ?? requestFallback),
@@ -114,6 +122,7 @@ function mapRecord(
     reason: String(
       x.loanWorkflowReason ?? x.rejectionReason ?? x.reason ?? "",
     ).trim() || undefined,
+    pepFlagged,
   }
 }
 
@@ -361,7 +370,16 @@ export function WorkflowTable({
                       onClick={() => setDetailId(row.id)}
                     >
                       <td className="px-6 py-4 text-sm text-gray-900">{row.requestLabel}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{row.name}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{row.name}</span>
+                          {row.pepFlagged ? (
+                            <Badge className="bg-[#FEE4E2] text-[#B42318] hover:bg-[#FEE4E2]">
+                              PEP
+                            </Badge>
+                          ) : null}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{row.ref}</td>
                       <td className="px-6 py-4 text-sm text-gray-600">{row.date}</td>
                       <td className="px-6 py-4">

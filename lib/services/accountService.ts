@@ -5,6 +5,7 @@ import {
   normalizeSpringApplicantProfileResponse,
   type SpringApplicantProfileResponse,
 } from "@/lib/springApplicantProfile";
+import type { SanctionsScreening } from "@/lib/sanctionsScreening";
 
 /** Plata account / product API origin — `NEXT_PUBLIC_API_URL` from `.env`. */
 const ACCOUNT_API_BASE = getPlataApiBaseUrl();
@@ -164,6 +165,10 @@ export interface LoanWorkflowApplication {
   snapshotHash?: string;
   submittedRequirements?: Array<Record<string, any>>;
   createdAt: string;
+  /** Applicant self-declaration (form). Independent of Chipper screening. */
+  isPoliticallyExposedPerson?: boolean;
+  /** Automated OpenSanctions / Chipper PEP screening (LOAN/MORTGAGE submit). */
+  sanctionsScreening?: SanctionsScreening | null;
 }
 
 export interface PricingInfo {

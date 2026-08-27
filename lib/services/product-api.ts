@@ -14,6 +14,7 @@ import {
   buildProductListSearchParams,
   extractProductItems,
   type ListProductsParams,
+  type ProductOverviewByTypeParams,
 } from '@/lib/productOverview';
 import { finalizeFeesForSubmit } from '@/lib/managementFee';
 
@@ -955,6 +956,29 @@ export const productApi = {
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error((data as { error?: string }).error || 'Failed to fetch product overview');
+    }
+    return data;
+  },
+
+  /**
+   * By-type portfolio overview — KPI buckets + filtered loanAccounts.
+   * GET /api/v1/products/app/{appId}/product-overview/by-type/{TYPE}?portfolioStatus=&limit=&skip=
+   */
+  async getProductOverviewByType(params: ProductOverviewByTypeParams, signal?: AbortSignal) {
+    const type = String(params.productType || 'LOAN').trim().toUpperCase();
+    const q = new URLSearchParams();
+    q.set('portfolioStatus', params.portfolioStatus || 'all');
+    q.set('limit', String(Math.min(100, Math.max(1, params.limit ?? 50))));
+    q.set('skip', String(Math.max(0, params.skip ?? 0)));
+
+    const response = await plataAuthFetch(
+      `/api/v1/products/app/${encodeURIComponent(params.appId)}/product-overview/by-type/${encodeURIComponent(type)}?${q.toString()}`,
+      { headers: getAuthHeaders(), signal },
+    );
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || 'Failed to fetch product overview by type');
     }
     return data;
   },
