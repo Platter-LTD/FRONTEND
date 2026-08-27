@@ -13,8 +13,8 @@ export const DEFAULT_MANAGEMENT_FEE: ManagementFeeRow = {
   value: "0",
 }
 
-export function isManagementFeeName(name?: string | null): boolean {
-  return String(name || "").trim().toLowerCase() === MANAGEMENT_FEE_NAME.toLowerCase()
+export function isManagementFeeName(name?: unknown): boolean {
+  return String(name ?? "").trim().toLowerCase() === MANAGEMENT_FEE_NAME.toLowerCase()
 }
 
 function normalizeFeeRow(raw: unknown): ManagementFeeRow | null {

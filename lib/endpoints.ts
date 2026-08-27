@@ -103,6 +103,27 @@ export const BACKEND = {
     list: "/api/v1/roles",
     /** GET — Returns the list of available permissions for roles. */
     permissions: "/api/v1/roles/permissions",
+    /** POST — Seed / re-sync Admin, Manager, Support Staff presets. */
+    ensureDefaults: "/api/v1/roles/ensure-defaults",
+    /** PUT — Updates a role by id. */
+    update: (roleId: string) => `/api/v1/roles/${encodeURIComponent(roleId)}`,
+    /** DELETE — Deletes a role by id (fails if staff still assigned). */
+    delete: (roleId: string) => `/api/v1/roles/${encodeURIComponent(roleId)}`,
+  },
+
+  /** Team members (`/api/v1/team`) — all Bearer; merchant-scoped staff with role_id */
+  team: {
+    /** GET — Lists invited staff members for the merchant. */
+    members: "/api/v1/team/members",
+    /** PUT — Changes a staff member's role. */
+    changeRole: (userId: string) =>
+      `/api/v1/team/members/${encodeURIComponent(userId)}/role`,
+    /** PUT — Suspends a staff member (revokes sessions). */
+    suspend: (userId: string) =>
+      `/api/v1/team/members/${encodeURIComponent(userId)}/suspend`,
+    /** PUT — Reactivates a suspended staff member. */
+    activate: (userId: string) =>
+      `/api/v1/team/members/${encodeURIComponent(userId)}/activate`,
   },
 
   /** Invitations (`/api/v1/invitations`) */

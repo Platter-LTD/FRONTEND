@@ -3,6 +3,11 @@ import api from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { setSecureTokens, clearSecureTokens, getUserFromToken } from "@/lib/tokenManager"
 import { getAccessToken } from "@/lib/cookieAuth"
+import {
+  clearSessionPermissions,
+  getSessionPermissions,
+  saveSessionPermissions,
+} from "@/lib/teamPermissions"
 import type {
   AuthUser,
   LoginRequestDto,
@@ -15,6 +20,7 @@ interface AuthState {
   loading: boolean
   error: string | null
   isAuthenticated: boolean
+  permissions: string[]
 }
 
 const initialState: AuthState = {
@@ -22,20 +28,25 @@ const initialState: AuthState = {
   loading: false,
   error: null,
   isAuthenticated: false,
+  permissions: [],
 }
 
 export const loginThunk = createAsyncThunk<
-  AuthUser,
+  { user: AuthUser; permissions: string[] },
   LoginRequestDto,
   { rejectValue: string }
 >("auth/login", async (payload, { rejectWithValue }) => {
   try {
     const response = await api.post<LoginResponseDto>(ENDPOINTS.auth.login, payload)
-    const responseData = response.data
+    const responseData = response.data as LoginResponseDto & {
+      permissions?: string[]
+      data?: LoginResponseDto["data"] & { permissions?: string[] }
+    }
 
     let userData: AuthUser | undefined
     let accessToken: string | undefined
     let refreshToken: string | undefined
+    let permissions: string[] = []
 
     if (responseData?.data?.tokens) {
       userData = responseData.data.user
@@ -52,14 +63,25 @@ export const loginThunk = createAsyncThunk<
       refreshToken = direct.refreshToken
     }
 
+    const permsRaw =
+      responseData?.permissions ??
+      responseData?.data?.permissions ??
+      (responseData as any)?.data?.user?.permissions
+    if (Array.isArray(permsRaw)) permissions = permsRaw.map(String)
+
     if (!accessToken) {
       return rejectWithValue("No access token received from server")
     }
 
     await setSecureTokens(accessToken, refreshToken)
+    saveSessionPermissions(permissions)
 
     const fallbackUser = getUserFromToken()
-    return (userData as AuthUser) || (fallbackUser as unknown as AuthUser) || rejectWithValue("Unable to resolve user from token")
+    const user =
+      (userData as AuthUser) ||
+      (fallbackUser as unknown as AuthUser)
+    if (!user) return rejectWithValue("Unable to resolve user from token")
+    return { user, permissions }
   } catch (error: any) {
     const errorMessage =
       error?.response?.data?.message ||
@@ -135,6 +157,7 @@ export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
 )
 
 export const logoutThunk = createAsyncThunk("auth/logout", async () => {
+  clearSessionPermissions()
   await clearSecureTokens()
 })
 
@@ -172,13 +195,15 @@ const authSlice = createSlice({
       })
       .addCase(loginThunk.fulfilled, (state, action) => {
         state.loading = false
-        state.user = action.payload
+        state.user = action.payload.user
+        state.permissions = action.payload.permissions
         state.isAuthenticated = true
       })
       .addCase(loginThunk.rejected, (state, action) => {
         state.loading = false
         state.error = action.payload || "Signin failed"
         state.user = null
+        state.permissions = []
         state.isAuthenticated = false
       })
       .addCase(loadUserFromTokenThunk.pending, (state) => {
@@ -189,14 +214,17 @@ const authSlice = createSlice({
         state.loading = false
         state.user = action.payload
         state.isAuthenticated = !!action.payload
+        state.permissions = action.payload ? getSessionPermissions() : []
       })
       .addCase(loadUserFromTokenThunk.rejected, (state) => {
         state.loading = false
         state.user = null
+        state.permissions = []
         state.isAuthenticated = false
       })
       .addCase(logoutThunk.fulfilled, (state) => {
         state.user = null
+        state.permissions = []
         state.isAuthenticated = false
         state.error = null
       })

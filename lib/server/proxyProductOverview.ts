@@ -33,17 +33,20 @@ export async function proxyProductOverviewGet(request: NextRequest, path: string
       : {}),
   }
 
+  const qs = request.nextUrl.searchParams.toString()
+  const upstreamPath = qs ? `${path}${path.includes("?") ? "&" : "?"}${qs}` : path
+
   try {
     let lastStatus = 0
     let lastBody: unknown = {}
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const response = await plataUpstreamAxios.get(path, { headers })
+        const response = await plataUpstreamAxios.get(upstreamPath, { headers })
         lastStatus = response.status
         lastBody = response.data && typeof response.data === "object" ? response.data : {}
 
         if (response.status >= 500 && attempt < 2) {
-          console.warn("[product-overview] retry upstream 5xx", path, response.status, "attempt", attempt + 1)
+          console.warn("[product-overview] retry upstream 5xx", upstreamPath, response.status, "attempt", attempt + 1)
           await sleep(250 * (attempt + 1))
           continue
         }
@@ -55,25 +58,25 @@ export async function proxyProductOverviewGet(request: NextRequest, path: string
         if (response.status >= 400) {
           const data = lastBody as { error?: string; message?: string }
           const err = data.error || data.message || `Product overview failed (${response.status})`
-          console.error("[product-overview] upstream", path, response.status, err)
+          console.error("[product-overview] upstream", upstreamPath, response.status, err)
           return NextResponse.json({ success: false, error: err }, { status: response.status })
         }
 
         return NextResponse.json(lastBody, { status: response.status || 200 })
       } catch (error: unknown) {
         if (!isRetryableNetworkError(error) || attempt === 2) throw error
-        console.warn("[product-overview] retry network", path, error instanceof Error ? error.message : error)
+        console.warn("[product-overview] retry network", upstreamPath, error instanceof Error ? error.message : error)
         await sleep(250 * (attempt + 1))
       }
     }
 
     const data = lastBody as { error?: string; message?: string }
     const err = data.error || data.message || `Product overview failed (${lastStatus || 502})`
-    console.error("[product-overview] upstream exhausted", path, lastStatus, err)
+    console.error("[product-overview] upstream exhausted", upstreamPath, lastStatus, err)
     return NextResponse.json({ success: false, error: err }, { status: lastStatus >= 400 ? lastStatus : 502 })
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : "Failed to fetch product overview"
-    console.error("[product-overview] proxy error", path, msg)
+    console.error("[product-overview] proxy error", upstreamPath, msg)
     return NextResponse.json({ success: false, error: msg }, { status: 502 })
   }
 }

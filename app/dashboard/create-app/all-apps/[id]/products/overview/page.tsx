@@ -5,7 +5,7 @@ import ProductOverviewDashboard from "@/components/analytics/ProductOverviewDash
 
 /**
  * Products → Product Overview
- * Catalog counts (cards) + filtered product list from Product MS.
+ * By-type portfolio dashboard (Loan: portfolioStatus filters + loanAccounts / repayments).
  */
 export default function ProductsOverviewPage() {
   const params = useParams<{ id: string }>()
