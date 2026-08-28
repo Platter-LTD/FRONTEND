@@ -351,10 +351,11 @@ function normalizeRepayment(raw: unknown): PortfolioRepaymentRow | null {
   if (!obj) return null
   return {
     id: pickString(obj.id, obj.reference),
-    loanRef: pickString(obj.loanRef, obj.reference, obj.referenceNumber, obj.loanId),
+    loanRef: pickString(obj.loanRef, obj.reference, obj.referenceNumber, obj.mortgageRef, obj.loanId),
     customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
     amount: pickNumber(obj.amount, obj.repaymentAmount, obj.value),
     date: pickString(
+      obj.receivedOn,
       obj.attemptedOn,
       obj.date,
       obj.paidAt,
@@ -390,40 +391,88 @@ function normalizeDueCallout(raw: unknown, activeCount: number): PortfolioDueCal
  * Real shape nests portfolio KPIs / repayments under `data.loanPortfolio`.
  */
 export function unwrapProductOverviewByType(res: unknown): ProductOverviewByTypeData {
+  return unwrapLendingPortfolioByType(res, {
+    portfolioKeys: ["loanPortfolio"],
+    accountsKeys: ["loanAccounts"],
+    activeKeys: ["activeLoan", "active"],
+    inactiveKeys: ["inactiveLoan", "inactive"],
+    nonPerformingKeys: ["nonPerformingLoan", "non_performing", "nonPerforming"],
+    badKeys: ["badLoan", "bad"],
+    inactiveSubtitle: "Matured or closed",
+  })
+}
+
+/**
+ * Normalize by-type MORTGAGE overview payloads from product-ms.
+ * Same shape as loan under `data.mortgagePortfolio` / `data.mortgageAccounts`.
+ */
+export function unwrapMortgageProductOverviewByType(res: unknown): ProductOverviewByTypeData {
+  return unwrapLendingPortfolioByType(res, {
+    portfolioKeys: ["mortgagePortfolio"],
+    accountsKeys: ["mortgageAccounts"],
+    activeKeys: ["activeMortgage", "activeLoan", "active"],
+    inactiveKeys: ["inactiveMortgage", "inactiveLoan", "inactive"],
+    nonPerformingKeys: [
+      "nonPerformingMortgage",
+      "nonPerformingLoan",
+      "non_performing",
+      "nonPerforming",
+    ],
+    badKeys: ["badMortgage", "badLoan", "bad"],
+    inactiveSubtitle: "Matured or closed",
+  })
+}
+
+function unwrapLendingPortfolioByType(
+  res: unknown,
+  opts: {
+    portfolioKeys: string[]
+    accountsKeys: string[]
+    activeKeys: string[]
+    inactiveKeys: string[]
+    nonPerformingKeys: string[]
+    badKeys: string[]
+    inactiveSubtitle?: string
+  },
+): ProductOverviewByTypeData {
   const inner = unwrapApiData<Record<string, unknown>>(res) || asRecord(res) || {}
+
   const portfolio =
-    asRecord(inner.loanPortfolio) ||
+    opts.portfolioKeys.map((k) => asRecord(inner[k])).find(Boolean) ||
     asRecord(inner.portfolio) ||
     asRecord(inner.kpis) ||
     asRecord(inner.buckets) ||
     inner
 
-  const activeLoan = normalizeKpiBucket(
-    portfolio.activeLoan ?? portfolio.active ?? inner.activeLoan,
-  )
-  const inactiveLoan = normalizeKpiBucket(
-    portfolio.inactiveLoan ?? portfolio.inactive ?? inner.inactiveLoan,
-    "Matured or closed",
-  )
-  const nonPerformingLoan = normalizeKpiBucket(
-    portfolio.nonPerformingLoan ??
-      portfolio.non_performing ??
-      portfolio.nonPerforming ??
-      inner.nonPerformingLoan,
-    "90+ days overdue",
-  )
-  const badLoan = normalizeKpiBucket(
-    portfolio.badLoan ?? portfolio.bad ?? inner.badLoan,
-    "Written off",
-  )
+  const pickBucket = (keys: string[], fallbackSubtitle?: string) => {
+    for (const key of keys) {
+      if (portfolio[key] != null) return normalizeKpiBucket(portfolio[key], fallbackSubtitle)
+      if (inner[key] != null) return normalizeKpiBucket(inner[key], fallbackSubtitle)
+    }
+    return normalizeKpiBucket(undefined, fallbackSubtitle)
+  }
+
+  const activeLoan = pickBucket(opts.activeKeys)
+  const inactiveLoan = pickBucket(opts.inactiveKeys, opts.inactiveSubtitle)
+  const nonPerformingLoan = pickBucket(opts.nonPerformingKeys, "90+ days overdue")
+  const badLoan = pickBucket(opts.badKeys, "Written off")
 
   const accountsRaw =
-    (Array.isArray(inner.loanAccounts) && inner.loanAccounts) ||
-    (Array.isArray(portfolio.loanAccounts) && portfolio.loanAccounts) ||
-    (Array.isArray(inner.accounts) && inner.accounts) ||
-    (Array.isArray(inner.portfolioAccounts) && inner.portfolioAccounts) ||
-    (Array.isArray(inner.items) && inner.items) ||
-    []
+    opts.accountsKeys
+      .flatMap((k) => (Array.isArray(inner[k]) ? inner[k] : []))
+      .concat(
+        opts.accountsKeys.flatMap((k) =>
+          Array.isArray(portfolio[k]) ? (portfolio[k] as unknown[]) : [],
+        ),
+      )
+      .concat(
+        ...[
+          inner.accounts,
+          inner.portfolioAccounts,
+          inner.items,
+          portfolio.accounts,
+        ].filter((x): x is unknown[] => Array.isArray(x)),
+      )
 
   const repaymentsRaw =
     (Array.isArray(portfolio.recentRepayments) && portfolio.recentRepayments) ||
@@ -490,6 +539,21 @@ export function portfolioStatusLabel(status: PortfolioStatusFilter): string {
   }
 }
 
+export function mortgagePortfolioStatusLabel(status: PortfolioStatusFilter): string {
+  switch (status) {
+    case "active":
+      return "Active mortgages"
+    case "inactive":
+      return "Inactive mortgages"
+    case "non_performing":
+      return "Non-performing mortgages"
+    case "bad":
+      return "Bad mortgages"
+    default:
+      return "All mortgages"
+  }
+}
+
 export function portfolioAccountStatusTone(status?: string): OverviewTone {
   const s = String(status || "").toLowerCase().replace(/[-\s]+/g, "_")
   if (s.includes("non_performing") || s.includes("npl")) return "warning"
@@ -523,4 +587,576 @@ export function kpiDeltaLabel(bucket: PortfolioKpiBucket, fallback: string): str
     return `${sign}${bucket.delta.toLocaleString("en-NG")} this month`
   }
   return fallback
+}
+
+// ─── Savings by-type portfolio overview ───────────────────────────────────────
+
+export type SavingsPortfolioStatusFilter = "all" | "active" | "inactive"
+
+export type PortfolioSavingsAccount = {
+  reference?: string
+  customerName?: string
+  balance?: number
+  status?: string
+  openedAt?: string
+}
+
+export type PortfolioSavingsContribution = {
+  customerName?: string
+  activity?: string
+  amount?: number
+  date?: string
+}
+
+export type PortfolioWithdrawalRequest = {
+  customerName?: string
+  amount?: number
+  requestedOn?: string
+  status?: string
+}
+
+export type SavingsWithdrawalKpi = {
+  amount: number
+  count: number
+}
+
+export type ProductOverviewSavingsData = {
+  activeSavingsPlan: PortfolioKpiBucket
+  inactiveSavingsPlan: PortfolioKpiBucket
+  savingsWithdrawalsThisMonth: SavingsWithdrawalKpi
+  savingsAccounts: PortfolioSavingsAccount[]
+  recentContributions: PortfolioSavingsContribution[]
+  withdrawalRequests: PortfolioWithdrawalRequest[]
+  pendingWithdrawal: { count: number }
+  portfolioAccountsMeta?: {
+    portfolioStatus?: string
+    total?: number
+    limit?: number
+    skip?: number
+    hasMore?: boolean
+  }
+}
+
+function normalizeSavingsAccount(raw: unknown): PortfolioSavingsAccount | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    reference: pickString(obj.reference, obj.accountRef, obj.loanRef, obj.id),
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    balance: pickNumber(obj.balance, obj.amount, obj.principal),
+    status: pickString(obj.status, obj.accountStatus),
+    openedAt: pickString(obj.openedAt, obj.createdAt, obj.startDate),
+  }
+}
+
+function normalizeContribution(raw: unknown): PortfolioSavingsContribution | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    activity: pickString(obj.activity, obj.type, obj.transactionType),
+    amount: pickNumber(obj.amount, obj.value),
+    date: pickString(obj.date, obj.receivedOn, obj.createdAt, obj.paidAt),
+  }
+}
+
+function normalizeWithdrawalRequest(raw: unknown): PortfolioWithdrawalRequest | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    amount: pickNumber(obj.amount, obj.value),
+    requestedOn: pickString(obj.requestedOn, obj.date, obj.createdAt),
+    status: pickString(obj.status),
+  }
+}
+
+/**
+ * Normalize by-type SAVINGS overview payloads from product-ms.
+ * KPIs / activities nest under `data.savingsPortfolio`; accounts at `data.savingsAccounts`.
+ */
+export function unwrapSavingsProductOverviewByType(res: unknown): ProductOverviewSavingsData {
+  const inner = unwrapApiData<Record<string, unknown>>(res) || asRecord(res) || {}
+  const portfolio =
+    asRecord(inner.savingsPortfolio) ||
+    asRecord(inner.portfolio) ||
+    asRecord(inner.kpis) ||
+    inner
+
+  const activeSavingsPlan = normalizeKpiBucket(
+    portfolio.activeSavingsPlan ?? portfolio.active ?? inner.activeSavingsPlan,
+  )
+  const inactiveSavingsPlan = normalizeKpiBucket(
+    portfolio.inactiveSavingsPlan ?? portfolio.inactive ?? portfolio.closedSavingsPlan ?? inner.inactiveSavingsPlan,
+    "Matured or withdrawn in full",
+  )
+
+  const withdrawalsRaw = asRecord(
+    portfolio.savingsWithdrawalsThisMonth ??
+      portfolio.withdrawalsThisMonth ??
+      portfolio.savingsWithdrawal ??
+      inner.savingsWithdrawalsThisMonth,
+  )
+  const savingsWithdrawalsThisMonth: SavingsWithdrawalKpi = {
+    amount: pickNumber(withdrawalsRaw?.amount, withdrawalsRaw?.total, withdrawalsRaw?.value) ?? 0,
+    count: pickNumber(withdrawalsRaw?.count, withdrawalsRaw?.totalCount, withdrawalsRaw?.withdrawalCount) ?? 0,
+  }
+
+  const accountsRaw =
+    (Array.isArray(inner.savingsAccounts) && inner.savingsAccounts) ||
+    (Array.isArray(portfolio.savingsAccounts) && portfolio.savingsAccounts) ||
+    (Array.isArray(inner.accounts) && inner.accounts) ||
+    []
+
+  const contributionsRaw =
+    (Array.isArray(portfolio.recentContributions) && portfolio.recentContributions) ||
+    (Array.isArray(inner.recentContributions) && inner.recentContributions) ||
+    (Array.isArray(portfolio.savingsActivities) && portfolio.savingsActivities) ||
+    []
+
+  const withdrawalRequestsRaw =
+    (Array.isArray(portfolio.withdrawalRequests) && portfolio.withdrawalRequests) ||
+    (Array.isArray(inner.withdrawalRequests) && inner.withdrawalRequests) ||
+    (Array.isArray(portfolio.pendingWithdrawals) && portfolio.pendingWithdrawals) ||
+    []
+
+  const pendingRaw = asRecord(portfolio.pendingWithdrawal ?? inner.pendingWithdrawal)
+  const pendingWithdrawal = {
+    count: pickNumber(pendingRaw?.count, pendingRaw?.total) ?? withdrawalRequestsRaw.length,
+  }
+
+  const meta = asRecord(inner.portfolioAccountsMeta) || asRecord(inner.meta) || undefined
+
+  return {
+    activeSavingsPlan,
+    inactiveSavingsPlan,
+    savingsWithdrawalsThisMonth,
+    savingsAccounts: accountsRaw
+      .map(normalizeSavingsAccount)
+      .filter((row): row is PortfolioSavingsAccount => row != null),
+    recentContributions: contributionsRaw
+      .map(normalizeContribution)
+      .filter((row): row is PortfolioSavingsContribution => row != null),
+    withdrawalRequests: withdrawalRequestsRaw
+      .map(normalizeWithdrawalRequest)
+      .filter((row): row is PortfolioWithdrawalRequest => row != null),
+    pendingWithdrawal,
+    portfolioAccountsMeta: meta
+      ? {
+          portfolioStatus: pickString(meta.portfolioStatus, meta.status),
+          total: pickNumber(meta.total, meta.count),
+          limit: pickNumber(meta.limit),
+          skip: pickNumber(meta.skip),
+          hasMore: meta.hasMore === true,
+        }
+      : undefined,
+  }
+}
+
+export function savingsPortfolioStatusLabel(status: SavingsPortfolioStatusFilter): string {
+  switch (status) {
+    case "active":
+      return "Active savings"
+    case "inactive":
+      return "Closed savings"
+    default:
+      return "All savings"
+  }
+}
+
+export function savingsAccountStatusLabel(status?: string): string {
+  const s = String(status || "").toLowerCase()
+  if (s === "inactive" || s === "closed") return "Closed"
+  if (s === "active") return "Active"
+  return titleCaseStatus(status)
+}
+
+export function savingsAccountStatusTone(status?: string): OverviewTone {
+  const s = String(status || "").toLowerCase()
+  if (s === "inactive" || s === "closed") return "muted"
+  if (s === "active") return "success"
+  return "muted"
+}
+
+export function formatSavingsActivity(activity?: string): string {
+  const s = String(activity || "").toUpperCase().replace(/[-\s]+/g, "_")
+  if (s === "TOP_UP" || s === "TOPUP") return "TOP-UP"
+  if (s === "DEPOSIT") return "DEPOSIT"
+  return s.replace(/_/g, "-") || "—"
+}
+
+// ─── Investment by-type portfolio overview ────────────────────────────────────
+
+export type InvestmentPortfolioStatusFilter = SavingsPortfolioStatusFilter
+
+export type PortfolioInvestmentAccount = {
+  reference?: string
+  customerName?: string
+  instrument?: string
+  amount?: number
+  status?: string
+  startedAt?: string
+}
+
+export type PortfolioInvestmentActivity = {
+  customerName?: string
+  activity?: string
+  amount?: number
+  date?: string
+}
+
+export type PortfolioLiquidationRequest = {
+  customerName?: string
+  amount?: number
+  requestedOn?: string
+  status?: string
+}
+
+export type PortfolioApprovedLiquidation = {
+  customerName?: string
+  amount?: number
+  settledOn?: string
+  status?: string
+}
+
+export type ProductOverviewInvestmentData = {
+  activeInvestment: PortfolioKpiBucket
+  maturedInvestment: PortfolioKpiBucket
+  investmentAccounts: PortfolioInvestmentAccount[]
+  recentActivity: PortfolioInvestmentActivity[]
+  liquidationRequests: PortfolioLiquidationRequest[]
+  approvedLiquidations: PortfolioApprovedLiquidation[]
+  pendingLiquidation: { count: number }
+  portfolioAccountsMeta?: {
+    portfolioStatus?: string
+    total?: number
+    limit?: number
+    skip?: number
+    hasMore?: boolean
+  }
+}
+
+function normalizeInvestmentAccount(raw: unknown): PortfolioInvestmentAccount | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    reference: pickString(obj.reference, obj.investmentRef, obj.accountRef, obj.id),
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    instrument: pickString(obj.instrument, obj.productName, obj.type),
+    amount: pickNumber(obj.amount, obj.principal, obj.balance, obj.investedAmount),
+    status: pickString(obj.status, obj.accountStatus),
+    startedAt: pickString(obj.startedAt, obj.openedAt, obj.createdAt, obj.startDate),
+  }
+}
+
+function normalizeInvestmentActivity(raw: unknown): PortfolioInvestmentActivity | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    activity: pickString(obj.activity, obj.type, obj.transactionType),
+    amount: pickNumber(obj.amount, obj.value),
+    date: pickString(obj.date, obj.receivedOn, obj.createdAt, obj.paidAt),
+  }
+}
+
+function normalizeLiquidationRequest(raw: unknown): PortfolioLiquidationRequest | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    amount: pickNumber(obj.amount, obj.value),
+    requestedOn: pickString(obj.requestedOn, obj.date, obj.createdAt),
+    status: pickString(obj.status),
+  }
+}
+
+function normalizeApprovedLiquidation(raw: unknown): PortfolioApprovedLiquidation | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    amount: pickNumber(obj.amount, obj.value),
+    settledOn: pickString(obj.settledOn, obj.date, obj.approvedOn, obj.paidAt),
+    status: pickString(obj.status),
+  }
+}
+
+/**
+ * Normalize by-type INVESTMENT overview payloads from product-ms.
+ * KPIs / activities nest under `data.investmentPortfolio`; accounts at `data.investmentAccounts`.
+ */
+export function unwrapInvestmentProductOverviewByType(res: unknown): ProductOverviewInvestmentData {
+  const inner = unwrapApiData<Record<string, unknown>>(res) || asRecord(res) || {}
+  const portfolio =
+    asRecord(inner.investmentPortfolio) ||
+    asRecord(inner.portfolio) ||
+    asRecord(inner.kpis) ||
+    inner
+
+  const activeInvestment = normalizeKpiBucket(
+    portfolio.activeInvestment ?? portfolio.active ?? inner.activeInvestment,
+  )
+  const maturedInvestment = normalizeKpiBucket(
+    portfolio.maturedInvestment ??
+      portfolio.inactiveInvestment ??
+      portfolio.closedInvestment ??
+      portfolio.inactive ??
+      inner.maturedInvestment,
+    "Matured or liquidated in full",
+  )
+
+  const accountsRaw =
+    (Array.isArray(inner.investmentAccounts) && inner.investmentAccounts) ||
+    (Array.isArray(portfolio.investmentAccounts) && portfolio.investmentAccounts) ||
+    (Array.isArray(inner.accounts) && inner.accounts) ||
+    []
+
+  const activityRaw =
+    (Array.isArray(portfolio.recentActivity) && portfolio.recentActivity) ||
+    (Array.isArray(inner.recentActivity) && inner.recentActivity) ||
+    (Array.isArray(portfolio.investmentActivities) && portfolio.investmentActivities) ||
+    []
+
+  const liquidationRequestsRaw =
+    (Array.isArray(portfolio.liquidationRequests) && portfolio.liquidationRequests) ||
+    (Array.isArray(inner.liquidationRequests) && inner.liquidationRequests) ||
+    (Array.isArray(portfolio.pendingLiquidations) && portfolio.pendingLiquidations) ||
+    []
+
+  const approvedRaw =
+    (Array.isArray(portfolio.approvedLiquidations) && portfolio.approvedLiquidations) ||
+    (Array.isArray(inner.approvedLiquidations) && inner.approvedLiquidations) ||
+    (Array.isArray(portfolio.liquidationHistory) && portfolio.liquidationHistory) ||
+    []
+
+  const pendingRaw = asRecord(portfolio.pendingLiquidation ?? inner.pendingLiquidation)
+  const pendingLiquidation = {
+    count: pickNumber(pendingRaw?.count, pendingRaw?.total) ?? liquidationRequestsRaw.length,
+  }
+
+  const meta = asRecord(inner.portfolioAccountsMeta) || asRecord(inner.meta) || undefined
+
+  return {
+    activeInvestment,
+    maturedInvestment,
+    investmentAccounts: accountsRaw
+      .map(normalizeInvestmentAccount)
+      .filter((row): row is PortfolioInvestmentAccount => row != null),
+    recentActivity: activityRaw
+      .map(normalizeInvestmentActivity)
+      .filter((row): row is PortfolioInvestmentActivity => row != null),
+    liquidationRequests: liquidationRequestsRaw
+      .map(normalizeLiquidationRequest)
+      .filter((row): row is PortfolioLiquidationRequest => row != null),
+    approvedLiquidations: approvedRaw
+      .map(normalizeApprovedLiquidation)
+      .filter((row): row is PortfolioApprovedLiquidation => row != null),
+    pendingLiquidation,
+    portfolioAccountsMeta: meta
+      ? {
+          portfolioStatus: pickString(meta.portfolioStatus, meta.status),
+          total: pickNumber(meta.total, meta.count),
+          limit: pickNumber(meta.limit),
+          skip: pickNumber(meta.skip),
+          hasMore: meta.hasMore === true,
+        }
+      : undefined,
+  }
+}
+
+export function investmentPortfolioStatusLabel(status: InvestmentPortfolioStatusFilter): string {
+  switch (status) {
+    case "active":
+      return "Active investments"
+    case "inactive":
+      return "Closed investments"
+    default:
+      return "All investments"
+  }
+}
+
+export function formatInvestmentActivity(activity?: string): string {
+  const s = String(activity || "").toUpperCase().replace(/[-\s]+/g, "_")
+  if (s === "NEW_INVESTMENT" || s === "NEWINVESTMENT") return "NEW INVESTMENT"
+  if (s === "TOP_UP" || s === "TOPUP") return "TOP-UP"
+  return s.replace(/_/g, " ") || "—"
+}
+
+export function liquidationStatusLabel(status?: string): string {
+  const s = String(status || "").toLowerCase().replace(/[-\s]+/g, "_")
+  if (s === "paid_out" || s === "paidout" || s === "paid") return "Paid out"
+  return titleCaseStatus(status)
+}
+
+export function liquidationStatusTone(status?: string): OverviewTone {
+  const s = String(status || "").toLowerCase().replace(/[-\s]+/g, "_")
+  if (s === "paid_out" || s === "paidout" || s === "paid") return "success"
+  return "muted"
+}
+
+// ─── Commodity by-type portfolio overview ─────────────────────────────────────
+
+export type CommodityPortfolioStatusFilter = SavingsPortfolioStatusFilter
+
+export type PortfolioCommodityAccount = {
+  reference?: string
+  customerName?: string
+  commodity?: string
+  amount?: number
+  status?: string
+  startedAt?: string
+}
+
+export type PortfolioCommodityActivity = {
+  customerName?: string
+  activity?: string
+  commodity?: string
+  amount?: number
+  date?: string
+}
+
+export type ProductOverviewCommodityData = {
+  activeCommodityPlan: PortfolioKpiBucket
+  completedCommodityPlan: PortfolioKpiBucket
+  commodityAccounts: PortfolioCommodityAccount[]
+  recentActivity: PortfolioCommodityActivity[]
+  liquidationRequests: PortfolioLiquidationRequest[]
+  approvedLiquidations: PortfolioApprovedLiquidation[]
+  pendingLiquidation: { count: number }
+  portfolioAccountsMeta?: {
+    portfolioStatus?: string
+    total?: number
+    limit?: number
+    skip?: number
+    hasMore?: boolean
+  }
+}
+
+function normalizeCommodityAccount(raw: unknown): PortfolioCommodityAccount | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    reference: pickString(obj.reference, obj.commodityRef, obj.accountRef, obj.id),
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    commodity: pickString(obj.commodity, obj.productName, obj.instrument, obj.type),
+    amount: pickNumber(obj.amount, obj.principal, obj.balance, obj.investedAmount),
+    status: pickString(obj.status, obj.accountStatus),
+    startedAt: pickString(obj.startedAt, obj.openedAt, obj.createdAt, obj.startDate),
+  }
+}
+
+function normalizeCommodityActivity(raw: unknown): PortfolioCommodityActivity | null {
+  const obj = asRecord(raw)
+  if (!obj) return null
+  return {
+    customerName: pickString(obj.customerName, obj.userName, obj.fullName, obj.name),
+    activity: pickString(obj.activity, obj.type, obj.transactionType),
+    commodity: pickString(obj.commodity, obj.productName, obj.instrument),
+    amount: pickNumber(obj.amount, obj.value),
+    date: pickString(obj.date, obj.receivedOn, obj.createdAt, obj.paidAt),
+  }
+}
+
+/**
+ * Normalize by-type COMMODITY overview payloads from product-ms.
+ * KPIs / activities nest under `data.commodityPortfolio`; accounts at `data.commodityAccounts`.
+ */
+export function unwrapCommodityProductOverviewByType(res: unknown): ProductOverviewCommodityData {
+  const inner = unwrapApiData<Record<string, unknown>>(res) || asRecord(res) || {}
+  const portfolio =
+    asRecord(inner.commodityPortfolio) ||
+    asRecord(inner.portfolio) ||
+    asRecord(inner.kpis) ||
+    inner
+
+  const activeCommodityPlan = normalizeKpiBucket(
+    portfolio.activeCommodityPlan ?? portfolio.active ?? inner.activeCommodityPlan,
+  )
+  const completedCommodityPlan = normalizeKpiBucket(
+    portfolio.completedCommodityPlan ??
+      portfolio.inactiveCommodityPlan ??
+      portfolio.closedCommodityPlan ??
+      portfolio.maturedCommodityPlan ??
+      portfolio.inactive ??
+      inner.completedCommodityPlan,
+    "Matured or liquidated in full",
+  )
+
+  const accountsRaw =
+    (Array.isArray(inner.commodityAccounts) && inner.commodityAccounts) ||
+    (Array.isArray(portfolio.commodityAccounts) && portfolio.commodityAccounts) ||
+    (Array.isArray(inner.accounts) && inner.accounts) ||
+    []
+
+  const activityRaw =
+    (Array.isArray(portfolio.recentActivity) && portfolio.recentActivity) ||
+    (Array.isArray(inner.recentActivity) && inner.recentActivity) ||
+    (Array.isArray(portfolio.commodityActivities) && portfolio.commodityActivities) ||
+    []
+
+  const liquidationRequestsRaw =
+    (Array.isArray(portfolio.liquidationRequests) && portfolio.liquidationRequests) ||
+    (Array.isArray(inner.liquidationRequests) && inner.liquidationRequests) ||
+    (Array.isArray(portfolio.pendingLiquidations) && portfolio.pendingLiquidations) ||
+    []
+
+  const approvedRaw =
+    (Array.isArray(portfolio.approvedLiquidations) && portfolio.approvedLiquidations) ||
+    (Array.isArray(inner.approvedLiquidations) && inner.approvedLiquidations) ||
+    (Array.isArray(portfolio.liquidationHistory) && portfolio.liquidationHistory) ||
+    []
+
+  const pendingRaw = asRecord(portfolio.pendingLiquidation ?? inner.pendingLiquidation)
+  const pendingLiquidation = {
+    count: pickNumber(pendingRaw?.count, pendingRaw?.total) ?? liquidationRequestsRaw.length,
+  }
+
+  const meta = asRecord(inner.portfolioAccountsMeta) || asRecord(inner.meta) || undefined
+
+  return {
+    activeCommodityPlan,
+    completedCommodityPlan,
+    commodityAccounts: accountsRaw
+      .map(normalizeCommodityAccount)
+      .filter((row): row is PortfolioCommodityAccount => row != null),
+    recentActivity: activityRaw
+      .map(normalizeCommodityActivity)
+      .filter((row): row is PortfolioCommodityActivity => row != null),
+    liquidationRequests: liquidationRequestsRaw
+      .map(normalizeLiquidationRequest)
+      .filter((row): row is PortfolioLiquidationRequest => row != null),
+    approvedLiquidations: approvedRaw
+      .map(normalizeApprovedLiquidation)
+      .filter((row): row is PortfolioApprovedLiquidation => row != null),
+    pendingLiquidation,
+    portfolioAccountsMeta: meta
+      ? {
+          portfolioStatus: pickString(meta.portfolioStatus, meta.status),
+          total: pickNumber(meta.total, meta.count),
+          limit: pickNumber(meta.limit),
+          skip: pickNumber(meta.skip),
+          hasMore: meta.hasMore === true,
+        }
+      : undefined,
+  }
+}
+
+export function commodityPortfolioStatusLabel(status: CommodityPortfolioStatusFilter): string {
+  switch (status) {
+    case "active":
+      return "Active commodities"
+    case "inactive":
+      return "Closed commodities"
+    default:
+      return "All commodities"
+  }
+}
+
+/** Loan uses extended filters; savings/investment/commodity only support all | active | inactive. */
+export function simplePortfolioStatus(
+  status: PortfolioStatusFilter | SavingsPortfolioStatusFilter,
+): SavingsPortfolioStatusFilter {
+  if (status === "non_performing" || status === "bad") return "all"
+  return status as SavingsPortfolioStatusFilter
 }
