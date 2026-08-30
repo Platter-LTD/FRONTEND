@@ -64,6 +64,7 @@ export interface TeamMember {
   updated_at?: string
   last_login_at?: string | null
   failed_login_attempts?: number
+  deactivated_at?: string | null
 }
 
 export interface MerchantRole {
@@ -117,6 +118,12 @@ function normalizeMember(raw: Record<string, unknown>): TeamMember {
       typeof raw.failed_login_attempts === "number"
         ? raw.failed_login_attempts
         : undefined,
+    deactivated_at:
+      raw.deactivated_at != null
+        ? String(raw.deactivated_at)
+        : raw.deactivatedAt != null
+          ? String(raw.deactivatedAt)
+          : null,
   }
 }
 
@@ -169,10 +176,74 @@ function normalizeInvitation(raw: Record<string, unknown>): TeamInvitation {
   }
 }
 
+export type TeamMemberListStatus =
+  | "current"
+  | "deactivated"
+  | "all"
+  | "active"
+  | "pending"
+  | "suspended"
+
+export type TeamActivityLog = {
+  id: string
+  merchantId?: string
+  action: string
+  actorUserId?: string
+  actorEmail?: string
+  actorName?: string
+  actorUserType?: string
+  subjectUserId?: string
+  subjectEmail?: string
+  subjectName?: string
+  summary?: string
+  metadata?: Record<string, unknown>
+  createdAt?: string
+}
+
+export type TeamActivityLogsPage = {
+  logs: TeamActivityLog[]
+  total: number
+  limit: number
+  skip: number
+}
+
+function normalizeActivityLog(raw: Record<string, unknown>): TeamActivityLog {
+  const meta = raw.metadata
+  return {
+    id: String(raw.id ?? ""),
+    merchantId: raw.merchantId != null ? String(raw.merchantId) : undefined,
+    action: String(raw.action ?? ""),
+    actorUserId: raw.actorUserId != null ? String(raw.actorUserId) : undefined,
+    actorEmail: raw.actorEmail != null ? String(raw.actorEmail) : undefined,
+    actorName: raw.actorName != null ? String(raw.actorName) : undefined,
+    actorUserType: raw.actorUserType != null ? String(raw.actorUserType) : undefined,
+    subjectUserId: raw.subjectUserId != null ? String(raw.subjectUserId) : undefined,
+    subjectEmail: raw.subjectEmail != null ? String(raw.subjectEmail) : undefined,
+    subjectName: raw.subjectName != null ? String(raw.subjectName) : undefined,
+    summary: raw.summary != null ? String(raw.summary) : undefined,
+    metadata:
+      meta && typeof meta === "object" && !Array.isArray(meta)
+        ? (meta as Record<string, unknown>)
+        : undefined,
+    createdAt:
+      raw.createdAt != null
+        ? String(raw.createdAt)
+        : raw.created_at != null
+          ? String(raw.created_at)
+          : undefined,
+  }
+}
+
 export const teamApi = {
-  async listMembers(): Promise<TeamApiResult<TeamMember[]>> {
+  async listMembers(
+    status?: TeamMemberListStatus,
+  ): Promise<TeamApiResult<TeamMember[]>> {
     try {
-      const res = await fetch(`${BASE}${BACKEND.team.members}`, {
+      const q =
+        status && status !== "current"
+          ? `?status=${encodeURIComponent(status)}`
+          : ""
+      const res = await fetch(`${BASE}${BACKEND.team.members}${q}`, {
         headers: authHeaders(),
       })
       const body = await parseJson(res)
@@ -255,6 +326,65 @@ export const teamApi = {
         success: true,
         data: member ? normalizeMember(member) : undefined,
         message: body.message != null ? String(body.message) : undefined,
+      }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  },
+
+  async deactivateMember(userId: string): Promise<TeamApiResult<TeamMember>> {
+    try {
+      const res = await fetch(`${BASE}${BACKEND.team.deactivate(userId)}`, {
+        method: "PUT",
+        headers: authHeaders(),
+      })
+      const body = await parseJson(res)
+      if (!res.ok || body.success === false) {
+        return { success: false, error: apiError(body, `HTTP ${res.status}`) }
+      }
+      const data = body.data as Record<string, unknown> | undefined
+      const member = (data?.member ?? body.member) as Record<string, unknown> | undefined
+      return {
+        success: true,
+        data: member ? normalizeMember(member) : undefined,
+        message: body.message != null ? String(body.message) : undefined,
+      }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  },
+
+  async listActivityLogs(opts?: {
+    subjectUserId?: string
+    action?: string
+    limit?: number
+    skip?: number
+  }): Promise<TeamApiResult<TeamActivityLogsPage>> {
+    try {
+      const q = new URLSearchParams()
+      if (opts?.subjectUserId) q.set("subjectUserId", opts.subjectUserId)
+      if (opts?.action) q.set("action", opts.action)
+      q.set("limit", String(Math.min(200, Math.max(1, opts?.limit ?? 50))))
+      q.set("skip", String(Math.max(0, opts?.skip ?? 0)))
+      const res = await fetch(`${BASE}${BACKEND.team.activityLogs}?${q.toString()}`, {
+        headers: authHeaders(),
+      })
+      const body = await parseJson(res)
+      if (!res.ok || body.success === false) {
+        return { success: false, error: apiError(body, `HTTP ${res.status}`) }
+      }
+      const data = (body.data as Record<string, unknown> | undefined) || body
+      const rawLogs = Array.isArray(data.logs) ? data.logs : []
+      return {
+        success: true,
+        data: {
+          logs: rawLogs
+            .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+            .map(normalizeActivityLog),
+          total: typeof data.total === "number" ? data.total : rawLogs.length,
+          limit: typeof data.limit === "number" ? data.limit : 50,
+          skip: typeof data.skip === "number" ? data.skip : 0,
+        },
       }
     } catch (err) {
       return { success: false, error: String(err) }
@@ -574,7 +704,7 @@ export type StaffTableRow = {
   roleId?: string | null
   email: string
   lastLogin: string
-  status: "Active" | "Pending" | "Suspended"
+  status: "Active" | "Pending" | "Suspended" | "Deactivated"
 }
 
 export function memberDisplayName(m: TeamMember): string {
@@ -602,10 +732,11 @@ export function formatLastLogin(value?: string | null): string {
 
 export function statusBadgeLabel(
   status: string,
-): "Active" | "Pending" | "Suspended" {
+): "Active" | "Pending" | "Suspended" | "Deactivated" {
   const s = status.toLowerCase()
   if (s === "suspended") return "Suspended"
   if (s === "pending") return "Pending"
+  if (s === "deactivated") return "Deactivated"
   return "Active"
 }
 
@@ -615,11 +746,12 @@ export function mergeStaffTableRows(
   roles: MerchantRole[],
 ): StaffTableRow[] {
   const roleNameById = new Map(roles.map((r) => [r.id, r.name]))
+  const currentMembers = members.filter((m) => m.status !== "deactivated")
   const memberEmails = new Set(
-    members.map((m) => m.email.trim().toLowerCase()).filter(Boolean),
+    currentMembers.map((m) => m.email.trim().toLowerCase()).filter(Boolean),
   )
 
-  const memberRows: StaffTableRow[] = members.map((m) => ({
+  const memberRows: StaffTableRow[] = currentMembers.map((m) => ({
     id: m.id,
     kind: "member",
     name: memberDisplayName(m),
@@ -647,11 +779,50 @@ export function mergeStaffTableRows(
   return [...memberRows, ...pendingInviteRows]
 }
 
-export function staffCounts(rows: StaffTableRow[]) {
-  const total = rows.length
-  const active = rows.filter((r) => r.status === "Active").length
-  const inactive = rows.filter(
-    (r) => r.status === "Pending" || r.status === "Suspended",
+/** KPI cards — members only (default list excludes deactivated). */
+export function staffCountsFromMembers(members: TeamMember[]) {
+  const current = members.filter((m) => m.status !== "deactivated")
+  const total = current.length
+  const active = current.filter((m) => m.status === "active").length
+  const inactive = current.filter(
+    (m) => m.status === "pending" || m.status === "suspended",
   ).length
   return { total, active, inactive }
+}
+
+export function formerMemberRows(
+  members: TeamMember[],
+  roles: MerchantRole[],
+): StaffTableRow[] {
+  const roleNameById = new Map(roles.map((r) => [r.id, r.name]))
+  return members
+    .filter((m) => m.status === "deactivated")
+    .map((m) => ({
+      id: m.id,
+      kind: "member" as const,
+      name: memberDisplayName(m),
+      role: m.roleName || (m.role_id ? roleNameById.get(m.role_id) : undefined) || "—",
+      roleId: m.role_id,
+      email: m.email,
+      lastLogin: formatLastLogin(m.deactivated_at || m.last_login_at),
+      status: "Deactivated" as const,
+    }))
+}
+
+export function activityActionLabel(action?: string): string {
+  const map: Record<string, string> = {
+    invitation_created: "Invitation sent",
+    invitation_accepted: "Invitation accepted",
+    role_changed: "Role changed",
+    staff_suspended: "Staff suspended",
+    staff_activated: "Staff activated",
+    staff_deactivated: "Staff deactivated",
+    staff_login: "Staff signed in",
+    staff_password_changed: "Password changed",
+    role_created: "Role created",
+    role_updated: "Role updated",
+    role_deleted: "Role deleted",
+  }
+  const key = String(action || "")
+  return map[key] || key.replace(/_/g, " ")
 }

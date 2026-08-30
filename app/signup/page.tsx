@@ -1,17 +1,26 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Loader2 } from "lucide-react"
 import { RegistrationForm } from "@/components/registration-form"
 import { toast } from "react-toastify"
 import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { ProductAuthShell } from "@/components/product-auth-shell"
 import { registrationPasswordError } from "@/lib/passwordRules"
+import { teamApi } from "@/lib/services/teamService"
 
-export default function SignupPage() {
+function SignupPageContent() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const invitationToken = (searchParams.get("token") || "").trim()
+  const invitationEmail = (searchParams.get("email") || "").trim()
+  const invitationMode =
+    searchParams.get("invitation") === "1" && Boolean(invitationToken && invitationEmail)
+  const roleName = (searchParams.get("role") || "").trim() || undefined
 
   const handleSubmit = async (formData: {
     firstName: string
@@ -23,7 +32,6 @@ export default function SignupPage() {
     confirmPassword: string
     agreeToTerms: boolean
   }) => {
-    // Validate passwords match
     if (formData.password !== formData.confirmPassword) {
       toast.error("Passwords do not match")
       return
@@ -33,8 +41,6 @@ export default function SignupPage() {
       toast.error(passwordError)
       return
     }
-
-    // Validate terms agreement
     if (!formData.agreeToTerms) {
       toast.error("You must accept the terms and conditions")
       return
@@ -43,11 +49,25 @@ export default function SignupPage() {
     setIsSubmitting(true)
 
     try {
-      // Normalize phone to international format (E.164). Backend expects e.g. +2349024740805 for Nigeria.
+      if (invitationMode) {
+        const res = await teamApi.acceptInvitation({
+          token: invitationToken,
+          firstName: formData.firstName.trim(),
+          lastName: formData.lastName.trim(),
+          password: formData.password,
+        })
+        if (!res.success) {
+          toast.error(res.error || "Failed to accept invitation.")
+          return
+        }
+        toast.success("Account created! Sign in to continue.")
+        router.push("/signin")
+        return
+      }
+
       const raw = formData.phoneNumber.replace(/\s/g, "").replace(/^\+/, "")
       let phone: string
       if (formData.country === "ng") {
-        // Nigeria: +234; local numbers often 0XXXXXXXXX -> 234XXXXXXXXX
         const digits = raw.replace(/^0/, "")
         phone = digits.length <= 10 ? `+234${digits}` : raw.startsWith("234") ? `+${raw}` : `+234${digits}`
       } else {
@@ -64,23 +84,17 @@ export default function SignupPage() {
         user_merchant_id: `merchant_${Date.now()}`,
       }
 
-      // Call the registration API - via client-auth-ms gateway
       const response = await apiClient.post(ENDPOINTS.auth.signup.merchant, registrationData, {
         includeAuth: false,
       })
 
       if (response.data) {
-        // Store email in sessionStorage for verification flow (more secure than URL params)
         sessionStorage.setItem("pendingEmail", formData.email)
         toast.success("Account created! Please check your email for the OTP code.")
-        // Redirect to verify-email page (email stored securely in sessionStorage)
         router.push("/verify-email")
       }
     } catch (error: any) {
       console.error("Full registration error:", error)
-      console.error("Error response:", error.response?.data)
-      console.error("Error status:", error.response?.status)
-
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
@@ -93,10 +107,32 @@ export default function SignupPage() {
   }
 
   return (
+    <div className="w-full px-4">
+      <RegistrationForm
+        onSubmit={handleSubmit}
+        isSubmitting={isSubmitting}
+        initialEmail={invitationEmail}
+        emailReadOnly={invitationMode}
+        invitationMode={invitationMode}
+        roleName={roleName}
+      />
+    </div>
+  )
+}
+
+export default function SignupPage() {
+  return (
     <ProductAuthShell>
-      <div className="w-full px-4">
-        <RegistrationForm onSubmit={handleSubmit} isSubmitting={isSubmitting} />
-      </div>
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center gap-2 py-16 text-sm text-gray-600">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            Loading…
+          </div>
+        }
+      >
+        <SignupPageContent />
+      </Suspense>
     </ProductAuthShell>
   )
 }

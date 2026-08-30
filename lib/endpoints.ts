@@ -124,6 +124,11 @@ export const BACKEND = {
     /** PUT — Reactivates a suspended staff member. */
     activate: (userId: string) =>
       `/api/v1/team/members/${encodeURIComponent(userId)}/activate`,
+    /** PUT — Deactivates / removes a staff member from the current list. */
+    deactivate: (userId: string) =>
+      `/api/v1/team/members/${encodeURIComponent(userId)}/deactivate`,
+    /** GET — Merchant-visible team activity log. */
+    activityLogs: "/api/v1/team/activity-logs",
   },
 
   /** Invitations (`/api/v1/invitations`) */

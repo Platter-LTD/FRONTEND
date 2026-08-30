@@ -155,6 +155,8 @@ export const TEAM_PERMISSIONS = {
   ],
   changeRole: ["assign_user_roles"],
   suspendActivate: ["deactivate_user"],
+  deactivate: ["deactivate_user"],
+  activityLogs: ["view_user_activity_logs"],
   manageRoles: ["assign_user_roles", "manage_system_settings"],
   ensureDefaults: [
     "assign_user_roles",
