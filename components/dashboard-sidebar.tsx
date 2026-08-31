@@ -240,6 +240,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
             { label: "Treasury wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury` },
             { label: "Billing wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/billing` },
             { label: "Repayment wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/repayment` },
+            { label: "Withdrawals", href: `/dashboard/create-app/all-apps/${appId}/wallets/withdrawals` },
           ],
         },
         {

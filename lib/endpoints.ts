@@ -210,6 +210,26 @@ export const BACKEND = {
     },
   },
 
+  /**
+   * Treasury console (`/api/v1/frontend-plata/treasury`) — merchant JWT + appId.
+   * Withdrawals queue + matured investment/commodity/savings settlements.
+   */
+  treasuryConsole: {
+    overview: "/api/v1/frontend-plata/treasury/overview",
+    walletTransactions: (walletType: "treasury" | "billing" | "repayment") =>
+      `/api/v1/frontend-plata/treasury/wallets/${encodeURIComponent(walletType)}/transactions`,
+    fundingInstructions: (walletType: "treasury" | "billing") =>
+      `/api/v1/frontend-plata/treasury/wallets/${encodeURIComponent(walletType)}/funding-instructions`,
+    withdrawals: "/api/v1/frontend-plata/treasury/withdrawals",
+    withdrawalsApprove: "/api/v1/frontend-plata/treasury/withdrawals/approve",
+    settlements: (settlementType: "investments" | "commodities" | "savings") =>
+      `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}`,
+    settlementsMode: (settlementType: "investments" | "commodities" | "savings") =>
+      `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}/mode`,
+    settlementsApprove: (settlementType: "investments" | "commodities" | "savings") =>
+      `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}/approve`,
+  },
+
   /** Verify email (`/verify-email`) — public */
   verifyEmail: {
     /** GET — Verifies email using a token from the verification link (e.g. in email). */
