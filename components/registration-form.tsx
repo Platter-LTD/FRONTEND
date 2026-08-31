@@ -24,9 +24,20 @@ type RegistrationFormProps = {
     agreeToTerms: boolean
   }) => Promise<void>
   isSubmitting: boolean
+  initialEmail?: string
+  emailReadOnly?: boolean
+  invitationMode?: boolean
+  roleName?: string
 }
 
-export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormProps) {
+export function RegistrationForm({
+  onSubmit,
+  isSubmitting,
+  initialEmail = "",
+  emailReadOnly = false,
+  invitationMode = false,
+  roleName,
+}: RegistrationFormProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
@@ -53,7 +64,7 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
     firstName: "",
     lastName: "",
     country: "",
-    email: "",
+    email: initialEmail,
     phoneNumber: "",
     password: "",
     confirmPassword: "",
@@ -83,8 +94,17 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="mx-auto max-w-md w-full space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-balance">Create your account</h1>
+        <div className="text-center space-y-1">
+          <h1 className="text-2xl font-bold text-balance">
+            {invitationMode ? "Join the team" : "Create your account"}
+          </h1>
+          {invitationMode ? (
+            <p className="text-sm text-muted-foreground">
+              {roleName
+                ? `Create your account as ${roleName} using the invited email below.`
+                : "Create your account using the invited email below."}
+            </p>
+          ) : null}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -104,30 +124,36 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
             className="w-full h-[60px] text-base"
           />
 
-          <CountrySelect
-            value={formData.country}
-            onValueChange={(value) => setFormData((prev) => ({ ...prev, country: value }))}
-            placeholder="Select Country"
-            triggerClassName="w-full !h-[60px] text-base flex items-center"
-          />
+          {!invitationMode ? (
+            <CountrySelect
+              value={formData.country}
+              onValueChange={(value) => setFormData((prev) => ({ ...prev, country: value }))}
+              placeholder="Select Country"
+              triggerClassName="w-full !h-[60px] text-base flex items-center"
+            />
+          ) : null}
 
           <Input
             id="email"
             type="email"
             placeholder="Email"
             value={formData.email}
+            readOnly={emailReadOnly}
+            disabled={emailReadOnly}
             onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
-            className="w-full h-[60px] text-base"
+            className="w-full h-[60px] text-base disabled:opacity-100 disabled:cursor-default"
           />
 
-          <Input
-            id="phoneNumber"
-            type="tel"
-            placeholder="Phone number"
-            value={formData.phoneNumber}
-            onChange={(e) => setFormData((prev) => ({ ...prev, phoneNumber: e.target.value }))}
-            className="w-full h-[60px] text-base"
-          />
+          {!invitationMode ? (
+            <Input
+              id="phoneNumber"
+              type="tel"
+              placeholder="Phone number"
+              value={formData.phoneNumber}
+              onChange={(e) => setFormData((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+              className="w-full h-[60px] text-base"
+            />
+          ) : null}
 
           {/* Password */}
           <div className="space-y-2">
@@ -235,7 +261,13 @@ export function RegistrationForm({ onSubmit, isSubmitting }: RegistrationFormPro
             disabled={isSubmitting}
             className="w-full h-[60px] text-white hover:opacity-90 rounded-md cursor-pointer text-base"
           >
-            {isSubmitting ? "Creating account..." : "Create my account"}
+            {isSubmitting
+              ? invitationMode
+                ? "Joining team..."
+                : "Creating account..."
+              : invitationMode
+                ? "Join team"
+                : "Create my account"}
           </Button>
         </form>
       </div>

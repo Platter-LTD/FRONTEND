@@ -24,8 +24,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import type { MerchantTeamState } from "@/hooks/useMerchantTeam"
-import { teamApi, type StaffTableRow } from "@/lib/services/teamService"
+import {
+  activityActionLabel,
+  formatLastLogin,
+  teamApi,
+  type StaffTableRow,
+} from "@/lib/services/teamService"
 import { hasAnyPermission, TEAM_PERMISSIONS } from "@/lib/teamPermissions"
 import { useAppSelector } from "@/store/hooks"
 import { toast } from "sonner"
@@ -35,8 +50,32 @@ export interface AddStaffTabProps {
   team: MerchantTeamState
 }
 
+function statusColor(status: string) {
+  switch (status) {
+    case "Active":
+      return "bg-green-100 text-green-800"
+    case "Pending":
+      return "bg-orange-100 text-orange-800"
+    case "Suspended":
+      return "bg-red-100 text-red-800"
+    case "Deactivated":
+      return "bg-gray-100 text-gray-800"
+    default:
+      return "bg-gray-100 text-gray-800"
+  }
+}
+
 export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
-  const { staffRows, counts, loading, error, roles, refetch } = team
+  const {
+    staffRows,
+    formerStaffRows,
+    activityLogs,
+    counts,
+    loading,
+    error,
+    roles,
+    refetch,
+  } = team
   const sessionPermissions = useAppSelector((s) => s.auth.permissions)
   const canInvite = hasAnyPermission([...TEAM_PERMISSIONS.invite], sessionPermissions)
   const canChangeRole = hasAnyPermission(
@@ -47,13 +86,22 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
     [...TEAM_PERMISSIONS.suspendActivate],
     sessionPermissions,
   )
+  const canDeactivate = hasAnyPermission(
+    [...TEAM_PERMISSIONS.deactivate],
+    sessionPermissions,
+  )
+  const canViewLogs = hasAnyPermission(
+    [...TEAM_PERMISSIONS.activityLogs],
+    sessionPermissions,
+  )
 
   const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState<"all" | "Active" | "Pending" | "Suspended">(
-    "all",
-  )
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "Active" | "Pending" | "Suspended"
+  >("all")
   const [roleDialogRow, setRoleDialogRow] = useState<StaffTableRow | null>(null)
   const [nextRoleId, setNextRoleId] = useState("")
+  const [deactivateRow, setDeactivateRow] = useState<StaffTableRow | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
 
   const filtered = useMemo(() => {
@@ -68,19 +116,6 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
       )
     })
   }, [staffRows, search, statusFilter])
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "Active":
-        return "bg-green-100 text-green-800"
-      case "Pending":
-        return "bg-orange-100 text-orange-800"
-      case "Suspended":
-        return "bg-red-100 text-red-800"
-      default:
-        return "bg-gray-100 text-gray-800"
-    }
-  }
 
   const runMemberAction = async (
     row: StaffTableRow,
@@ -98,6 +133,20 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
       return
     }
     toast.success(res.message || (action === "suspend" ? "Member suspended" : "Member activated"))
+    void refetch()
+  }
+
+  const confirmDeactivate = async () => {
+    if (!deactivateRow || deactivateRow.kind !== "member") return
+    setActionBusy(true)
+    const res = await teamApi.deactivateMember(deactivateRow.id)
+    setActionBusy(false)
+    if (!res.success) {
+      toast.error(res.error || "Failed to deactivate member")
+      return
+    }
+    toast.success(res.message || "Team member deactivated")
+    setDeactivateRow(null)
     void refetch()
   }
 
@@ -167,111 +216,72 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
         </p>
       ) : null}
 
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="text-lg font-medium">Staff Accounts</h3>
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search staff"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm"
-              />
-            </div>
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as typeof statusFilter)
-              }
-            >
-              <option value="all">Status</option>
-              <option value="Active">Active</option>
-              <option value="Pending">Pending</option>
-              <option value="Suspended">Suspended</option>
-            </select>
-          </div>
-        </div>
+      <StaffTable
+        title="Staff Accounts"
+        rows={filtered}
+        loading={loading}
+        search={search}
+        onSearch={setSearch}
+        statusFilter={statusFilter}
+        onStatusFilter={setStatusFilter}
+        emptyMessage="No staff accounts found."
+        showActions
+        canChangeRole={canChangeRole}
+        canSuspend={canSuspend}
+        canDeactivate={canDeactivate}
+        actionBusy={actionBusy}
+        onChangeRole={(staff) => {
+          setRoleDialogRow(staff)
+          setNextRoleId(staff.roleId || roles[0]?.id || "")
+        }}
+        onSuspend={(staff) => void runMemberAction(staff, "suspend")}
+        onActivate={(staff) => void runMemberAction(staff, "activate")}
+        onDeactivate={setDeactivateRow}
+      />
 
-        <div className="overflow-hidden">
-          <div className="grid grid-cols-6 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
-            <div>Name</div>
-            <div>Role</div>
-            <div>Email</div>
-            <div>Last Login</div>
-            <div>Status</div>
-            <div>Actions</div>
+      <StaffTable
+        title="Former staff"
+        rows={formerStaffRows}
+        loading={loading}
+        emptyMessage="No deactivated staff."
+        lastLoginHeader="Deactivated"
+      />
+
+      {canViewLogs ? (
+        <div className="bg-white rounded-lg border border-gray-200">
+          <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="text-lg font-medium">Team activity</h3>
+            <span className="text-xs text-gray-400">Latest {activityLogs.length || 0}</span>
           </div>
-          {loading ? (
+          {loading && activityLogs.length === 0 ? (
             <div className="flex items-center justify-center gap-2 p-10 text-sm text-gray-500">
               <Loader2 className="w-4 h-4 animate-spin" />
-              Loading staff…
+              Loading activity…
             </div>
-          ) : filtered.length === 0 ? (
-            <p className="p-8 text-center text-sm text-gray-500">No staff accounts found.</p>
+          ) : activityLogs.length === 0 ? (
+            <p className="p-8 text-center text-sm text-gray-500">No team activity yet.</p>
           ) : (
-            filtered.map((staff) => (
-              <div
-                key={staff.id}
-                className="grid grid-cols-6 gap-4 p-4 border-b border-gray-100 last:border-b-0 text-sm items-center"
-              >
-                <div className="font-medium">{staff.name}</div>
-                <div>{staff.role}</div>
-                <div className="truncate">{staff.email}</div>
-                <div>{staff.lastLogin}</div>
-                <div>
-                  <Badge className={getStatusColor(staff.status)}>{staff.status}</Badge>
+            <div className="divide-y divide-gray-100">
+              {activityLogs.map((log) => (
+                <div key={log.id} className="px-4 py-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-gray-900">
+                      {activityActionLabel(log.action)}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {formatLastLogin(log.createdAt)}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-gray-600">
+                    {log.summary ||
+                      `${log.actorEmail || log.actorName || "Someone"} · ${log.subjectEmail || log.subjectName || ""}`}
+                  </p>
                 </div>
-                <div>
-                  {staff.kind === "member" && (canChangeRole || canSuspend) ? (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" disabled={actionBusy}>
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {canChangeRole ? (
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setRoleDialogRow(staff)
-                              setNextRoleId(staff.roleId || roles[0]?.id || "")
-                            }}
-                          >
-                            Change role
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canSuspend ? (
-                          staff.status === "Suspended" ? (
-                            <DropdownMenuItem
-                              onClick={() => void runMemberAction(staff, "activate")}
-                            >
-                              Activate
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem
-                              onClick={() => void runMemberAction(staff, "suspend")}
-                            >
-                              Suspend
-                            </DropdownMenuItem>
-                          )
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  ) : staff.kind === "invitation" ? (
-                    <span className="text-xs text-gray-400">Invite pending</span>
-                  ) : (
-                    <span className="text-xs text-gray-400">—</span>
-                  )}
-                </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
-      </div>
+      ) : null}
 
       <Dialog
         open={Boolean(roleDialogRow)}
@@ -309,6 +319,197 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={Boolean(deactivateRow)}
+        onOpenChange={(open) => !open && setDeactivateRow(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Deactivate staff member?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove <strong>{deactivateRow?.email}</strong> from the current staff list.
+              Their last role is kept on the former-staff list. This revokes their sessions
+              and cannot be undone with Activate — Activate only works for suspended accounts.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              disabled={actionBusy}
+              onClick={(e) => {
+                e.preventDefault()
+                void confirmDeactivate()
+              }}
+            >
+              {actionBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : "Deactivate"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
+function StaffTable({
+  title,
+  rows,
+  loading,
+  search,
+  onSearch,
+  statusFilter,
+  onStatusFilter,
+  emptyMessage,
+  lastLoginHeader = "Last Login",
+  showActions = false,
+  canChangeRole = false,
+  canSuspend = false,
+  canDeactivate = false,
+  actionBusy = false,
+  onChangeRole,
+  onSuspend,
+  onActivate,
+  onDeactivate,
+}: {
+  title: string
+  rows: StaffTableRow[]
+  loading: boolean
+  search?: string
+  onSearch?: (value: string) => void
+  statusFilter?: string
+  onStatusFilter?: (value: "all" | "Active" | "Pending" | "Suspended") => void
+  emptyMessage: string
+  lastLoginHeader?: string
+  showActions?: boolean
+  canChangeRole?: boolean
+  canSuspend?: boolean
+  canDeactivate?: boolean
+  actionBusy?: boolean
+  onChangeRole?: (row: StaffTableRow) => void
+  onSuspend?: (row: StaffTableRow) => void
+  onActivate?: (row: StaffTableRow) => void
+  onDeactivate?: (row: StaffTableRow) => void
+}) {
+  const cols = showActions ? 6 : 5
+  const showMenu = (row: StaffTableRow) =>
+    row.kind === "member" && (canChangeRole || canSuspend || canDeactivate)
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200">
+      <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+        <h3 className="text-lg font-medium">{title}</h3>
+        {onSearch && onStatusFilter ? (
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Search staff"
+                value={search}
+                onChange={(e) => onSearch(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm"
+              />
+            </div>
+            <select
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+              value={statusFilter}
+              onChange={(e) =>
+                onStatusFilter(e.target.value as "all" | "Active" | "Pending" | "Suspended")
+              }
+            >
+              <option value="all">Status</option>
+              <option value="Active">Active</option>
+              <option value="Pending">Pending</option>
+              <option value="Suspended">Suspended</option>
+            </select>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-400">{rows.length}</span>
+        )}
+      </div>
+
+      <div className="overflow-hidden">
+        <div
+          className={`grid gap-4 p-4 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700 ${
+            cols === 6 ? "grid-cols-6" : "grid-cols-5"
+          }`}
+        >
+          <div>Name</div>
+          <div>Role</div>
+          <div>Email</div>
+          <div>{lastLoginHeader}</div>
+          <div>Status</div>
+          {showActions ? <div>Actions</div> : null}
+        </div>
+        {loading && rows.length === 0 ? (
+          <div className="flex items-center justify-center gap-2 p-10 text-sm text-gray-500">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Loading staff…
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="p-8 text-center text-sm text-gray-500">{emptyMessage}</p>
+        ) : (
+          rows.map((staff) => (
+            <div
+              key={staff.id}
+              className={`grid gap-4 p-4 border-b border-gray-100 last:border-b-0 text-sm items-center ${
+                cols === 6 ? "grid-cols-6" : "grid-cols-5"
+              }`}
+            >
+              <div className="font-medium">{staff.name}</div>
+              <div>{staff.role}</div>
+              <div className="truncate">{staff.email}</div>
+              <div>{staff.lastLogin}</div>
+              <div>
+                <Badge className={statusColor(staff.status)}>{staff.status}</Badge>
+              </div>
+              {showActions ? (
+                <div>
+                  {showMenu(staff) ? (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" disabled={actionBusy}>
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {canChangeRole ? (
+                          <DropdownMenuItem onClick={() => onChangeRole?.(staff)}>
+                            Change role
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canSuspend && staff.status === "Suspended" ? (
+                          <DropdownMenuItem onClick={() => onActivate?.(staff)}>
+                            Activate
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canSuspend && staff.status !== "Suspended" ? (
+                          <DropdownMenuItem onClick={() => onSuspend?.(staff)}>
+                            Suspend
+                          </DropdownMenuItem>
+                        ) : null}
+                        {canDeactivate ? (
+                          <DropdownMenuItem
+                            className="text-red-600"
+                            onClick={() => onDeactivate?.(staff)}
+                          >
+                            Deactivate
+                          </DropdownMenuItem>
+                        ) : null}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ) : staff.kind === "invitation" ? (
+                    <span className="text-xs text-gray-400">Invite pending</span>
+                  ) : (
+                    <span className="text-xs text-gray-400">—</span>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
     </div>
   )
 }
