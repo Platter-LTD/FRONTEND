@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Trash2, AlertTriangle, Loader2 } from "lucide-react"
 import { getAccessToken } from "@/lib/cookieAuth"
 import { Skeleton } from "@/components/ui/skeleton"
+import { usePermissions } from "@/hooks/usePermissions"
 
 interface App {
   id: string
@@ -28,6 +29,8 @@ export default function SettingsPage() {
   const params = useParams()
   const appId = params.id as string
   const router = useRouter()
+  const { actions } = usePermissions()
+  const canArchiveApp = actions.archiveApplication
   const [app, setApp] = useState<App | null>(null)
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
@@ -158,6 +161,13 @@ export default function SettingsPage() {
           <h2 className="text-lg font-semibold text-red-900">Danger Zone</h2>
         </div>
 
+        {!canArchiveApp ? (
+          <p className="text-sm text-red-700">
+            You don&apos;t have permission to archive or delete this application. Contact an Admin
+            or account owner if you need this done.
+          </p>
+        ) : (
+          <>
         <p className="mb-4 text-sm text-red-700">
           Deleting this app is permanent and cannot be undone. All associated data including
           products and configurations will be removed.
@@ -218,6 +228,8 @@ export default function SettingsPage() {
               </Button>
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

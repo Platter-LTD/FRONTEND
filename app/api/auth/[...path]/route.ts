@@ -155,6 +155,26 @@ export class Auth {
     }
   }
 
+  /** GET /api/v1/auth/me — current user + RBAC session (permissions, roleName, isOwner). */
+  static async me(request: NextRequest) {
+    const accessToken =
+      request.cookies.get('accessToken')?.value ||
+      request.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
+    if (!accessToken) {
+      return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
+    }
+    try {
+      const res = await axios.get(buildUrl(BACKEND.auth.me), {
+        ...axiosConfig,
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      });
+      return NextResponse.json(res.data, { status: res.status });
+    } catch (err: unknown) {
+      console.error('[Auth] me:', err);
+      return NextResponse.json({ success: false, error: 'Failed to load session' }, { status: 500 });
+    }
+  }
+
   static validateGet(request: NextRequest) {
     const accessToken = request.cookies.get('accessToken')?.value;
     if (!accessToken) {
@@ -324,6 +344,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const key = getPathKey(await params.then((p) => p.path));
   if (key === 'get-token') return Auth.getToken(request);
   if (key === 'validate') return Auth.validateGet(request);
+  if (key === 'me') return Auth.me(request);
   return NextResponse.json({ error: 'Not found' }, { status: 404 });
 }
 

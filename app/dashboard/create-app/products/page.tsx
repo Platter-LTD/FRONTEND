@@ -22,6 +22,7 @@ import MortgageCreatedSuccessDrawer from "@/components/drawers/mortgage-created-
 import SavingsCreatedSuccessDrawer from "@/components/drawers/savings-created-success-drawer"
 import CommodityCreatedSuccessDrawer from "@/components/drawers/commodity-created-success-drawer"
 import Link from "next/link"
+import { usePermissions } from "@/hooks/usePermissions"
 
 type Product = {
   id: string
@@ -38,6 +39,8 @@ type Product = {
 export default function ProductsPage() {
   const [activeTab, setActiveTab] = useState("products")
   const [isCreateProductOpen, setIsCreateProductOpen] = useState(false)
+  const { actions } = usePermissions()
+  const canCreateProduct = actions.createProduct
   
   // Loan states
   const [isCreateLoanOpen, setIsCreateLoanOpen] = useState(false)
@@ -358,10 +361,12 @@ export default function ProductsPage() {
       <div className="p-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-semibold text-gray-900">All Product</h2>
+          {canCreateProduct ? (
           <Button onClick={() => setIsCreateProductOpen(true)} className="bg-black text-white hover:bg-gray-800 gap-2">
             <Plus size={16} />
             create product
           </Button>
+          ) : null}
         </div>
 
         {/* Products Table */}

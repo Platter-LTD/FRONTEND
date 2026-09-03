@@ -14,12 +14,16 @@ import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { WithdrawWalletDialog } from "@/components/wallets/withdraw-wallet-dialog"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { usePermissions } from "@/hooks/usePermissions"
 
 type AppRow = { id: string; name?: string; alias?: string; merchantId?: string }
 
 export function WalletTab() {
   const dispatch = useAppDispatch()
   const walletState = useAppSelector((s) => s.wallet)
+  const { actions } = usePermissions()
+  const canViewBalances = actions.viewWalletBalances
+  const canFundOrWithdraw = actions.viewWalletBalances
 
   const [apps, setApps] = useState<AppRow[]>([])
   const [appsLoading, setAppsLoading] = useState(true)
@@ -146,21 +150,32 @@ export function WalletTab() {
         <MerchantWalletBalanceCard
           wallet={settlement}
           loading={!!walletsLoading}
-          showBalance={showBalance}
-          onToggleBalance={() => setShowBalance((value) => !value)}
+          showBalance={canViewBalances && showBalance}
+          onToggleBalance={() => {
+            if (!canViewBalances) return
+            setShowBalance((value) => !value)
+          }}
           title="Repayment wallet"
-          subtitle="Loan repayments · fund & withdraw"
+          subtitle={
+            canViewBalances
+              ? "Loan repayments · fund & withdraw"
+              : "Balances hidden — ledger access only"
+          }
         />
         <MerchantWalletBalanceCard
           wallet={treasury}
           loading={!!walletsLoading}
-          showBalance={showBalance}
-          onToggleBalance={() => setShowBalance((value) => !value)}
+          showBalance={canViewBalances && showBalance}
+          onToggleBalance={() => {
+            if (!canViewBalances) return
+            setShowBalance((value) => !value)
+          }}
           title="Treasury wallet"
-          subtitle="Disbursements"
+          subtitle={canViewBalances ? "Disbursements" : "Balances hidden — ledger access only"}
         />
       </div>
 
+      {canFundOrWithdraw ? (
       <div className="mb-8 flex flex-wrap items-center justify-end gap-3">
         <Button
           className="bg-[#9A813F] px-6 font-semibold text-white hover:bg-[#7A642F]"
@@ -178,6 +193,7 @@ export function WalletTab() {
           Withdraw
         </Button>
       </div>
+      ) : null}
 
       <MerchantTransactionsTable
         transactions={txs}
@@ -187,6 +203,8 @@ export function WalletTab() {
         onSearchChange={setSearchTerm}
       />
 
+      {canFundOrWithdraw ? (
+        <>
       <FundWalletDrawer
         open={fundOpen}
         onOpenChange={setFundOpen}
@@ -216,6 +234,8 @@ export function WalletTab() {
           void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
         }}
       />
+        </>
+      ) : null}
     </>
   )
 }

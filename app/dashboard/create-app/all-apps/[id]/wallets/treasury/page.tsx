@@ -19,12 +19,15 @@ import {
   merchantWalletMainBalance,
   type MerchantWallet,
 } from "@/lib/services/walletService"
+import { usePermissions } from "@/hooks/usePermissions"
 
 export default function TreasuryWalletPage() {
   const params = useParams()
   const appId = params.id as string
   const dispatch = useAppDispatch()
   const walletState = useAppSelector((s) => s.wallet)
+  const { actions } = usePermissions()
+  const canViewBalances = actions.viewWalletBalances
 
   const { merchantId, loading: merchantLoading, error: merchantError } = useAppMerchantId(appId)
 
@@ -73,7 +76,7 @@ export default function TreasuryWalletPage() {
   const currency = plataWalletDisplayCurrency(treasury?.currency)
   const mainBal = merchantWalletMainBalance(treasury)
   const nubanActive = isVirtualNubanActive(treasury?.virtualNuban)
-  const canOpenFund = Boolean(treasury) && !walletsLoading
+  const canOpenFund = canViewBalances && Boolean(treasury) && !walletsLoading
 
   const bannerError = useMemo(() => {
     if (merchantError) return merchantError
@@ -94,16 +97,22 @@ export default function TreasuryWalletPage() {
       <MerchantWalletBalanceCard
         wallet={treasury}
         loading={!!walletsLoading}
-        showBalance={showBalance}
-        onToggleBalance={() => setShowBalance((value) => !value)}
+        showBalance={canViewBalances && showBalance}
+        onToggleBalance={() => {
+          if (!canViewBalances) return
+          setShowBalance((value) => !value)
+        }}
         title="Treasury wallet"
         subtitle={
-          nubanActive
-            ? `Disbursements · ${treasury?.virtualNuban?.bankName || "Bank"} · ${treasury?.virtualNuban?.accountNumber}`
-            : "Disbursements and treasury operations · fund via NUBAN"
+          canViewBalances
+            ? nubanActive
+              ? `Disbursements · ${treasury?.virtualNuban?.bankName || "Bank"} · ${treasury?.virtualNuban?.accountNumber}`
+              : "Disbursements and treasury operations · fund via NUBAN"
+            : "Balances hidden — ledger access only"
         }
         className="mb-8"
         actions={
+          canViewBalances ? (
           <Button
             className="bg-[#8B7355] text-white hover:bg-[#7A6449] disabled:opacity-50"
             disabled={!canOpenFund}
@@ -111,6 +120,7 @@ export default function TreasuryWalletPage() {
           >
             Fund
           </Button>
+          ) : null
         }
       />
 
@@ -122,6 +132,7 @@ export default function TreasuryWalletPage() {
         onSearchChange={setSearchTerm}
       />
 
+      {canViewBalances ? (
       <FundWalletDrawer
         open={fundOpen}
         onOpenChange={setFundOpen}
@@ -140,6 +151,7 @@ export default function TreasuryWalletPage() {
           refresh()
         }}
       />
+      ) : null}
     </div>
   )
 }

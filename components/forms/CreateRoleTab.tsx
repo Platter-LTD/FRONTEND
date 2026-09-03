@@ -22,12 +22,11 @@ import {
 import type { MerchantTeamState } from "@/hooks/useMerchantTeam"
 import { teamApi, type MerchantRole } from "@/lib/services/teamService"
 import {
-  hasAnyPermission,
   isStandardRoleName,
   permissionLabel,
   TEAM_PERMISSIONS,
 } from "@/lib/teamPermissions"
-import { useAppSelector } from "@/store/hooks"
+import { usePermissions } from "@/hooks/usePermissions"
 import { toast } from "sonner"
 
 export interface CreateRoleTabProps {
@@ -38,15 +37,9 @@ export interface CreateRoleTabProps {
 
 export function CreateRoleTab({ onCreateRole, onEditRole, team }: CreateRoleTabProps) {
   const { roles, catalog, loading, error, refetch } = team
-  const sessionPermissions = useAppSelector((s) => s.auth.permissions)
-  const canManageRoles = hasAnyPermission(
-    [...TEAM_PERMISSIONS.manageRoles],
-    sessionPermissions,
-  )
-  const canEnsureDefaults = hasAnyPermission(
-    [...TEAM_PERMISSIONS.ensureDefaults],
-    sessionPermissions,
-  )
+  const { can } = usePermissions()
+  const canManageRoles = can([...TEAM_PERMISSIONS.manageRoles])
+  const canEnsureDefaults = can([...TEAM_PERMISSIONS.ensureDefaults])
 
   const [search, setSearch] = useState("")
   const [viewRole, setViewRole] = useState<MerchantRole | null>(null)

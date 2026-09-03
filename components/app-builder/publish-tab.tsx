@@ -23,6 +23,7 @@ import { useState, useEffect } from "react"
 import { appConfigurationApi, type AppConfiguration } from "@/lib/services/appService"
 import { toast } from "sonner"
 import { format, formatDistanceToNow } from "date-fns"
+import { usePermissions } from "@/hooks/usePermissions"
 
 interface ConfigVersion {
   id: string
@@ -42,6 +43,8 @@ export function PublishTab() {
     restoreConfiguration,
     getChangedSections,
   } = useAppBuilder()
+  const { actions } = usePermissions()
+  const canPublish = actions.publishApplication
   
   const [versions, setVersions] = useState<ConfigVersion[]>([])
   const [loadingVersions, setLoadingVersions] = useState(true)
@@ -236,7 +239,8 @@ export function PublishTab() {
 
           <Button
             onClick={handlePublish}
-            disabled={publishing || !hasUnsavedChanges}
+            disabled={publishing || !hasUnsavedChanges || !canPublish}
+            title={!canPublish ? "You do not have permission to publish this application" : undefined}
             className="bg-[#7C3AED] hover:bg-[#6D28D9] text-white gap-2 px-6 disabled:opacity-50"
           >
             {publishing ? (

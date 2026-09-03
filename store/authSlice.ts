@@ -5,14 +5,16 @@ import { setSecureTokens, clearSecureTokens, getUserFromToken } from "@/lib/toke
 import { getAccessToken } from "@/lib/cookieAuth"
 import {
   clearSessionPermissions,
-  getSessionPermissions,
-  saveSessionPermissions,
+  getSessionRbac,
+  saveSessionRbac,
 } from "@/lib/teamPermissions"
 import type {
+  AuthMeResponseDto,
   AuthUser,
   LoginRequestDto,
   LoginResponseDto,
   MerchantRegistrationRequestDto,
+  RbacSession,
 } from "@/types/auth"
 
 interface AuthState {
@@ -21,32 +23,101 @@ interface AuthState {
   error: string | null
   isAuthenticated: boolean
   permissions: string[]
+  isOwner: boolean
+  roleId: string | null
+  roleName: string | null
+  /** True after login or a successful /auth/me hydrate. */
+  rbacLoaded: boolean
 }
+
+const emptyRbac = (): RbacSession => ({
+  isOwner: false,
+  roleId: null,
+  roleName: null,
+  permissions: [],
+})
+
+function parseRbac(source: Record<string, unknown> | null | undefined): RbacSession {
+  if (!source || typeof source !== "object") return emptyRbac()
+  const permsRaw = source.permissions
+  return {
+    isOwner: source.isOwner === true,
+    roleId:
+      source.roleId != null
+        ? String(source.roleId)
+        : source.role_id != null
+          ? String(source.role_id)
+          : null,
+    roleName:
+      source.roleName != null
+        ? String(source.roleName)
+        : source.role_name != null
+          ? String(source.role_name)
+          : null,
+    permissions: Array.isArray(permsRaw) ? permsRaw.map(String) : [],
+  }
+}
+
+function normalizeAuthUser(raw: unknown): AuthUser | null {
+  if (!raw || typeof raw !== "object") return null
+  const u = raw as Record<string, unknown>
+  const id = String(u.id ?? u._id ?? u.userId ?? u.sub ?? "").trim()
+  const email = String(u.email ?? "").trim()
+  if (!id && !email) return null
+  return {
+    id: id || email,
+    email,
+    first_name: String(u.first_name ?? u.firstName ?? "").trim(),
+    last_name: String(u.last_name ?? u.lastName ?? "").trim(),
+    phone: u.phone != null ? String(u.phone) : undefined,
+    country: u.country != null ? String(u.country) : undefined,
+    user_type: u.user_type != null ? String(u.user_type) : u.userType != null ? String(u.userType) : undefined,
+    status: u.status != null ? String(u.status) : undefined,
+    role_id:
+      u.role_id != null
+        ? String(u.role_id)
+        : u.roleId != null
+          ? String(u.roleId)
+          : null,
+  }
+}
+
+function applyRbacToState(state: AuthState, rbac: RbacSession) {
+  state.permissions = rbac.permissions
+  state.isOwner = rbac.isOwner
+  state.roleId = rbac.roleId
+  state.roleName = rbac.roleName
+  state.rbacLoaded = true
+  saveSessionRbac(rbac)
+}
+
+const initialRbac =
+  typeof window !== "undefined" ? getSessionRbac() : emptyRbac()
 
 const initialState: AuthState = {
   user: null,
   loading: false,
   error: null,
   isAuthenticated: false,
-  permissions: [],
+  permissions: initialRbac.permissions,
+  isOwner: initialRbac.isOwner,
+  roleId: initialRbac.roleId,
+  roleName: initialRbac.roleName,
+  rbacLoaded: false,
 }
 
 export const loginThunk = createAsyncThunk<
-  { user: AuthUser; permissions: string[] },
+  { user: AuthUser; rbac: RbacSession },
   LoginRequestDto,
   { rejectValue: string }
 >("auth/login", async (payload, { rejectWithValue }) => {
   try {
     const response = await api.post<LoginResponseDto>(ENDPOINTS.auth.login, payload)
-    const responseData = response.data as LoginResponseDto & {
-      permissions?: string[]
-      data?: LoginResponseDto["data"] & { permissions?: string[] }
-    }
+    const responseData = response.data as LoginResponseDto & Record<string, unknown>
 
     let userData: AuthUser | undefined
     let accessToken: string | undefined
     let refreshToken: string | undefined
-    let permissions: string[] = []
 
     if (responseData?.data?.tokens) {
       userData = responseData.data.user
@@ -56,32 +127,41 @@ export const loginThunk = createAsyncThunk<
       userData = responseData.data.user
       accessToken = responseData.data.accessToken
       refreshToken = responseData.data.refreshToken
-    } else if ((responseData as any)?.accessToken) {
-      const direct = responseData as any
-      userData = direct.user
-      accessToken = direct.accessToken
-      refreshToken = direct.refreshToken
+    } else if (responseData?.accessToken) {
+      userData = responseData.user
+      accessToken = responseData.accessToken
+      refreshToken = responseData.refreshToken
     }
 
-    const permsRaw =
-      responseData?.permissions ??
-      responseData?.data?.permissions ??
-      (responseData as any)?.data?.user?.permissions
-    if (Array.isArray(permsRaw)) permissions = permsRaw.map(String)
+    const dataBag =
+      responseData?.data && typeof responseData.data === "object"
+        ? (responseData.data as Record<string, unknown>)
+        : null
+    const rbac = parseRbac({
+      ...(dataBag || {}),
+      ...(responseData as Record<string, unknown>),
+      permissions:
+        responseData.permissions ??
+        dataBag?.permissions ??
+        (dataBag?.user as Record<string, unknown> | undefined)?.permissions,
+      isOwner: responseData.isOwner ?? dataBag?.isOwner,
+      roleId: responseData.roleId ?? dataBag?.roleId,
+      roleName: responseData.roleName ?? dataBag?.roleName,
+    })
 
     if (!accessToken) {
       return rejectWithValue("No access token received from server")
     }
 
     await setSecureTokens(accessToken, refreshToken)
-    saveSessionPermissions(permissions)
+    saveSessionRbac(rbac)
 
     const fallbackUser = getUserFromToken()
     const user =
-      (userData as AuthUser) ||
+      normalizeAuthUser(userData) ||
       (fallbackUser as unknown as AuthUser)
     if (!user) return rejectWithValue("Unable to resolve user from token")
-    return { user, permissions }
+    return { user, rbac }
   } catch (error: any) {
     const errorMessage =
       error?.response?.data?.message ||
@@ -92,69 +172,118 @@ export const loginThunk = createAsyncThunk<
   }
 })
 
-export const loadUserFromTokenThunk = createAsyncThunk<AuthUser | null>(
-  "auth/loadUserFromToken",
-  async () => {
-    try {
-      const res = await fetch("/api/auth/validate", { method: "GET", credentials: "include" })
-      const data = await res.json().catch(() => ({} as any))
-      if (process.env.NODE_ENV === "development") {
-        console.log("[auth] GET /api/auth/validate → status", res.status, "body", data)
-      }
-      if (data?.valid && data?.user) {
-        if (process.env.NODE_ENV === "development") {
-          console.log("[auth] user applied from validate response", data.user)
-        }
-        return data.user as AuthUser
+/** Primary RBAC hydrate for app reload — GET /api/v1/auth/me */
+export const fetchAuthMeThunk = createAsyncThunk<
+  { user: AuthUser; rbac: RbacSession } | null,
+  void,
+  { rejectValue: string }
+>("auth/fetchMe", async (_, { rejectWithValue }) => {
+  try {
+    const response = await api.get<AuthMeResponseDto>(ENDPOINTS.auth.me)
+    const body = response.data as AuthMeResponseDto & Record<string, unknown>
+    const data =
+      body?.data && typeof body.data === "object"
+        ? (body.data as Record<string, unknown>)
+        : (body as Record<string, unknown>)
+
+    const user = normalizeAuthUser(data.user ?? data)
+    if (!user) {
+      return rejectWithValue("Invalid /auth/me payload")
+    }
+    const rbac = parseRbac(data)
+    saveSessionRbac(rbac)
+    return { user, rbac }
+  } catch (error: any) {
+    const status = error?.response?.status
+    if (status === 401 || status === 404) return null
+    return rejectWithValue(
+      error?.response?.data?.error ||
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to load session",
+    )
+  }
+})
+
+export const loadUserFromTokenThunk = createAsyncThunk<
+  { user: AuthUser; rbac: RbacSession } | null
+>("auth/loadUserFromToken", async (_, { dispatch }) => {
+  try {
+    const res = await fetch("/api/auth/validate", { method: "GET", credentials: "include" })
+    const data = await res.json().catch(() => ({} as any))
+    if (process.env.NODE_ENV === "development") {
+      console.log("[auth] GET /api/auth/validate → status", res.status, "body", data)
+    }
+
+    const tokenOk = Boolean(data?.valid && data?.user)
+    if (tokenOk || getAccessToken()) {
+      // Prefer /auth/me for RBAC; fall back to JWT + cached session.
+      const me = await dispatch(fetchAuthMeThunk())
+      if (fetchAuthMeThunk.fulfilled.match(me) && me.payload) {
+        return me.payload
       }
 
-      // Validate already attempted cookie refresh. Prefer keeping an unexpired JWT
-      // over clearing — aggressive clears race parallel workflow refreshes.
-      if (res.status === 401 || data?.valid === false) {
-        const user = getUserFromToken()
-        const token = getAccessToken()
-        if (token) {
-          try {
-            const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number }
-            if (payload.exp && payload.exp * 1000 > Date.now() && user) {
-              return user as unknown as AuthUser
-            }
-          } catch {
-            /* fall through */
-          }
+      if (tokenOk) {
+        const jwtUser = data.user as AuthUser
+        return {
+          user: normalizeAuthUser(jwtUser) || (jwtUser as AuthUser),
+          rbac: getSessionRbac(),
         }
-        // Only clear when we have no usable access token left.
-        if (!getAccessToken()) {
-          await clearSecureTokens()
-        }
-        return null
-      }
-    } catch (e) {
-      if (process.env.NODE_ENV === "development") {
-        console.warn("[auth] GET /api/auth/validate request failed", e)
       }
     }
 
-    // Network hiccup: keep user if JWT is still unexpired; do not clear cookies.
-    const user = getUserFromToken()
-    try {
+    if (res.status === 401 || data?.valid === false) {
+      const user = getUserFromToken()
       const token = getAccessToken()
       if (token) {
-        const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number }
-        if (payload.exp && payload.exp * 1000 > Date.now()) {
-          if (process.env.NODE_ENV === "development") {
-            console.log("[auth] validate unreachable; using unexpired JWT claims", user)
+        try {
+          const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number }
+          if (payload.exp && payload.exp * 1000 > Date.now() && user) {
+            const me = await dispatch(fetchAuthMeThunk())
+            if (fetchAuthMeThunk.fulfilled.match(me) && me.payload) {
+              return me.payload
+            }
+            return {
+              user: user as unknown as AuthUser,
+              rbac: getSessionRbac(),
+            }
           }
-          return (user as any) || null
+        } catch {
+          /* fall through */
         }
       }
-    } catch {
-      /* fall through */
+      if (!getAccessToken()) {
+        await clearSecureTokens()
+      }
+      return null
     }
+  } catch (e) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[auth] GET /api/auth/validate request failed", e)
+    }
+  }
 
-    return null
-  },
-)
+  const user = getUserFromToken()
+  try {
+    const token = getAccessToken()
+    if (token) {
+      const payload = JSON.parse(atob(token.split(".")[1])) as { exp?: number }
+      if (payload.exp && payload.exp * 1000 > Date.now()) {
+        const me = await dispatch(fetchAuthMeThunk())
+        if (fetchAuthMeThunk.fulfilled.match(me) && me.payload) {
+          return me.payload
+        }
+        return user
+          ? { user: user as unknown as AuthUser, rbac: getSessionRbac() }
+          : null
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+
+  return null
+})
 
 export const logoutThunk = createAsyncThunk("auth/logout", async () => {
   clearSessionPermissions()
@@ -186,6 +315,9 @@ const authSlice = createSlice({
       state.user = action.payload
       state.isAuthenticated = !!action.payload
     },
+    setRbac(state, action: PayloadAction<RbacSession>) {
+      applyRbacToState(state, action.payload)
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -196,7 +328,7 @@ const authSlice = createSlice({
       .addCase(loginThunk.fulfilled, (state, action) => {
         state.loading = false
         state.user = action.payload.user
-        state.permissions = action.payload.permissions
+        applyRbacToState(state, action.payload.rbac)
         state.isAuthenticated = true
       })
       .addCase(loginThunk.rejected, (state, action) => {
@@ -204,6 +336,10 @@ const authSlice = createSlice({
         state.error = action.payload || "Signin failed"
         state.user = null
         state.permissions = []
+        state.isOwner = false
+        state.roleId = null
+        state.roleName = null
+        state.rbacLoaded = false
         state.isAuthenticated = false
       })
       .addCase(loadUserFromTokenThunk.pending, (state) => {
@@ -212,25 +348,48 @@ const authSlice = createSlice({
       })
       .addCase(loadUserFromTokenThunk.fulfilled, (state, action) => {
         state.loading = false
-        state.user = action.payload
-        state.isAuthenticated = !!action.payload
-        state.permissions = action.payload ? getSessionPermissions() : []
+        if (!action.payload) {
+          state.user = null
+          state.isAuthenticated = false
+          state.permissions = []
+          state.isOwner = false
+          state.roleId = null
+          state.roleName = null
+          state.rbacLoaded = false
+          return
+        }
+        state.user = action.payload.user
+        state.isAuthenticated = true
+        applyRbacToState(state, action.payload.rbac)
       })
       .addCase(loadUserFromTokenThunk.rejected, (state) => {
         state.loading = false
         state.user = null
         state.permissions = []
+        state.isOwner = false
+        state.roleId = null
+        state.roleName = null
+        state.rbacLoaded = false
         state.isAuthenticated = false
+      })
+      .addCase(fetchAuthMeThunk.fulfilled, (state, action) => {
+        if (!action.payload) return
+        state.user = action.payload.user
+        state.isAuthenticated = true
+        applyRbacToState(state, action.payload.rbac)
       })
       .addCase(logoutThunk.fulfilled, (state) => {
         state.user = null
         state.permissions = []
+        state.isOwner = false
+        state.roleId = null
+        state.roleName = null
+        state.rbacLoaded = false
         state.isAuthenticated = false
         state.error = null
       })
   },
 })
 
-export const { setUser } = authSlice.actions
+export const { setUser, setRbac } = authSlice.actions
 export const authReducer = authSlice.reducer
-

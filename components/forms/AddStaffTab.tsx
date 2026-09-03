@@ -41,8 +41,8 @@ import {
   teamApi,
   type StaffTableRow,
 } from "@/lib/services/teamService"
-import { hasAnyPermission, TEAM_PERMISSIONS } from "@/lib/teamPermissions"
-import { useAppSelector } from "@/store/hooks"
+import { TEAM_PERMISSIONS } from "@/lib/teamPermissions"
+import { usePermissions } from "@/hooks/usePermissions"
 import { toast } from "sonner"
 
 export interface AddStaffTabProps {
@@ -76,24 +76,12 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
     roles,
     refetch,
   } = team
-  const sessionPermissions = useAppSelector((s) => s.auth.permissions)
-  const canInvite = hasAnyPermission([...TEAM_PERMISSIONS.invite], sessionPermissions)
-  const canChangeRole = hasAnyPermission(
-    [...TEAM_PERMISSIONS.changeRole],
-    sessionPermissions,
-  )
-  const canSuspend = hasAnyPermission(
-    [...TEAM_PERMISSIONS.suspendActivate],
-    sessionPermissions,
-  )
-  const canDeactivate = hasAnyPermission(
-    [...TEAM_PERMISSIONS.deactivate],
-    sessionPermissions,
-  )
-  const canViewLogs = hasAnyPermission(
-    [...TEAM_PERMISSIONS.activityLogs],
-    sessionPermissions,
-  )
+  const { can } = usePermissions()
+  const canInvite = can([...TEAM_PERMISSIONS.invite])
+  const canChangeRole = can([...TEAM_PERMISSIONS.changeRole])
+  const canSuspend = can([...TEAM_PERMISSIONS.suspendActivate])
+  const canDeactivate = can([...TEAM_PERMISSIONS.deactivate])
+  const canViewLogs = can([...TEAM_PERMISSIONS.activityLogs])
 
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<

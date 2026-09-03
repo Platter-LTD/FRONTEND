@@ -13,6 +13,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const key = getPathKey(await params.then((p) => p.path));
   if (key === 'get-token') return Auth.getToken(request);
   if (key === 'validate') return Auth.validateGet(request);
+  if (key === 'me') return Auth.me(request);
   return NextResponse.json({ error: 'Not found' }, { status: 404 });
 }
 

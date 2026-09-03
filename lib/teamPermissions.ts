@@ -3,6 +3,9 @@
  * Prefer labels from GET /api/v1/roles/permissions → `catalog`.
  */
 
+import { ADMIN_PERMISSIONS, canAccess } from "@/lib/adminPermissions"
+import type { RbacSession } from "@/types/auth"
+
 export type PermissionCatalogItem = {
   code: string
   label: string
@@ -70,6 +73,10 @@ export function permissionLabel(
 ): string {
   const fromCatalog = catalog?.find((c) => c.code === code)?.label
   if (fromCatalog) return fromCatalog
+  const fromAdmin = ADMIN_PERMISSIONS.find(
+    (p) => p.code === code || p.aliases?.includes(code),
+  )?.label
+  if (fromAdmin) return fromAdmin
   return LEGACY_PERMISSION_LABELS[code] || code.replace(/_/g, " ")
 }
 
@@ -97,9 +104,10 @@ export function groupPrimaryPermissions(
   return groups
 }
 
-// ─── Session permissions (from login `permissions[]`) ─────────────────────────
+// ─── Session RBAC (from login / auth/me) ───────────────────────────────────────
 
 const SESSION_PERMISSIONS_KEY = "plata.sessionPermissions"
+const SESSION_RBAC_KEY = "plata.sessionRbac"
 
 export function saveSessionPermissions(permissions: string[]): void {
   if (typeof window === "undefined") return
@@ -110,38 +118,80 @@ export function saveSessionPermissions(permissions: string[]): void {
   }
 }
 
+export function saveSessionRbac(session: RbacSession): void {
+  if (typeof window === "undefined") return
+  try {
+    localStorage.setItem(SESSION_RBAC_KEY, JSON.stringify(session))
+    saveSessionPermissions(session.permissions)
+  } catch {
+    /* ignore quota */
+  }
+}
+
 export function clearSessionPermissions(): void {
   if (typeof window === "undefined") return
   try {
     localStorage.removeItem(SESSION_PERMISSIONS_KEY)
+    localStorage.removeItem(SESSION_RBAC_KEY)
   } catch {
     /* ignore */
   }
 }
 
 export function getSessionPermissions(): string[] {
-  if (typeof window === "undefined") return []
-  try {
-    const raw = localStorage.getItem(SESSION_PERMISSIONS_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed.map(String) : []
-  } catch {
-    return []
+  return getSessionRbac().permissions
+}
+
+export function getSessionRbac(): RbacSession {
+  if (typeof window === "undefined") {
+    return { isOwner: false, roleId: null, roleName: null, permissions: [] }
   }
+  try {
+    const raw = localStorage.getItem(SESSION_RBAC_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<RbacSession>
+      return {
+        isOwner: Boolean(parsed.isOwner),
+        roleId: parsed.roleId != null ? String(parsed.roleId) : null,
+        roleName: parsed.roleName != null ? String(parsed.roleName) : null,
+        permissions: Array.isArray(parsed.permissions)
+          ? parsed.permissions.map(String)
+          : [],
+      }
+    }
+    // Legacy: permissions-only key
+    const legacy = localStorage.getItem(SESSION_PERMISSIONS_KEY)
+    if (legacy) {
+      const parsed = JSON.parse(legacy)
+      return {
+        isOwner: false,
+        roleId: null,
+        roleName: null,
+        permissions: Array.isArray(parsed) ? parsed.map(String) : [],
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return { isOwner: false, roleId: null, roleName: null, permissions: [] }
 }
 
 /**
- * Owners / admins typically receive the full catalog from login.
+ * Owners / Admin role → full access (Admin matrix = all Yes).
  * If we have no stored list yet, allow UI actions (backend still enforces).
  */
 export function hasAnyPermission(
   required: string[],
   sessionPermissions?: string[] | null,
+  options?: { isOwner?: boolean; roleName?: string | null },
 ): boolean {
-  const perms = sessionPermissions ?? getSessionPermissions()
-  if (!perms.length) return true
-  return required.some((code) => perms.includes(code))
+  const stored = getSessionRbac()
+  return canAccess(required, {
+    permissions: sessionPermissions ?? stored.permissions,
+    isOwner: options?.isOwner ?? stored.isOwner,
+    roleName: options?.roleName ?? stored.roleName,
+    allowIfEmpty: true,
+  })
 }
 
 export const TEAM_PERMISSIONS = {

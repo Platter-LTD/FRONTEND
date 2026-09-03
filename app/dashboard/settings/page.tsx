@@ -24,6 +24,7 @@ import {
     updateMerchantProfileThunk,
 } from "@/store/merchantSettingsSlice"
 import APIKeysSection from "@/components/APIKeysSection"
+import { usePermissions } from "@/hooks/usePermissions"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -44,6 +45,8 @@ export default function SettingsPage() {
     const [activeTab, setActiveTab] = useState("account-settings")
     const [deactivateOpen, setDeactivateOpen] = useState(false)
     const router = useRouter()
+    const { actions } = usePermissions()
+    const canManageApiKeys = actions.manageApiKeys
 
     const {
         fullName,
@@ -424,6 +427,7 @@ export default function SettingsPage() {
                             </div>
                         </section>
 
+                        {canManageApiKeys ? (
                         <APIKeysSection
                             className="w-full"
                             footerNote={
@@ -434,6 +438,12 @@ export default function SettingsPage() {
                                 </>
                             }
                         />
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-600">
+                            API key management requires Admin access. Contact an Admin or account owner
+                            if you need keys created or rotated.
+                          </div>
+                        )}
                     </div>
                 )}
 
