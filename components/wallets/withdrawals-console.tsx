@@ -14,6 +14,7 @@ import {
   type SettlementType,
   type TreasuryPayoutRow,
 } from "@/lib/services/treasuryConsoleService"
+import { usePermissions } from "@/hooks/usePermissions"
 
 type TabKey = "withdrawals" | SettlementType
 
@@ -88,6 +89,10 @@ function BatchToast(result: {
 type Props = { appId: string }
 
 export function WithdrawalsConsole({ appId }: Props) {
+  const { can } = usePermissions()
+  const canApprovePayout = can("approve_payout")
+  const canSetAutoSettle = can(["approve_payout", "manage_system_settings"])
+
   const [tab, setTab] = useState<TabKey>("withdrawals")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -299,6 +304,7 @@ export function WithdrawalsConsole({ appId }: Props) {
             selected={wdSelected}
             allChecked={allWdChecked}
             acting={acting}
+            canApprove={canApprovePayout}
             onToggleAll={(checked) => {
               if (!checked) {
                 setWdSelected(new Set())
@@ -324,6 +330,8 @@ export function WithdrawalsConsole({ appId }: Props) {
             reverted={reverted[tab]}
             selected={settleSelected[tab]}
             acting={acting}
+            canApprove={canApprovePayout}
+            canToggleMode={canSetAutoSettle}
             onToggleMode={(on) => void toggleMode(tab, on)}
             onToggleAll={(checked) => {
               const pending = settlements[tab].filter((r) => r.status === "pending")
@@ -353,6 +361,7 @@ function WithdrawalsPanel({
   selected,
   allChecked,
   acting,
+  canApprove = true,
   onToggleAll,
   onToggle,
   onApprove,
@@ -361,6 +370,7 @@ function WithdrawalsPanel({
   selected: Set<string>
   allChecked: boolean
   acting: boolean
+  canApprove?: boolean
   onToggleAll: (checked: boolean) => void
   onToggle: (ref: string, checked: boolean) => void
   onApprove: () => void
@@ -466,8 +476,9 @@ function WithdrawalsPanel({
           <span className="font-semibold text-[#667085]">{selCount} selected</span>
           <Button
             className="bg-[#0B1E3B] text-white hover:bg-[#142B52] disabled:opacity-40"
-            disabled={selCount === 0 || acting}
+            disabled={!canApprove || selCount === 0 || acting}
             onClick={onApprove}
+            title={!canApprove ? "You do not have permission to approve payouts" : undefined}
           >
             {acting ? (
               <>
@@ -491,6 +502,8 @@ function SettlementPanel({
   reverted,
   selected,
   acting,
+  canApprove = true,
+  canToggleMode = true,
   onToggleMode,
   onToggleAll,
   onToggle,
@@ -502,6 +515,8 @@ function SettlementPanel({
   reverted: boolean
   selected: Set<string>
   acting: boolean
+  canApprove?: boolean
+  canToggleMode?: boolean
   onToggleMode: (on: boolean) => void
   onToggleAll: (checked: boolean) => void
   onToggle: (ref: string, checked: boolean) => void
@@ -549,10 +564,16 @@ function SettlementPanel({
             </span>
             <Switch
               checked={isAuto}
-              disabled={acting}
+              disabled={acting || !canToggleMode}
               onCheckedChange={onToggleMode}
               className="h-[26px] w-[46px] data-[state=checked]:bg-[#067647] data-[state=unchecked]:bg-[#D0D5DD]"
-              title={isAuto ? "Turn off to switch to Manual" : "Turn on for Automatic settlement"}
+              title={
+                !canToggleMode
+                  ? "You do not have permission to change settlement mode"
+                  : isAuto
+                    ? "Turn off to switch to Manual"
+                    : "Turn on for Automatic settlement"
+              }
             />
           </div>
         </div>
@@ -646,8 +667,9 @@ function SettlementPanel({
           {!isAuto ? (
             <Button
               className="bg-[#0B1E3B] text-white hover:bg-[#142B52] disabled:opacity-40"
-              disabled={selCount === 0 || acting}
+              disabled={!canApprove || selCount === 0 || acting}
               onClick={onApprove}
+              title={!canApprove ? "You do not have permission to approve payouts" : undefined}
             >
               {acting ? (
                 <>

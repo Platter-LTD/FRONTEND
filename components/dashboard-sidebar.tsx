@@ -14,6 +14,7 @@ import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
 import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
+import { usePermissions } from "@/hooks/usePermissions"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { fetchKycStatusThunk } from "@/store/complianceSlice"
 import { fetchMerchantProfileThunk } from "@/store/merchantSettingsSlice"
@@ -85,6 +86,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const complianceComplete = useAppSelector((s) => s.compliance.isApproved)
   const merchantFullName = useAppSelector((s) => s.merchantSettings.fullName?.trim() ?? "")
   const { user, logout } = useAuth()
+  const { nav, roleLabel } = usePermissions()
 
   const derivedAppId = useMemo(() => appIdFromPathname(pathname ?? null), [pathname])
   const appId = appIdProp ?? derivedAppId
@@ -216,63 +218,103 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   }, [pathname, appId])
 
   const globalNavItems: GlobalNavItem[] = [
-    {
-      icon: <MdAddBox size={20} />,
-      label: "Apps",
-      href: "/dashboard/create-app/all-apps",
-      requiresCompliance: true,
-    },
-    { icon: <IoMdCube size={20} />, label: "Compliance", href: "/dashboard/compliance", requiresCompliance: false },
+    ...(nav.apps
+      ? [
+          {
+            icon: <MdAddBox size={20} />,
+            label: "Apps",
+            href: "/dashboard/create-app/all-apps",
+            requiresCompliance: true,
+          } satisfies GlobalNavItem,
+        ]
+      : []),
+    ...(nav.compliance
+      ? [
+          {
+            icon: <IoMdCube size={20} />,
+            label: "Compliance",
+            href: "/dashboard/compliance",
+            requiresCompliance: false,
+          } satisfies GlobalNavItem,
+        ]
+      : []),
   ]
 
   const appNavItems: AppNavItem[] = appId
     ? [
-        {
-          icon: <BarChart3 size={20} />,
-          label: "Analytics",
-          href: `/dashboard/create-app/all-apps/${appId}/admin/analytics`,
-        },
-        {
-          icon: <FaWallet size={20} />,
-          label: "Wallets",
-          href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury`,
-          subItems: [
-            { label: "Treasury wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury` },
-            { label: "Billing wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/billing` },
-            { label: "Repayment wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/repayment` },
-            { label: "Withdrawals", href: `/dashboard/create-app/all-apps/${appId}/wallets/withdrawals` },
-          ],
-        },
-        {
-          icon: <IoMdCube size={20} />,
-          label: "Products",
-          href: `/dashboard/create-app/all-apps/${appId}/products`,
-          subItems: [
-            { label: "All Products", href: `/dashboard/create-app/all-apps/${appId}/products` },
-            { label: "Product Overview", href: `/dashboard/create-app/all-apps/${appId}/products/overview` },
-          ],
-        },
-        {
-          icon: <FileText size={20} />,
-          label: "Applications",
-          href: `/dashboard/create-app/all-apps/${appId}/applications`,
-          subItems: [
-            { label: "All Applications", href: `/dashboard/create-app/all-apps/${appId}/applications` },
-            { label: "Pending Review", href: `/dashboard/create-app/all-apps/${appId}/applications/pending` },
-          ],
-        },
-        {
-          icon: <GitBranch size={20} />,
-          label: "Operation Workflow",
-          href: `/dashboard/create-app/all-apps/${appId}/operation-workflow`,
-          subItems: [
-            { label: "Loan Workflow", href: `/dashboard/create-app/all-apps/${appId}/operation-workflow/loan` },
-            {
-              label: "Mortgage Workflow",
-              href: `/dashboard/create-app/all-apps/${appId}/operation-workflow/mortgage`,
-            },
-          ],
-        },
+        ...(nav.analytics
+          ? [
+              {
+                icon: <BarChart3 size={20} />,
+                label: "Analytics",
+                href: `/dashboard/create-app/all-apps/${appId}/admin/analytics`,
+              } satisfies AppNavItem,
+            ]
+          : []),
+        ...(nav.wallets
+          ? [
+              {
+                icon: <FaWallet size={20} />,
+                label: "Wallets",
+                href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury`,
+                subItems: [
+                  { label: "Treasury wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/treasury` },
+                  { label: "Billing wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/billing` },
+                  { label: "Repayment wallet", href: `/dashboard/create-app/all-apps/${appId}/wallets/repayment` },
+                  ...(nav.withdrawals
+                    ? [
+                        {
+                          label: "Withdrawals",
+                          href: `/dashboard/create-app/all-apps/${appId}/wallets/withdrawals`,
+                        },
+                      ]
+                    : []),
+                ],
+              } satisfies AppNavItem,
+            ]
+          : []),
+        ...(nav.products
+          ? [
+              {
+                icon: <IoMdCube size={20} />,
+                label: "Products",
+                href: `/dashboard/create-app/all-apps/${appId}/products`,
+                subItems: [
+                  { label: "All Products", href: `/dashboard/create-app/all-apps/${appId}/products` },
+                  { label: "Product Overview", href: `/dashboard/create-app/all-apps/${appId}/products/overview` },
+                ],
+              } satisfies AppNavItem,
+            ]
+          : []),
+        ...(nav.applications
+          ? [
+              {
+                icon: <FileText size={20} />,
+                label: "Applications",
+                href: `/dashboard/create-app/all-apps/${appId}/applications`,
+                subItems: [
+                  { label: "All Applications", href: `/dashboard/create-app/all-apps/${appId}/applications` },
+                  { label: "Pending Review", href: `/dashboard/create-app/all-apps/${appId}/applications/pending` },
+                ],
+              } satisfies AppNavItem,
+            ]
+          : []),
+        ...(nav.workflow
+          ? [
+              {
+                icon: <GitBranch size={20} />,
+                label: "Operation Workflow",
+                href: `/dashboard/create-app/all-apps/${appId}/operation-workflow`,
+                subItems: [
+                  { label: "Loan Workflow", href: `/dashboard/create-app/all-apps/${appId}/operation-workflow/loan` },
+                  {
+                    label: "Mortgage Workflow",
+                    href: `/dashboard/create-app/all-apps/${appId}/operation-workflow/mortgage`,
+                  },
+                ],
+              } satisfies AppNavItem,
+            ]
+          : []),
       ]
     : []
 
@@ -497,7 +539,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
         )}
 
         <ul className={`space-y-2 ${collapsed ? "mt-4" : ""}`}>
-          {inAppContext && appId ? (
+          {inAppContext && appId && nav.team ? (
             <li>
               {collapsed ? (
                 <Tippy content="Team" placement="right" arrow theme="sidebar-light">
@@ -524,6 +566,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
               )}
             </li>
           ) : null}
+          {nav.settings ? (
           <li>
             {inAppContext && appId ? (
               collapsed ? (
@@ -584,6 +627,7 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
               </Link>
             )}
           </li>
+          ) : null}
         </ul>
       </nav>
 
@@ -601,6 +645,9 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
               <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
                 <p className="text-xs text-gray-500 truncate">{displayEmail}</p>
+                {roleLabel ? (
+                  <p className="text-[11px] text-[#9A813F] font-medium truncate">You are a {roleLabel}</p>
+                ) : null}
               </div>
             )}
           </div>

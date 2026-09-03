@@ -39,11 +39,17 @@ import {
   type SavingsConfigurePrefetched,
   type CommodityConfigurePrefetched,
 } from "@/lib/productConfigurePrefetch"
+import { usePermissions } from "@/hooks/usePermissions"
 
 export default function ProductsPage() {
   const params = useParams()
   const router = useRouter()
   const appId = params.id as string
+  const { actions } = usePermissions()
+  const canCreateProduct = actions.createProduct
+  const canEditProduct = actions.editProduct
+  const canPublishProduct = actions.publishProduct
+  const canArchiveProduct = actions.archiveProduct
   const [isCreateProductOpen, setIsCreateProductOpen] = useState(false)
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -561,6 +567,7 @@ export default function ProductsPage() {
             </SelectContent>
           </Select>
 
+          {canCreateProduct ? (
           <Button
             onClick={() => setIsCreateProductOpen(true)}
             className="bg-[#9A813F] text-white hover:bg-[#8a7435]"
@@ -568,6 +575,7 @@ export default function ProductsPage() {
             <Plus className="w-4 h-4 mr-2" />
             Create Product
           </Button>
+          ) : null}
         </div>
       </div>
 
@@ -603,7 +611,12 @@ export default function ProductsPage() {
               <Plus className="w-12 h-12 mx-auto" />
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No products yet</h3>
-            <p className="text-gray-600 mb-6">Get started by creating your first financial product</p>
+            <p className="text-gray-600 mb-6">
+              {canCreateProduct
+                ? "Get started by creating your first financial product"
+                : "No products are available to view yet."}
+            </p>
+            {canCreateProduct ? (
             <Button
               onClick={() => setIsCreateProductOpen(true)}
               className="bg-[#9A813F] text-white hover:bg-[#8a7435]"
@@ -611,6 +624,7 @@ export default function ProductsPage() {
               <Plus className="w-4 h-4 mr-2" />
               Create Your First Product
             </Button>
+            ) : null}
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="text-center py-12">
@@ -696,6 +710,7 @@ export default function ProductsPage() {
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          {canEditProduct ? (
                           <DropdownMenuItem
                             className="gap-2"
                             onClick={() => handleEditProductFromMenu(product)}
@@ -710,7 +725,8 @@ export default function ProductsPage() {
                                 ? "Configure product"
                                 : "Edit product"}
                           </DropdownMenuItem>
-                          {isInactive ? (
+                          ) : null}
+                          {isInactive && canPublishProduct ? (
                             <DropdownMenuItem
                               className="gap-2 text-green-700 focus:text-green-700"
                               onClick={() => void handleActivateProductFromMenu(product.id)}
@@ -718,7 +734,8 @@ export default function ProductsPage() {
                               <Power className="h-4 w-4" />
                               Activate product
                             </DropdownMenuItem>
-                          ) : (
+                          ) : null}
+                          {!isInactive && canArchiveProduct ? (
                             <DropdownMenuItem
                               className="gap-2 text-red-600 focus:text-red-600"
                               onClick={() => void handleDeactivateProductFromMenu(product.id)}
@@ -726,7 +743,13 @@ export default function ProductsPage() {
                               <Power className="h-4 w-4" />
                               Deactivate product
                             </DropdownMenuItem>
-                          )}
+                          ) : null}
+                          {!canEditProduct &&
+                          !((isInactive && canPublishProduct) || (!isInactive && canArchiveProduct)) ? (
+                            <DropdownMenuItem disabled className="text-gray-400">
+                              View only
+                            </DropdownMenuItem>
+                          ) : null}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </td>

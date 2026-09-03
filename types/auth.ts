@@ -9,6 +9,15 @@ export interface AuthUser {
   country?: string
   user_type?: string
   status?: string
+  role_id?: string | null
+}
+
+/** Effective RBAC session from login /auth/me / verify-token. */
+export interface RbacSession {
+  isOwner: boolean
+  roleId: string | null
+  roleName: string | null
+  permissions: string[]
 }
 
 export interface AuthTokens {
@@ -26,6 +35,26 @@ export interface LoginResponseDto extends ApiResponse<{
   tokens?: AuthTokens
   accessToken?: string
   refreshToken?: string
+  isOwner?: boolean
+  roleId?: string | null
+  roleName?: string | null
+  permissions?: string[]
+}> {
+  isOwner?: boolean
+  roleId?: string | null
+  roleName?: string | null
+  permissions?: string[]
+  user?: AuthUser
+  accessToken?: string
+  refreshToken?: string
+}
+
+export interface AuthMeResponseDto extends ApiResponse<{
+  user: AuthUser
+  isOwner: boolean
+  roleId?: string | null
+  roleName?: string | null
+  permissions: string[]
 }> {}
 
 export interface MerchantRegistrationRequestDto {

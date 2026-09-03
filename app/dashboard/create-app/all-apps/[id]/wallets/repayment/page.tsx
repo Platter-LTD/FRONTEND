@@ -20,12 +20,15 @@ import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { WithdrawWalletDialog } from "@/components/wallets/withdraw-wallet-dialog"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
+import { usePermissions } from "@/hooks/usePermissions"
 
 export default function RepaymentWalletPage() {
   const params = useParams()
   const appId = params.id as string
   const dispatch = useAppDispatch()
   const walletState = useAppSelector((s) => s.wallet)
+  const { actions } = usePermissions()
+  const canViewBalances = actions.viewWalletBalances
 
   const { merchantId, loading: merchantLoading, error: merchantError } = useAppMerchantId(appId)
 
@@ -83,8 +86,14 @@ export default function RepaymentWalletPage() {
   const nubanActive = isVirtualNubanActive(repayment?.virtualNuban)
   const walletActive = String(repayment?.status || "").toUpperCase() === "ACTIVE"
   // Fund opens NUBAN instructions — allow click whenever wallet exists; drawer gates copy/details.
-  const canOpenFund = Boolean(repayment) && !walletsLoading
-  const canWithdraw = Boolean(repayment) && walletActive && nubanActive && mainBal > 0 && !walletsLoading
+  const canOpenFund = canViewBalances && Boolean(repayment) && !walletsLoading
+  const canWithdraw =
+    canViewBalances &&
+    Boolean(repayment) &&
+    walletActive &&
+    nubanActive &&
+    mainBal > 0 &&
+    !walletsLoading
 
   const bannerError = useMemo(() => {
     if (merchantError) return merchantError
@@ -119,16 +128,22 @@ export default function RepaymentWalletPage() {
       <MerchantWalletBalanceCard
         wallet={repayment}
         loading={!!walletsLoading}
-        showBalance={showBalance}
-        onToggleBalance={() => setShowBalance((value) => !value)}
+        showBalance={canViewBalances && showBalance}
+        onToggleBalance={() => {
+          if (!canViewBalances) return
+          setShowBalance((value) => !value)
+        }}
         title="Repayment wallet"
         subtitle={
-          nubanHint
-            ? `Loan repayments · ${nubanHint}`
-            : "Loan repayments collect here · fund via NUBAN · withdraw to bank"
+          canViewBalances
+            ? nubanHint
+              ? `Loan repayments · ${nubanHint}`
+              : "Loan repayments collect here · fund via NUBAN · withdraw to bank"
+            : "Balances hidden — ledger access only"
         }
         className="mb-8"
         actions={
+          canViewBalances ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button
               className="bg-[#8B7355] text-white hover:bg-[#7A6449] disabled:opacity-50"
@@ -153,6 +168,7 @@ export default function RepaymentWalletPage() {
               Withdraw
             </Button>
           </div>
+          ) : null
         }
       />
 
@@ -164,6 +180,8 @@ export default function RepaymentWalletPage() {
         onSearchChange={setSearchTerm}
       />
 
+      {canViewBalances ? (
+      <>
       <FundWalletDrawer
         open={fundOpen}
         onOpenChange={setFundOpen}
@@ -193,6 +211,8 @@ export default function RepaymentWalletPage() {
         nubanActive={nubanActive && walletActive}
         onSuccess={refresh}
       />
+      </>
+      ) : null}
     </div>
   )
 }
