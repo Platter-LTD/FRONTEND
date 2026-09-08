@@ -13,6 +13,7 @@ import { lendingSecurityBooleansFromSelection, securitySelectionRecordFromLabels
 import {
   buildProductListSearchParams,
   extractProductItems,
+  withProductItemsAsData,
   type ListProductsParams,
   type ProductOverviewByTypeParams,
 } from '@/lib/productOverview';
@@ -1109,7 +1110,7 @@ export const productApi = {
       throw new Error((data as { error?: string }).error || 'Failed to fetch products');
     }
 
-    return data;
+    return withProductItemsAsData(data as Record<string, unknown>);
   },
 
   // Get product by ID — Product MS GET /api/v1/products/:id (proxied)
@@ -1151,7 +1152,7 @@ export const productApi = {
     if (!res.ok || !product) {
       const appRes = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}`, { headers });
       const appJson = await appRes.json().catch(() => ({}));
-      const rows = Array.isArray(appJson?.data) ? appJson.data : [];
+      const rows = extractProductItems(appJson);
       const resolved = resolveProductIdFromAppProducts(rows, slugOrId);
       if (resolved) {
         const second = await fetchProduct(resolved);
@@ -1321,9 +1322,7 @@ export const productApi = {
       throw new Error((data as { error?: string }).error || 'Failed to fetch products');
     }
 
-    const items = extractProductItems(data);
-    if (Array.isArray((data as { data?: unknown })?.data)) return data;
-    return { ...data, data: items };
+    return withProductItemsAsData(data as Record<string, unknown>);
   },
 
   // Get all products from PLATA (global pool)

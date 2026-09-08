@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
 import { productApi } from "@/lib/services/product-api"
+import { extractProductItems } from "@/lib/productOverview"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { toast } from "sonner"
 import { mergeProductsForAppByType, productRowId } from "@/lib/mergeAppCatalogProducts"
@@ -56,7 +57,7 @@ export default function ProductTypeListPage() {
       }
 
       const activationsData = appOutcome.value
-      const appRows = Array.isArray(activationsData?.data) ? activationsData.data : []
+      const appRows = extractProductItems(activationsData)
 
       const activationMap: { [key: string]: boolean } = {}
       appRows.forEach((row: any) => {
@@ -76,11 +77,7 @@ export default function ProductTypeListPage() {
         const catalogRes = catalogOutcome.value as { success?: boolean; data?: unknown; error?: string } | unknown[]
         const body = catalogRes as { success?: boolean; data?: unknown; error?: string }
         if (!(body && typeof body === "object" && !Array.isArray(body) && body.success === false)) {
-          const extracted = Array.isArray((catalogRes as { data?: unknown })?.data)
-            ? (catalogRes as { data: unknown[] }).data
-            : Array.isArray(catalogRes)
-              ? (catalogRes as unknown[])
-              : []
+          const extracted = extractProductItems(catalogRes)
           catalogRows = extracted.length ? extracted : null
         }
       }

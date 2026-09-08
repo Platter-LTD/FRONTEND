@@ -8,6 +8,7 @@ import { ProductDetailModal } from "@/components/product-detail-modal"
 import { springProductService } from "@/lib/services/springProductService"
 import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
+import { extractProductItems } from "@/lib/productOverview"
 
 function ProductCardsSkeleton() {
   return (
@@ -81,13 +82,7 @@ function parseRowIsActive(row: Record<string, unknown>): boolean {
 /** Map catalog product id → isActive for this app from GET /api/v1/products/app/:appId (uses each row's isActive). */
 function buildAppProductActivationMap(activePayload: unknown): Map<string, boolean> {
   const out = new Map<string, boolean>()
-  const rows: unknown[] = Array.isArray(activePayload)
-    ? activePayload
-    : activePayload &&
-        typeof activePayload === "object" &&
-        Array.isArray((activePayload as { products?: unknown }).products)
-      ? ((activePayload as { products: unknown[] }).products ?? [])
-      : []
+  const rows: unknown[] = extractProductItems(activePayload)
   for (const row of rows) {
     if (row == null || typeof row !== "object") continue
     const r = row as Record<string, unknown>
@@ -161,8 +156,7 @@ export default function ProductCards({ category = "Mortgage", appId }: ProductCa
     setLoading(true)
     try {
       const catalogRes = await springProductService.getAllProducts()
-      const catalogRaw = (catalogRes as { success?: boolean; data?: unknown }).data
-      const catalogRows = Array.isArray(catalogRaw) ? catalogRaw : []
+      const catalogRows = extractProductItems(catalogRes)
 
       if ((catalogRes as { success?: boolean }).success === false) {
         setProducts([])
@@ -177,9 +171,7 @@ export default function ProductCards({ category = "Mortgage", appId }: ProductCa
       let appActivation = new Map<string, boolean>()
       try {
         const activeRes = await springProductService.getProductsForApp(appId)
-        const body = activeRes as { data?: unknown; success?: boolean }
-        const activeRaw = body.data
-        appActivation = buildAppProductActivationMap(activeRaw)
+        appActivation = buildAppProductActivationMap(activeRes)
       } catch (err) {
         console.warn("[ProductCards] active products for app failed; toggles may be wrong until retry", err)
       }

@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Package, MoreVertical, X, Loader2 } from "lucide-react"
 import { productApi } from "@/lib/services/product-api"
+import { extractProductItems } from "@/lib/productOverview"
 import { toast } from "sonner"
 
 export default function UserAppDetailsPage() {
@@ -38,12 +39,7 @@ export default function UserAppDetailsPage() {
         "[App overview] GET /api/products (proxied to account-ms-plata /api/v1/products) response:",
         data,
       )
-      if (data?.data != null && Array.isArray(data.data)) {
-        setProducts(data.data)
-      } else {
-        setProducts([])
-        setProductsError(data?.error || "Failed to load products")
-      }
+      setProducts(extractProductItems(data))
     } catch (err) {
       console.error("[App overview] products fetch error:", err)
       setProducts([])

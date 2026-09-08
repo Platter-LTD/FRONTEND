@@ -20,6 +20,7 @@ import MortgageCreatedSuccessDrawer from "@/components/drawers/mortgage-created-
 import SavingsCreatedSuccessDrawer from "@/components/drawers/savings-created-success-drawer"
 import CommodityCreatedSuccessDrawer from "@/components/drawers/commodity-created-success-drawer"
 import { productApi } from "@/lib/services/product-api"
+import { extractProductItems } from "@/lib/productOverview"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -98,13 +99,8 @@ export default function ProductsPage() {
     setError(null)
     try {
       const data = await productApi.getProductsByAppId(appId)
-      if (data?.data != null && Array.isArray(data.data)) {
-        setProducts(data.data)
-        setError(null)
-      } else {
-        setProducts([])
-        setError(data?.error || "Failed to load products")
-      }
+      setProducts(extractProductItems(data))
+      setError(null)
     } catch (err) {
       console.error("Error fetching products:", err)
       setProducts([])
@@ -196,9 +192,7 @@ export default function ProductsPage() {
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
-        if (productsData.success && productsData.data) {
-          setProducts(productsData.data)
-        }
+        setProducts(extractProductItems(productsData))
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -223,9 +217,7 @@ export default function ProductsPage() {
 
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
-        if (productsData.success && productsData.data) {
-          setProducts(productsData.data)
-        }
+        setProducts(extractProductItems(productsData))
 
         setIsConfigureLoanOpen(false)
         setLoanConfigurePrefetch(null)
@@ -264,9 +256,7 @@ export default function ProductsPage() {
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
-        if (productsData.success && productsData.data) {
-          setProducts(productsData.data)
-        }
+        setProducts(extractProductItems(productsData))
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -291,9 +281,7 @@ export default function ProductsPage() {
 
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
-        if (productsData.success && productsData.data) {
-          setProducts(productsData.data)
-        }
+        setProducts(extractProductItems(productsData))
 
         setIsConfigureMortgageOpen(false)
         setMortgageConfigurePrefetch(null)
@@ -332,9 +320,7 @@ export default function ProductsPage() {
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
-        if (productsData.success && productsData.data) {
-          setProducts(productsData.data)
-        }
+        setProducts(extractProductItems(productsData))
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -359,9 +345,7 @@ export default function ProductsPage() {
 
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
-        if (productsData.success && productsData.data) {
-          setProducts(productsData.data)
-        }
+        setProducts(extractProductItems(productsData))
 
         setIsConfigureSavingsOpen(false)
         setSavingsConfigurePrefetch(null)
@@ -401,9 +385,7 @@ export default function ProductsPage() {
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
-        if (productsData.success && productsData.data) {
-          setProducts(productsData.data)
-        }
+        setProducts(extractProductItems(productsData))
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -429,9 +411,7 @@ export default function ProductsPage() {
 
         // Refetch products to ensure we have the latest data
         const productsData = await productApi.getProductsByAppId(appId)
-        if (productsData.success && productsData.data) {
-          setProducts(productsData.data)
-        }
+        setProducts(extractProductItems(productsData))
 
         setIsConfigureCommodityOpen(false)
         setCommodityConfigurePrefetch(null)
