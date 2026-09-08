@@ -76,7 +76,7 @@ export const DashboardHeader: React.FC = () => {
           const data = await productApi.getProductsByAppId(currentAppId)
 
           if (data.success && data.data) {
-            const rows = Array.isArray(data.data) ? data.data : []
+            const rows = extractProductItems(data)
             const pathType = (productTypeFromDetails || "").toUpperCase()
             const filteredProducts = rows.filter((p: any) => String(p?.type ?? "").toUpperCase() === pathType)
             setProducts(filteredProducts)

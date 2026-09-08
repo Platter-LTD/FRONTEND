@@ -7,6 +7,7 @@
  */
 
 import { getAccessToken } from "@/lib/cookieAuth"
+import { withProductItemsAsData } from "@/lib/productOverview"
 
 const getAuthHeaders = () => {
   const token = typeof window !== "undefined" ? getAccessToken() : null
@@ -50,7 +51,8 @@ export const springProductService = {
       throw new Error((error as { error?: string }).error || "Failed to fetch products")
     }
 
-    return response.json()
+    const data = await response.json().catch(() => ({}))
+    return withProductItemsAsData(data as Record<string, unknown>)
   },
 
   /** Active products for this app only — GET /api/v1/products/app/:appId */
@@ -65,7 +67,7 @@ export const springProductService = {
       throw new Error((data as { error?: string }).error || "Failed to fetch products")
     }
 
-    return data
+    return withProductItemsAsData(data as Record<string, unknown>)
   },
 
   async getProductById(productId: string) {
