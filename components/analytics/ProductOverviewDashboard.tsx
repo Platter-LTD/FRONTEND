@@ -559,7 +559,7 @@ export default function ProductOverviewDashboard({
                 type="button"
                 onClick={() => handleTypeChange(entry.key)}
                 aria-current={isActive ? "page" : undefined}
-                className={cn(
+      className={cn(
                   "-mb-px flex items-center gap-2 border-b-2 pb-3 pt-3 text-sm font-semibold transition-colors",
                   isActive
                     ? "border-[#B08D57] text-[#96723F]"
@@ -676,36 +676,36 @@ function LendingPortfolioOverviewContent({
       <div className="mb-[18px] grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
         {kpis.map((kpi) => {
           const selected = portfolioStatus === kpi.id
-          return (
-            <button
+  return (
+    <button
               key={kpi.id}
-              type="button"
+      type="button"
               data-filter={kpi.id}
               onClick={() => onKpiClick(kpi.id as Exclude<PortfolioStatusFilter, "all">)}
               aria-pressed={Boolean(selected)}
-              className={cn(
+      className={cn(
                 "rounded-[14px] border px-[18px] py-4 text-left transition-colors",
-                selected
-                  ? "border-[#B08D57] bg-[#F7EEDD]"
+        selected
+          ? "border-[#B08D57] bg-[#F7EEDD]"
                   : "border-[#E7E5E0] bg-white hover:border-[#B08D57]",
-              )}
-            >
+      )}
+    >
               <span className="flex items-center gap-2 text-xs font-semibold text-[#6B7280]">
                 <span className={cn("inline-block h-2 w-2 shrink-0 rounded-full", kpi.dotClass)} />
-                {kpi.label}
-              </span>
+        {kpi.label}
+      </span>
               <span className="mt-2.5 block text-2xl font-bold leading-none text-[#14171F]">
-                {kpi.value}
-              </span>
+        {kpi.value}
+      </span>
               <span className="mt-1.5 block text-xs text-[#9A9A94]">{kpi.note}</span>
-            </button>
-          )
+    </button>
+  )
         })}
       </div>
 
       {due ? (
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-[14px] bg-[#F7EEDD] px-5 py-[18px]">
-          <div>
+      <div>
             <p className="text-[13px] font-semibold text-[#96723F]">
               {due.label || "Repayment due this week"}
             </p>
@@ -713,11 +713,11 @@ function LendingPortfolioOverviewContent({
               {due.subtitle ||
                 `${countMajor(due.repaymentCount)} repayments across ${countMajor(due.activeLoanCount ?? overview.activeLoan.count)} active ${entityPlural}`}
             </p>
-          </div>
+      </div>
           <span className="text-xl font-bold text-[#14171F]">
             {formatPortfolioMoneyCompact(due.amount)}
           </span>
-        </div>
+    </div>
       ) : null}
 
       <section className={cn(PANEL, "mb-5 px-[22px] py-5", loading && "opacity-70")}>
@@ -859,14 +859,14 @@ function SavingsOverviewContent({
             )
           }
 
-          return (
+  return (
             <button
               key={kpi.id}
               type="button"
               data-filter={kpi.id}
               onClick={() => onKpiClick(kpi.id as Exclude<SavingsPortfolioStatusFilter, "all">)}
               aria-pressed={Boolean(selected)}
-              className={cn(
+                    className={cn(
                 "rounded-[14px] border px-[18px] py-4 text-left transition-colors",
                 selected
                   ? "border-[#B08D57] bg-[#F7EEDD]"
@@ -893,7 +893,7 @@ function SavingsOverviewContent({
             >
               View all
             </button>
-          </div>
+      </div>
         </div>
 
         {loading && overview.savingsAccounts.length === 0 ? (
@@ -916,7 +916,7 @@ function SavingsOverviewContent({
             ])}
           />
         )}
-      </section>
+    </section>
 
       <section className={`${PANEL} mb-5 px-[22px] py-5`}>
         <PanelHeader
@@ -948,26 +948,26 @@ function SavingsOverviewContent({
             formatPortfolioMoney(row.amount),
             formatOverviewDate(row.requestedOn),
             <div key={`wd-act-${index}`} className="text-right">
-              <button
-                type="button"
+                      <button
+                        type="button"
                 disabled
                 title="Approval workflow coming soon"
                 className="mr-1.5 rounded-lg bg-[#B08D57] px-3.5 py-1.5 text-xs font-bold text-white opacity-60 cursor-not-allowed"
-              >
-                Approve
-              </button>
-              <button
-                type="button"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
                 disabled
                 title="Approval workflow coming soon"
                 className="rounded-lg border border-[#E7E5E0] bg-white px-3.5 py-1.5 text-xs font-bold text-[#6B7280] opacity-60 cursor-not-allowed"
-              >
-                Decline
-              </button>
+                      >
+                        Decline
+                      </button>
             </div>,
           ])}
         />
-      </section>
+    </section>
 
       <section className={`${PANEL} px-[22px] py-5`}>
         <PanelHeader title="Approved withdrawal" countLabel="Last 5" />
@@ -1043,15 +1043,15 @@ function InvestmentOverviewContent({
             <span>
               Showing: <strong className="font-bold text-[#96723F]">{showingLabel}</strong>
             </span>
-            <button
-              type="button"
+                  <button
+                    type="button"
               onClick={onResetFilter}
               className="rounded-full bg-[#EEEEEC] px-3 py-1 text-[11px] font-bold text-[#6B6B66]"
-            >
+                  >
               View all
-            </button>
-          </div>
-        </div>
+                  </button>
+                </div>
+              </div>
 
         {loading && overview.investmentAccounts.length === 0 ? (
           <TableSkeleton columnCount={5} rowCount={5} />
@@ -1113,18 +1113,18 @@ function InvestmentOverviewContent({
               >
                 Approve
               </button>
-              <button
-                type="button"
+                    <button
+                      type="button"
                 disabled
                 title="Approval workflow coming soon"
                 className="rounded-lg border border-[#E7E5E0] bg-white px-3.5 py-1.5 text-xs font-bold text-[#6B7280] opacity-60 cursor-not-allowed"
-              >
+                    >
                 Decline
-              </button>
+                    </button>
             </div>,
           ])}
         />
-      </section>
+    </section>
 
       <section className={`${PANEL} px-[22px] py-5`}>
         <PanelHeader
@@ -1208,7 +1208,7 @@ function CommodityOverviewContent({
             </button>
           )
         })}
-      </div>
+          </div>
 
       <section className={cn(PANEL, "mb-5 px-[22px] py-5", loading && "opacity-70")}>
         <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
@@ -1217,15 +1217,15 @@ function CommodityOverviewContent({
             <span>
               Showing: <strong className="font-bold text-[#96723F]">{showingLabel}</strong>
             </span>
-            <button
-              type="button"
+          <button
+            type="button"
               onClick={onResetFilter}
               className="rounded-full bg-[#EEEEEC] px-3 py-1 text-[11px] font-bold text-[#6B6B66]"
-            >
+          >
               View all
-            </button>
-          </div>
+          </button>
         </div>
+            </div>
 
         {loading && overview.commodityAccounts.length === 0 ? (
           <TableSkeleton columnCount={5} rowCount={5} />
@@ -1287,22 +1287,22 @@ function CommodityOverviewContent({
             formatPortfolioMoney(row.amount),
             formatOverviewDate(row.requestedOn),
             <div key={`cmd-liq-act-${index}`} className="text-right">
-              <button
-                type="button"
+          <button
+            type="button"
                 disabled
                 title="Approval workflow coming soon"
                 className="mr-1.5 rounded-lg bg-[#B08D57] px-3.5 py-1.5 text-xs font-bold text-white opacity-60 cursor-not-allowed"
-              >
+          >
                 Approve
-              </button>
-              <button
-                type="button"
+          </button>
+          <button
+            type="button"
                 disabled
                 title="Approval workflow coming soon"
                 className="rounded-lg border border-[#E7E5E0] bg-white px-3.5 py-1.5 text-xs font-bold text-[#6B7280] opacity-60 cursor-not-allowed"
-              >
+          >
                 Decline
-              </button>
+          </button>
             </div>,
           ])}
         />
@@ -1381,7 +1381,7 @@ function PortfolioTable({
               {cells.map((cell, colIndex) => (
                 <td
                   key={colIndex}
-                  className={cn(
+          className={cn(
                     "border-b border-[#E7E5E0] px-3 py-[13px] text-[#14171F]",
                     colIndex === numericColumnIndex || (actionColumn && colIndex === cells.length - 1)
                       ? "text-right"

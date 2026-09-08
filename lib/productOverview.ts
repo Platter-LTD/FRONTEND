@@ -120,14 +120,28 @@ export function unwrapCatalogProductList(res: unknown): CatalogProductList {
   if (Array.isArray(inner)) return { items: inner, pagination: { page: 1, limit: inner.length, total: inner.length, totalPages: 1 } }
   if (inner && typeof inner === "object") {
     const obj = inner as Record<string, unknown>
-    if (Array.isArray(obj.items)) {
+    const list = Array.isArray(obj.items)
+      ? obj.items
+      : Array.isArray(obj.products)
+        ? obj.products
+        : Array.isArray(obj.records)
+          ? obj.records
+          : null
+    if (list) {
       return {
-        items: obj.items as CatalogProductItem[],
+        items: list as CatalogProductItem[],
         pagination: (obj.pagination as CatalogProductPagination | undefined) ?? undefined,
       }
     }
   }
   return { items: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } }
+}
+
+/** Gateway list envelope → `{ data: Product[] }` so existing `Array.isArray(res.data)` callers keep working. */
+export function withProductItemsAsData<T extends Record<string, unknown>>(res: T): T & { data: CatalogProductItem[] } {
+  const items = extractProductItems(res)
+  if (Array.isArray(res.data)) return res as T & { data: CatalogProductItem[] }
+  return { ...res, data: items }
 }
 
 export function extractProductItems(res: unknown): CatalogProductItem[] {

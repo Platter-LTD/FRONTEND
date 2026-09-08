@@ -23,6 +23,7 @@ const routeTitles: Record<string, { title: string; subtitle: string }> = {
 }
 
 import { productApi } from "@/lib/services/product-api"
+import { extractProductItems } from "@/lib/productOverview"
 import { resolveProductIdFromAppProducts } from "@/lib/productDetailView"
 import { DashboardNotificationsPopover } from "@/components/dashboard-notifications-popover"
 import { useAuth } from "@/hooks/useAuth"
