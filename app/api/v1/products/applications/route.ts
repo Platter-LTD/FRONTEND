@@ -14,8 +14,13 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
+    const appId = searchParams.get("appId")?.trim()
+    searchParams.delete("appId")
+    searchParams.delete("userId")
     const qs = searchParams.toString()
-    const target = `${BASE_URL}/api/v1/products/applications${qs ? `?${qs}` : ""}`
+    const target = appId
+      ? `${BASE_URL}/api/v1/products/app/${encodeURIComponent(appId)}/applications/loan-workflow${qs ? `?${qs}` : ""}`
+      : `${BASE_URL}/api/v1/products/applications/me/loan-workflow${qs ? `?${qs}` : ""}`
 
     const response = await fetch(target, {
       headers: {

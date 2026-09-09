@@ -23,11 +23,11 @@ const routeTitles: Record<string, { title: string; subtitle: string }> = {
 }
 
 import { productApi } from "@/lib/services/product-api"
+import { appApi } from "@/lib/services/appService"
 import { extractProductItems } from "@/lib/productOverview"
 import { resolveProductIdFromAppProducts } from "@/lib/productDetailView"
 import { DashboardNotificationsPopover } from "@/components/dashboard-notifications-popover"
 import { useAuth } from "@/hooks/useAuth"
-import { getAccessToken } from "@/lib/cookieAuth"
 
 export const DashboardHeader: React.FC = () => {
   const pathname = usePathname()
@@ -41,15 +41,7 @@ export const DashboardHeader: React.FC = () => {
   useEffect(() => {
     const fetchApps = async () => {
       try {
-        const token = typeof window !== 'undefined' ? getAccessToken() : null
-        const response = await fetch('/api/apps', {
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token && { Authorization: `Bearer ${token}` }),
-          },
-        })
-        const result = await response.json()
+        const result = await appApi.getAllApps()
         if (result.success && result.data) {
           setDynamicApps(Array.isArray(result.data) ? result.data : [])
         } else {
@@ -67,6 +59,11 @@ export const DashboardHeader: React.FC = () => {
   const isProductDetailsPage = pathname?.match(/\/products\/([^/]+)\/([^/]+)$/)
   const productTypeFromDetails = isProductDetailsPage ? pathname.split("/products/")[1]?.split("/")[0] : null
   const productIdFromDetails = isProductDetailsPage ? pathname.split("/").pop() : null
+
+  useEffect(() => {
+    if (!currentAppId) return
+    void productApi.getProductsByAppId(currentAppId).catch(() => undefined)
+  }, [currentAppId])
 
   // Fetch products when on product details page
   useEffect(() => {

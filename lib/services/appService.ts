@@ -4,6 +4,7 @@ import { getAccessToken } from '@/lib/cookieAuth';
 import { plataAuthFetch } from '@/lib/plataAuthFetch';
 import { emptyPwaTemplateConfig } from '@/lib/pwaTemplateBridge';
 import type { AnalyticsProductFilter, AnalyticsRange, AppAnalyticsResponse } from '@/lib/appAnalytics';
+import { fetchAppsListCached, invalidateDashboardApps } from '@/lib/dashboardSessionCache';
 
 const getAuthHeaders = () => {
   const token = typeof window !== 'undefined' ? getAccessToken() : null;
@@ -162,17 +163,19 @@ export const appApi = {
    * Get all apps
    */
   async getAllApps(): Promise<ApiResponse<App[]>> {
-    const response = await fetch('/api/apps', {
-      headers: getAuthHeaders(),
+    return fetchAppsListCached(async () => {
+      const response = await fetch('/api/apps', {
+        headers: getAuthHeaders(),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch apps');
+      }
+
+      return data;
     });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch apps');
-    }
-
-    return data;
   },
 
   /**

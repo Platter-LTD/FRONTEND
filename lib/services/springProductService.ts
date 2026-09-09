@@ -1,13 +1,23 @@
 /**
  * Merchant product list + activation via Next.js API routes (proxied to NEXT_PUBLIC_API_URL).
  *
- * - GET /api/v1/products — **all** products (catalog)
- * - GET /api/v1/products/app/:appId — **active / turned-on** products for that app only
- * - PUT /api/v1/products/toggle/:appId/:productId — body `{ "activate": boolean }`
+ * Documented (Plata Frontend API):
+ * - GET /api/v1/products?appId=&page=&limit=&type= — catalog (`data.items` + pagination)
+ * - GET /api/v1/products/app/:appId?page=&limit= — products for that app
+ * - GET /api/v1/products/:id — product detail
+ *
+ * Toggle is used by the merchant console but is not in the published frontendplata spec.
  */
 
 import { getAccessToken } from "@/lib/cookieAuth"
 import { withProductItemsAsData } from "@/lib/productOverview"
+import { queryCache } from "@/lib/sessionQueryCache"
+import {
+  DASHBOARD_TTL,
+  appProductsKey,
+  catalogProductsKey,
+  invalidateDashboardProducts,
+} from "@/lib/dashboardSessionCache"
 
 const getAuthHeaders = () => {
   const token = typeof window !== "undefined" ? getAccessToken() : null
@@ -40,38 +50,59 @@ const getMerchantIdFromToken = (): string | null => {
 }
 
 export const springProductService = {
-  /** Full product catalog — GET /api/v1/products */
-  async getAllProducts() {
-    const response = await fetch("/api/v1/products", {
-      headers: getAuthHeaders(),
-    })
+  /** Plata catalog — GET /api/v1/products?appId= (required) */
+  async getAllProducts(params: { appId: string; type?: string; page?: number; limit?: number }) {
+    return queryCache(
+      catalogProductsKey(params),
+      async () => {
+        const qs = new URLSearchParams()
+        qs.set("appId", params.appId)
+        qs.set("page", String(params.page && params.page > 0 ? params.page : 1))
+        qs.set("limit", String(params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 100))
+        if (params.type) qs.set("type", params.type.toUpperCase())
+        const response = await fetch(`/api/v1/products?${qs.toString()}`, {
+          headers: getAuthHeaders(),
+        })
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "Failed to fetch products" }))
-      throw new Error((error as { error?: string }).error || "Failed to fetch products")
-    }
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({ error: "Failed to fetch products" }))
+          throw new Error((error as { error?: string }).error || "Failed to fetch products")
+        }
 
-    const data = await response.json().catch(() => ({}))
-    return withProductItemsAsData(data as Record<string, unknown>)
+        const data = await response.json().catch(() => ({}))
+        return withProductItemsAsData(data as Record<string, unknown>)
+      },
+      DASHBOARD_TTL.products,
+    )
   },
 
   /** Active products for this app only — GET /api/v1/products/app/:appId */
   async getProductsForApp(appId: string) {
-    const response = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}`, {
-      headers: getAuthHeaders(),
-    })
+    return queryCache(
+      appProductsKey(appId),
+      async () => {
+        const qs = new URLSearchParams({ page: "1", limit: "100" })
+        const response = await fetch(
+          `/api/v1/products/app/${encodeURIComponent(appId)}?${qs.toString()}`,
+          {
+            headers: getAuthHeaders(),
+          },
+        )
 
-    const data = await response.json().catch(() => ({}))
+        const data = await response.json().catch(() => ({}))
 
-    if (!response.ok) {
-      throw new Error((data as { error?: string }).error || "Failed to fetch products")
-    }
+        if (!response.ok) {
+          throw new Error((data as { error?: string }).error || "Failed to fetch products")
+        }
 
-    return withProductItemsAsData(data as Record<string, unknown>)
+        return withProductItemsAsData(data as Record<string, unknown>)
+      },
+      DASHBOARD_TTL.products,
+    )
   },
 
   async getProductById(productId: string) {
-    const response = await fetch(`/api/product/${encodeURIComponent(productId)}`, {
+    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
       headers: getAuthHeaders(),
     })
 
@@ -98,6 +129,7 @@ export const springProductService = {
       throw new Error((error as { error?: string }).error || "Failed to toggle product")
     }
 
+    invalidateDashboardProducts(appId)
     return response.json()
   },
 

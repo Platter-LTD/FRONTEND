@@ -187,7 +187,7 @@ export function buildProductListSearchParams(params: ListProductsParams): URLSea
   q.set("limit", String(Math.min(100, Math.max(1, params.limit ?? 20))))
 
   if (params.type && params.type !== "all") {
-    q.set("type", params.type.toLowerCase())
+    q.set("type", params.type.toUpperCase())
   }
 
   if (params.status === "active" || params.status === "inactive") {

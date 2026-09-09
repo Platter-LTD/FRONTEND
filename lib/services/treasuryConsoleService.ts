@@ -235,6 +235,31 @@ export const treasuryConsoleApi = {
     }
   },
 
+  async rejectWithdrawals(
+    appId: string,
+    references: string[],
+    reason?: string,
+  ): Promise<ApiResult<ApproveBatchResult>> {
+    try {
+      const res = await fetch(`${BASE}${BACKEND.treasuryConsole.withdrawalsReject}`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          appId,
+          references,
+          ...(reason?.trim() ? { reason: reason.trim() } : {}),
+        }),
+      })
+      const body = await parseJson(res)
+      if (!res.ok || body.success === false) {
+        return { success: false, error: apiError(body, `HTTP ${res.status}`) }
+      }
+      return { success: true, data: unwrapApprove(body) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  },
+
   async listSettlements(
     appId: string,
     settlementType: SettlementType,
@@ -320,6 +345,35 @@ export const treasuryConsoleApi = {
           method: "POST",
           headers: authHeaders(),
           body: JSON.stringify({ appId, references }),
+        },
+      )
+      const body = await parseJson(res)
+      if (!res.ok || body.success === false) {
+        return { success: false, error: apiError(body, `HTTP ${res.status}`) }
+      }
+      return { success: true, data: unwrapApprove(body) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  },
+
+  async rejectSettlements(
+    appId: string,
+    settlementType: SettlementType,
+    references: string[],
+    reason?: string,
+  ): Promise<ApiResult<ApproveBatchResult>> {
+    try {
+      const res = await fetch(
+        `${BASE}${BACKEND.treasuryConsole.settlementsReject(settlementType)}`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify({
+            appId,
+            references,
+            ...(reason?.trim() ? { reason: reason.trim() } : {}),
+          }),
         },
       )
       const body = await parseJson(res)

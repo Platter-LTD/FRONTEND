@@ -84,14 +84,17 @@ export function ProductDebugPanel({ appId, location }: ProductDebugPanelProps) {
     let appScoped: any[] = []
     let appError: string | undefined
 
-    const catalogPromise = productApi.getAllProducts().then(
-      (res) => {
-        catalog = extractProductsArray(res)
-      },
-      (err: unknown) => {
-        catalogError = err instanceof Error ? err.message : String(err)
-      },
-    )
+    const catalogPromise =
+      appId != null && appId !== ""
+        ? productApi.getAllProducts({ appId, page: 1, limit: 100 }).then(
+            (res) => {
+              catalog = extractProductsArray(res)
+            },
+            (err: unknown) => {
+              catalogError = err instanceof Error ? err.message : String(err)
+            },
+          )
+        : Promise.resolve()
 
     const appPromise =
       appId != null && appId !== ""

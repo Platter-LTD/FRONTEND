@@ -12,9 +12,20 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        const PRODUCT_BUILDER_URL = getPlataApiBaseUrl();
+        const appId = request.nextUrl.searchParams.get("appId")?.trim();
+        if (!appId) {
+            return NextResponse.json(
+                { success: false, error: "appId is required" },
+                { status: 400 },
+            );
+        }
 
-        const response = await fetch(`${PRODUCT_BUILDER_URL}/api/products/all`, {
+        const PRODUCT_BUILDER_URL = getPlataApiBaseUrl().replace(/\/$/, "");
+        const qs = new URLSearchParams({ appId, page: "1", limit: "100" });
+        const type = request.nextUrl.searchParams.get("type")?.trim();
+        if (type) qs.set("type", type.toUpperCase());
+
+        const response = await fetch(`${PRODUCT_BUILDER_URL}/api/v1/products?${qs.toString()}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',

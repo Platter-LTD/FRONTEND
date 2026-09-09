@@ -57,7 +57,7 @@ function formatShortDate(value?: string): string {
 function StatusPill({ status }: { status: string }) {
   const s = status.toLowerCase()
   const paid = s === "paid" || s === "approved" || s === "completed"
-  const failed = s === "failed" || s === "blocked"
+  const failed = s === "failed" || s === "blocked" || s === "rejected"
   return (
     <span
       className={cn(
@@ -67,7 +67,7 @@ function StatusPill({ status }: { status: string }) {
         !paid && !failed && "bg-[#FEF3DC] text-[#92610A]",
       )}
     >
-      {paid ? "Paid" : failed ? "Failed" : "Pending"}
+      {paid ? "Paid" : failed ? (s === "rejected" ? "Rejected" : "Failed") : "Pending"}
     </span>
   )
 }
@@ -205,6 +205,20 @@ export function WithdrawalsConsole({ appId }: Props) {
     await refresh()
   }
 
+  const rejectWithdrawals = async () => {
+    const refs = Array.from(wdSelected)
+    if (!refs.length) return
+    setActing(true)
+    const res = await treasuryConsoleApi.rejectWithdrawals(appId, refs)
+    setActing(false)
+    if (!res.success) {
+      toast.error(res.error)
+      return
+    }
+    toast.success(`${res.data?.paidCount ?? refs.length} withdrawal request(s) rejected`)
+    await refresh()
+  }
+
   const approveSettlements = async (type: SettlementType) => {
     const refs = Array.from(settleSelected[type])
     if (!refs.length) return
@@ -220,6 +234,20 @@ export function WithdrawalsConsole({ appId }: Props) {
       blockedCount: res.data?.blockedCount ?? 0,
       noun: "return(s)",
     })
+    await refresh()
+  }
+
+  const rejectSettlements = async (type: SettlementType) => {
+    const refs = Array.from(settleSelected[type])
+    if (!refs.length) return
+    setActing(true)
+    const res = await treasuryConsoleApi.rejectSettlements(appId, type, refs)
+    setActing(false)
+    if (!res.success) {
+      toast.error(res.error)
+      return
+    }
+    toast.success(`${res.data?.paidCount ?? refs.length} return(s) rejected`)
     await refresh()
   }
 
@@ -321,6 +349,7 @@ export function WithdrawalsConsole({ appId }: Props) {
               })
             }}
             onApprove={() => void approveWithdrawals()}
+            onReject={() => void rejectWithdrawals()}
           />
         ) : (
           <SettlementPanel
@@ -349,6 +378,7 @@ export function WithdrawalsConsole({ appId }: Props) {
               })
             }}
             onApprove={() => void approveSettlements(tab)}
+            onReject={() => void rejectSettlements(tab)}
           />
         )}
       </div>
@@ -365,6 +395,7 @@ function WithdrawalsPanel({
   onToggleAll,
   onToggle,
   onApprove,
+  onReject,
 }: {
   rows: TreasuryPayoutRow[]
   selected: Set<string>
@@ -374,6 +405,7 @@ function WithdrawalsPanel({
   onToggleAll: (checked: boolean) => void
   onToggle: (ref: string, checked: boolean) => void
   onApprove: () => void
+  onReject: () => void
 }) {
   const pending = rows.filter((r) => r.status === "pending")
   const selCount = selected.size
@@ -395,7 +427,7 @@ function WithdrawalsPanel({
           <div>
             <h3 className="text-[13.5px] font-extrabold text-[#1D2939]">Pending Withdrawal Requests</h3>
             <p className="mt-0.5 text-[11.5px] text-[#667085]">
-              Select one or more requests, then approve as a batch.
+              Select one or more requests, then approve or reject as a batch.
             </p>
           </div>
         </div>
@@ -474,21 +506,32 @@ function WithdrawalsPanel({
 
         <div className="flex items-center justify-between border-t border-[#E4E7EC] bg-[#F9FAFB] px-5 py-3 text-[12.5px]">
           <span className="font-semibold text-[#667085]">{selCount} selected</span>
-          <Button
-            className="bg-[#0B1E3B] text-white hover:bg-[#142B52] disabled:opacity-40"
-            disabled={!canApprove || selCount === 0 || acting}
-            onClick={onApprove}
-            title={!canApprove ? "You do not have permission to approve payouts" : undefined}
-          >
-            {acting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Approving…
-              </>
-            ) : (
-              "Approve Selected"
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="border-[#D92D20] text-[#D92D20] hover:bg-[#FEF3F2] disabled:opacity-40"
+              disabled={!canApprove || selCount === 0 || acting}
+              onClick={onReject}
+              title={!canApprove ? "You do not have permission to reject payouts" : undefined}
+            >
+              Reject Selected
+            </Button>
+            <Button
+              className="bg-[#0B1E3B] text-white hover:bg-[#142B52] disabled:opacity-40"
+              disabled={!canApprove || selCount === 0 || acting}
+              onClick={onApprove}
+              title={!canApprove ? "You do not have permission to approve payouts" : undefined}
+            >
+              {acting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Approving…
+                </>
+              ) : (
+                "Approve Selected"
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -508,6 +551,7 @@ function SettlementPanel({
   onToggleAll,
   onToggle,
   onApprove,
+  onReject,
 }: {
   type: SettlementType
   rows: TreasuryPayoutRow[]
@@ -521,6 +565,7 @@ function SettlementPanel({
   onToggleAll: (checked: boolean) => void
   onToggle: (ref: string, checked: boolean) => void
   onApprove: () => void
+  onReject: () => void
 }) {
   const meta = SETTLEMENT_META[type]
   const isAuto = mode === "automatic"
@@ -665,21 +710,32 @@ function SettlementPanel({
             <span className="font-semibold text-[#667085]">{selCount} selected</span>
           )}
           {!isAuto ? (
-            <Button
-              className="bg-[#0B1E3B] text-white hover:bg-[#142B52] disabled:opacity-40"
-              disabled={!canApprove || selCount === 0 || acting}
-              onClick={onApprove}
-              title={!canApprove ? "You do not have permission to approve payouts" : undefined}
-            >
-              {acting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Approving…
-                </>
-              ) : (
-                "Approve Returns"
-              )}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                className="border-[#D92D20] text-[#D92D20] hover:bg-[#FEF3F2] disabled:opacity-40"
+                disabled={!canApprove || selCount === 0 || acting}
+                onClick={onReject}
+                title={!canApprove ? "You do not have permission to reject payouts" : undefined}
+              >
+                Reject Returns
+              </Button>
+              <Button
+                className="bg-[#0B1E3B] text-white hover:bg-[#142B52] disabled:opacity-40"
+                disabled={!canApprove || selCount === 0 || acting}
+                onClick={onApprove}
+                title={!canApprove ? "You do not have permission to approve payouts" : undefined}
+              >
+                {acting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Approving…
+                  </>
+                ) : (
+                  "Approve Returns"
+                )}
+              </Button>
+            </div>
           ) : null}
         </div>
       </div>
