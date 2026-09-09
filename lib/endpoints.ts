@@ -222,12 +222,15 @@ export const BACKEND = {
       `/api/v1/frontend-plata/treasury/wallets/${encodeURIComponent(walletType)}/funding-instructions`,
     withdrawals: "/api/v1/frontend-plata/treasury/withdrawals",
     withdrawalsApprove: "/api/v1/frontend-plata/treasury/withdrawals/approve",
+    withdrawalsReject: "/api/v1/frontend-plata/treasury/withdrawals/reject",
     settlements: (settlementType: "investments" | "commodities" | "savings") =>
       `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}`,
     settlementsMode: (settlementType: "investments" | "commodities" | "savings") =>
       `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}/mode`,
     settlementsApprove: (settlementType: "investments" | "commodities" | "savings") =>
       `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}/approve`,
+    settlementsReject: (settlementType: "investments" | "commodities" | "savings") =>
+      `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}/reject`,
   },
 
   /** Verify email (`/verify-email`) — public */

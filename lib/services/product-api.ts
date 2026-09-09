@@ -18,6 +18,15 @@ import {
   type ProductOverviewByTypeParams,
 } from '@/lib/productOverview';
 import { finalizeFeesForSubmit } from '@/lib/managementFee';
+import { queryCache } from '@/lib/sessionQueryCache';
+import {
+  DASHBOARD_TTL,
+  appProductsKey,
+  catalogProductsKey,
+  invalidateDashboardApps,
+  invalidateDashboardProducts,
+  productDetailKey,
+} from '@/lib/dashboardSessionCache';
 
 const decodeTokenMerchantId = (token: string | null): string | null => {
   if (!token) return null;
@@ -985,37 +994,37 @@ export const productApi = {
   },
 
   async listProducts(params: ListProductsParams, signal?: AbortSignal) {
-    const qs = buildProductListSearchParams(params).toString();
-    const response = await plataAuthFetch(
-      `/api/v1/products?${qs}`,
-      { headers: getAuthHeaders(), signal },
-    );
+    return queryCache(
+      catalogProductsKey({
+        appId: params.appId,
+        type: params.type,
+        page: params.page,
+        limit: params.limit,
+        search: params.search,
+      }),
+      async () => {
+        const qs = buildProductListSearchParams(params).toString();
+        const response = await plataAuthFetch(
+          `/api/v1/products?${qs}`,
+          { headers: getAuthHeaders(), signal },
+        );
 
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error((data as { error?: string }).error || 'Failed to fetch products');
-    }
-    return data;
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error((data as { error?: string }).error || 'Failed to fetch products');
+        }
+        return data;
+      },
+      DASHBOARD_TTL.products,
+    );
   },
 
   async getProductApplications(params?: { appId?: string; userId?: string; limit?: number; skip?: number }) {
-    const q = new URLSearchParams();
-    if (params?.appId) q.set("appId", params.appId);
-    if (params?.userId) q.set("userId", params.userId);
-    if (typeof params?.limit === "number") q.set("limit", String(params.limit));
-    if (typeof params?.skip === "number") q.set("skip", String(params.skip));
-
-    const path = `/api/v1/products/applications${q.toString() ? `?${q.toString()}` : ""}`;
-    const response = await fetch(path, {
-      headers: getAuthHeaders(),
-      credentials: "include",
+    return this.getLoanWorkflow({
+      appId: params?.appId,
+      limit: params?.limit,
+      skip: params?.skip,
     });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error((data as { error?: string }).error || "Failed to fetch product applications");
-    }
-    return data;
   },
 
   async getLoanWorkflow(params?: {
@@ -1026,10 +1035,13 @@ export const productApi = {
   }) {
     const q = new URLSearchParams();
     if (params?.loanWorkflowStatus) q.set("loanWorkflowStatus", params.loanWorkflowStatus);
-    if (params?.appId) q.set("appId", params.appId);
-    if (typeof params?.limit === "number") q.set("limit", String(params.limit));
-    if (typeof params?.skip === "number") q.set("skip", String(params.skip));
-    const path = `/api/v1/products/applications/me/loan-workflow${q.toString() ? `?${q.toString()}` : ""}`;
+    if (typeof params?.limit === "number") q.set("limit", String(Math.min(100, Math.max(1, params.limit))));
+    if (typeof params?.skip === "number") q.set("skip", String(Math.max(0, params.skip)));
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    // Swagger: app-scoped queue vs merchant-wide `/me` queue. `appId` is a path param, not a query.
+    const path = params?.appId
+      ? `/api/v1/products/app/${encodeURIComponent(params.appId)}/applications/loan-workflow${qs}`
+      : `/api/v1/products/applications/me/loan-workflow${qs}`;
 
     const response = await fetch(path, {
       headers: getAuthHeaders(),
@@ -1045,15 +1057,24 @@ export const productApi = {
   async updateLoanWorkflowStatus(
     applicationId: string,
     loanWorkflowStatus: string,
-    extras?: { reason?: string },
+    extras?: {
+      reason?: string
+      approvedAmount?: number
+      equityReceived?: boolean
+      equityProviderReference?: string
+    },
   ) {
     const reason = extras?.reason?.trim()
+    const equityRef = extras?.equityProviderReference?.trim()
     const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow`, {
       method: "PATCH",
       headers: getAuthHeaders(),
       body: JSON.stringify({
         loanWorkflowStatus,
         ...(reason ? { reason } : {}),
+        ...(typeof extras?.approvedAmount === "number" ? { approvedAmount: extras.approvedAmount } : {}),
+        ...(typeof extras?.equityReceived === "boolean" ? { equityReceived: extras.equityReceived } : {}),
+        ...(equityRef ? { equityProviderReference: equityRef } : {}),
       }),
     });
 
@@ -1082,10 +1103,13 @@ export const productApi = {
       status: productData.status || 'active',   // default 'active' (some backends use 'incomplete'/'complete')
     };
 
-    const response = await fetch('/api/products', {
+    const response = await fetch('/api/v1/products', {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        type: String(payload.type || "").trim().toUpperCase(),
+      }),
     });
 
     const data = await response.json();
@@ -1094,43 +1118,64 @@ export const productApi = {
       throw new Error(data.error || 'Failed to create product');
     }
 
+    invalidateDashboardProducts(payload.appId);
+    invalidateDashboardApps();
+
     return data;
   },
 
-  /** Active / turned-on products for this app — GET /api/v1/products/app/:appId (not the full catalog). */
-  async getProductsByAppId(appId: string) {
-    const response = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}`, {
-      headers: getAuthHeaders(),
-      credentials: 'include',
-    });
+  /** Products for an app — GET /api/v1/products/app/:appId?page=&limit= */
+  async getProductsByAppId(appId: string, query?: { page?: number; limit?: number }) {
+    return queryCache(
+      appProductsKey(appId, query),
+      async () => {
+        const qs = new URLSearchParams();
+        qs.set("page", String(query?.page && query.page > 0 ? query.page : 1));
+        qs.set("limit", String(query?.limit && query.limit > 0 ? Math.min(query.limit, 100) : 100));
+        const response = await fetch(
+          `/api/v1/products/app/${encodeURIComponent(appId)}?${qs.toString()}`,
+          {
+            headers: getAuthHeaders(),
+            credentials: 'include',
+          },
+        );
 
-    const data = await response.json().catch(() => ({}));
+        const data = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      throw new Error((data as { error?: string }).error || 'Failed to fetch products');
-    }
+        if (!response.ok) {
+          throw new Error((data as { error?: string }).error || 'Failed to fetch products');
+        }
 
-    return withProductItemsAsData(data as Record<string, unknown>);
+        return withProductItemsAsData(data as Record<string, unknown>);
+      },
+      DASHBOARD_TTL.products,
+    );
   },
 
   // Get product by ID — Product MS GET /api/v1/products/:id (proxied)
   async getProductById(productId: string) {
-    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
-      headers: getAuthHeaders(),
-    });
+    return queryCache(
+      productDetailKey(productId),
+      async () => {
+        const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
+          headers: getAuthHeaders(),
+        });
 
-    const raw = await response.json().catch(() => ({}));
+        const raw = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      throw new Error((raw as { error?: string }).error || (raw as { message?: string }).message || 'Failed to fetch product');
-    }
+        if (!response.ok) {
+          throw new Error((raw as { error?: string }).error || (raw as { message?: string }).message || 'Failed to fetch product');
+        }
 
-    const product = extractProductFromResponse(raw);
-    if (!product) {
-      throw new Error('Invalid product response');
-    }
+        const product = extractProductFromResponse(raw);
+        if (!product) {
+          throw new Error('Invalid product response');
+        }
 
-    return { success: true as const, data: product };
+        return { success: true as const, data: product };
+      },
+      DASHBOARD_TTL.productDetail,
+    );
   },
 
   /**
@@ -1150,7 +1195,11 @@ export const productApi = {
     let product = extractProductFromResponse(json);
 
     if (!res.ok || !product) {
-      const appRes = await fetch(`/api/v1/products/app/${encodeURIComponent(appId)}`, { headers });
+      const qs = new URLSearchParams({ page: "1", limit: "100" });
+      const appRes = await fetch(
+        `/api/v1/products/app/${encodeURIComponent(appId)}?${qs.toString()}`,
+        { headers },
+      );
       const appJson = await appRes.json().catch(() => ({}));
       const rows = extractProductItems(appJson);
       const resolved = resolveProductIdFromAppProducts(rows, slugOrId);
@@ -1203,6 +1252,7 @@ export const productApi = {
       throw new Error(data.error || 'Failed to update product');
     }
 
+    invalidateDashboardProducts();
     return data;
   },
 
@@ -1224,9 +1274,9 @@ export const productApi = {
     return data;
   },
 
-  // Delete product
+  // Delete / archive product — DELETE /api/v1/products/{id}
   async deleteProduct(productId: string) {
-    const response = await fetch(`/api/product/${productId}`, {
+    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -1237,6 +1287,7 @@ export const productApi = {
       throw new Error(data.error || 'Failed to delete product');
     }
 
+    invalidateDashboardProducts();
     return data;
   },
 
@@ -1306,38 +1357,32 @@ export const productApi = {
       throw new Error(data.error || 'Failed to toggle product');
     }
 
+    invalidateDashboardProducts(appId);
     return data;
   },
 
-  /** Full catalog — GET /api/v1/products (paginated `{ items }`; returned as `{ data: items }` for callers). */
-  async getAllProducts() {
-    const response = await fetch('/api/v1/products?page=1&limit=100', {
-      headers: getAuthHeaders(),
-      credentials: 'include',
+  /**
+   * Plata catalog — GET /api/v1/products?appId=&page=&limit=&type=
+   * `appId` is required. `type` must be LOAN | MORTGAGE | SAVINGS | INVESTMENT | COMMODITY.
+   * Response `data` is `{ items, pagination }`; unwrapped to `{ data: items }` for callers.
+   */
+  async getAllProducts(params: { appId: string; type?: string; page?: number; limit?: number; search?: string }) {
+    const data = await this.listProducts({
+      appId: params.appId,
+      type: params.type && params.type.toLowerCase() !== "all"
+        ? (params.type.toLowerCase() as ListProductsParams["type"])
+        : undefined,
+      page: params.page ?? 1,
+      limit: params.limit ?? 100,
+      search: params.search,
     });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error((data as { error?: string }).error || 'Failed to fetch products');
-    }
 
     return withProductItemsAsData(data as Record<string, unknown>);
   },
 
-  // Get all products from PLATA (global pool)
-  async getAllProductsFromBuilder() {
-    const response = await fetch('/api/product-builder/all', {
-      headers: getAuthHeaders(),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to fetch products from PLATA');
-    }
-
-    return data;
+  /** Catalog via documented GET /api/v1/products?appId= (replaces undocumented /api/product-builder/all). */
+  async getAllProductsFromBuilder(appId: string) {
+    return this.getAllProducts({ appId, page: 1, limit: 100 });
   },
 
   /** Alias: active products for app — GET /api/v1/products/app/:appId */

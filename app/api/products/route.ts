@@ -65,11 +65,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const canonicalType = String(type).trim().toUpperCase();
+
     const selectUrl = `${PRODUCT_SERVICE_URL}/api/v1/products/select-type`;
 
     let selectResp;
     try {
-      selectResp = await http.post(selectUrl, { appId, type, ...rest }, {
+      selectResp = await http.post(selectUrl, { appId, type: canonicalType, ...rest }, {
         headers: upstreamAuthHeaders(authHeader),
       });
     } catch (err) {
@@ -87,7 +89,7 @@ export async function POST(request: NextRequest) {
       const legacyUrl = `${PRODUCT_SERVICE_URL}/api/v1/products`;
       let legacyResp;
       try {
-        legacyResp = await http.post(legacyUrl, { appId, type, name, description, ...rest }, {
+        legacyResp = await http.post(legacyUrl, { appId, type: canonicalType, name, description, ...rest }, {
           headers: upstreamAuthHeaders(authHeader),
         });
       } catch (err) {
@@ -154,8 +156,31 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const qs = request.nextUrl.searchParams.toString();
-    const url = `${PRODUCT_SERVICE_URL}/api/v1/products${qs ? `?${qs}` : ''}`;
+    const incoming = request.nextUrl.searchParams;
+    const appId = incoming.get("appId")?.trim();
+    if (!appId) {
+      return NextResponse.json(
+        { success: false, error: "appId is required" },
+        { status: 400 },
+      );
+    }
+
+    const qs = new URLSearchParams();
+    qs.set("appId", appId);
+    const pageRaw = Number(incoming.get("page") || "1");
+    const limitRaw = Number(incoming.get("limit") || "20");
+    qs.set("page", String(Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1));
+    qs.set("limit", String(Number.isFinite(limitRaw) ? Math.min(100, Math.max(1, Math.floor(limitRaw))) : 20));
+
+    const type = incoming.get("type")?.trim();
+    if (type && type.toLowerCase() !== "all") qs.set("type", type.toUpperCase());
+
+    for (const key of ["status", "search", "isActive", "configured", "sortBy", "sortOrder", "isFeatured"] as const) {
+      const value = incoming.get(key);
+      if (value) qs.set(key, value);
+    }
+
+    const url = `${PRODUCT_SERVICE_URL}/api/v1/products?${qs.toString()}`;
 
     let response;
     try {

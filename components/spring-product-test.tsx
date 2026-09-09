@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { springProductService } from "@/lib/services/springProductService"
 import { debugJWT } from "@/lib/debugJWT"
 import { Loader2 } from "lucide-react"
@@ -10,11 +11,11 @@ import { toast } from "sonner"
 
 export default function SpringProductTest() {
   const [merchantId, setMerchantId] = useState<string | null>(null)
+  const [appId, setAppId] = useState("")
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // Get merchant ID from token
     const id = springProductService.getMerchantId()
     setMerchantId(id)
   }, [])
@@ -25,16 +26,21 @@ export default function SpringProductTest() {
   }
 
   const handleFetchProducts = async () => {
+    const id = appId.trim()
+    if (!id) {
+      toast.error("Enter an app id — GET /api/v1/products requires appId")
+      return
+    }
     setLoading(true)
     try {
-      const response = await springProductService.getAllProducts()
+      const response = await springProductService.getAllProducts({ appId: id, page: 1, limit: 100 })
       const list = Array.isArray((response as { data?: unknown }).data)
         ? (response as { data: any[] }).data
         : []
       setProducts(list)
       toast.success(`Fetched ${list.length} products`)
     } catch (error: any) {
-      console.error('Fetch error:', error)
+      console.error("Fetch error:", error)
       toast.error(error.message || "Failed to fetch products")
     } finally {
       setLoading(false)
@@ -42,7 +48,7 @@ export default function SpringProductTest() {
   }
 
   const handleToggleProduct = async (product: { id: string; isActive?: boolean; appId?: string }) => {
-    const aid = product.appId?.trim()
+    const aid = product.appId?.trim() || appId.trim()
     if (!aid) {
       toast.error("Product needs appId to toggle — use merchant flows with a selected app")
       return
@@ -50,7 +56,6 @@ export default function SpringProductTest() {
     try {
       await springProductService.toggleProductActivation(aid, product.id, !product.isActive)
       toast.success(`Product ${!product.isActive ? "activated" : "deactivated"}`)
-      // Refresh products
       handleFetchProducts()
     } catch (error: any) {
       toast.error(error.message || "Failed to toggle product")
@@ -69,6 +74,15 @@ export default function SpringProductTest() {
           <div>
             <p className="text-sm text-muted-foreground">Merchant ID from token:</p>
             <p className="font-mono text-sm">{merchantId || "Not found"}</p>
+          </div>
+
+          <div className="max-w-md space-y-1.5">
+            <p className="text-sm text-muted-foreground">App ID (required by GET /api/v1/products)</p>
+            <Input
+              value={appId}
+              onChange={(e) => setAppId(e.target.value)}
+              placeholder="Plata app id"
+            />
           </div>
 
           <div className="flex gap-2">

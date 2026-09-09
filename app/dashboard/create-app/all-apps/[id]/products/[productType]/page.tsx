@@ -44,7 +44,7 @@ export default function ProductTypeListPage() {
 
       const [appOutcome, catalogOutcome] = await Promise.allSettled([
         productApi.getProductsByAppId(appId),
-        productApi.getAllProducts(),
+        productApi.getAllProducts({ appId, type: canonical, page: 1, limit: 100 }),
       ])
 
       if (appOutcome.status === "rejected") {

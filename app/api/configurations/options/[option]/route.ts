@@ -9,13 +9,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 /**
  * Dynamic options proxy:
  * GET /api/configurations/options/:option
- * -> GET /api/v1/configurations/options/:option
+ * -> GET /api/v1/products/options/:option
  */
 export async function GET(request: NextRequest, context: { params: Promise<{ option: string }> }) {
   try {
     const { option } = await context.params
     const authHeader = request.headers.get("authorization")
-    const path = `/api/v1/configurations/options/${encodeURIComponent(option)}`
+    const path = `/api/v1/products/options/${encodeURIComponent(option)}`
     const maxAttempts = 3
     let lastError: unknown = null
 

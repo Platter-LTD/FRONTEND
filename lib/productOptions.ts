@@ -71,8 +71,8 @@ function mapOptionItems(list: OptionItem[]): ProductOption[] {
 }
 
 /**
- * Fetches an option list from frontend proxy route:
- * /api/configurations/options/:optionName
+ * Fetches an option list from:
+ * /api/v1/products/options/:optionName
  */
 export async function fetchOptionLabels(optionName: string, fallback: string[] = []): Promise<string[]> {
   const key = `cfg:${optionName}`
@@ -83,7 +83,7 @@ export async function fetchOptionLabels(optionName: string, fallback: string[] =
   if (!p) {
     p = (async () => {
       try {
-        const res = await fetch(`/api/configurations/options/${encodeURIComponent(optionName)}`, {
+        const res = await fetch(`/api/v1/products/options/${encodeURIComponent(optionName)}`, {
           credentials: "include",
           cache: "no-store",
         })

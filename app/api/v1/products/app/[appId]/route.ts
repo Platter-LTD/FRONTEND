@@ -40,7 +40,13 @@ export async function GET(
     return NextResponse.json({ success: false, error: "Authorization required" }, { status: 401 })
   }
 
-  const appUrl = `${PRODUCT_SERVICE_URL}/api/v1/products/app/${encodeURIComponent(appId)}`
+  const incoming = request.nextUrl.searchParams
+  const pageRaw = Number(incoming.get("page") || "1")
+  const limitRaw = Number(incoming.get("limit") || "20")
+  const qs = new URLSearchParams()
+  qs.set("page", String(Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1))
+  qs.set("limit", String(Number.isFinite(limitRaw) ? Math.min(100, Math.max(1, Math.floor(limitRaw))) : 20))
+  const appUrl = `${PRODUCT_SERVICE_URL}/api/v1/products/app/${encodeURIComponent(appId)}?${qs.toString()}`
 
   try {
     const appResp = await http.get(appUrl, {

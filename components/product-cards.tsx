@@ -155,16 +155,21 @@ export default function ProductCards({ category = "Mortgage", appId }: ProductCa
   const fetchProducts = useCallback(async () => {
     setLoading(true)
     try {
-      const catalogRes = await springProductService.getAllProducts()
-      const catalogRows = extractProductItems(catalogRes)
-
-      if ((catalogRes as { success?: boolean }).success === false) {
+      if (!appId) {
         setProducts([])
         return
       }
 
-      if (!appId) {
-        setProducts(mapRows(catalogRows))
+      const catalogRes = await springProductService.getAllProducts({
+        appId,
+        type: category,
+        page: 1,
+        limit: 100,
+      })
+      const catalogRows = extractProductItems(catalogRes)
+
+      if ((catalogRes as { success?: boolean }).success === false) {
+        setProducts([])
         return
       }
 
