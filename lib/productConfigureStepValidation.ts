@@ -88,7 +88,7 @@ export type LoanStepCtx = {
   step: number
   name: string
   tenure: string
-  description: string
+  description: string 
   loanTypes: { name: string; description: string }[]
   previewImage: File | null
   hasPreviewAsset?: boolean
@@ -109,7 +109,7 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
   if (step === 1) {
     if (!has(ctx.name)) errors.push("About Product: Product name is required.")
     if (!has(ctx.tenure)) errors.push("About Product: Tenure is required.")
-    if (!has(ctx.description)) errors.push("About Product: Product description is required.")
+    if (!has(ctx.description)) errors.push("About Product: Product description is required.") 
     // Loan type rows are optional — product type is captured at product creation.
     if (!ctx.previewImage && !ctx.hasPreviewAsset) errors.push("About Product: Preview file upload is required.")
   }
@@ -125,7 +125,6 @@ export function validateLoanStep(ctx: LoanStepCtx): { ok: boolean; errors: strin
       errors.push('Requirements: Describe the “Other” security requirement (text field below).')
     }
     // Document requirements are optional — customers may satisfy docs via Other Requirements instead.
-    // AirSign / Contract ID are not required for product config submit.
   }
 
   if (step === 4) {
@@ -205,7 +204,6 @@ export function validateMortgageStep(ctx: MortgageStepCtx): { ok: boolean; error
       errors.push('Requirements: Describe the “Other” security requirement (text field below).')
     }
     // Document requirements are optional.
-    // AirSign / Contract ID are not required for product config submit.
   }
 
   if (step === 4) {
@@ -302,9 +300,6 @@ export type SavingsStepCtx = {
   minSavingsAmount: string
   maxSavingsAmount: string
   termsAndConditions: string
-  contractId: string
-  airSignSecretKey: string
-  airSignUid: string
   charges: { name?: string; feeType?: string; value?: string }[]
   chargeForcefulWithdrawal: boolean
   withdrawalPenalties: unknown[]
@@ -334,7 +329,6 @@ export function validateSavingsStep(ctx: SavingsStepCtx): { ok: boolean; errors:
       errors.push("Structure: Maximum savings amount must be greater than or equal to the minimum.")
     }
     if (!has(ctx.termsAndConditions)) errors.push("Structure: Terms and conditions are required.")
-    // AirSign / Contract ID are not required for product config submit.
   }
   if (ctx.step === 3) {
     if (!ctx.charges.length) errors.push("Fees & Charges: Add at least one fee (name, type, and value).")
@@ -376,9 +370,6 @@ export type InvestmentStepCtx = {
   charges: { name?: string; feeType?: string; value?: string }[]
   chargeForcefulWithdrawal: boolean
   withdrawalPenalties: unknown[]
-  contractId: string
-  airSignSecretKey: string
-  airSignUid: string
 }
 
 export function validateInvestmentStep(ctx: InvestmentStepCtx): { ok: boolean; errors: string[] } {
@@ -411,7 +402,6 @@ export function validateInvestmentStep(ctx: InvestmentStepCtx): { ok: boolean; e
   }
   if (ctx.step === 3) {
     if (!ctx.charges.length) errors.push("Fees & Charges: Add at least one fee (name, type, and value).")
-    // AirSign / Contract ID are not required for product config submit.
     // Charge for Forceful Withdrawal — penalties optional per spec
   }
   return { ok: errors.length === 0, errors }
@@ -446,9 +436,6 @@ export type CommodityStepCtx = {
   termsAndConditions: string
   moratoriumEnabled: boolean
   moratoriumDays: string
-  contractId: string
-  airSignSecretKey: string
-  airSignUid: string
   charges: { name?: string; feeType?: string; value?: string }[]
   priceRows: { price: string; date: string; source: string }[]
 }
@@ -488,7 +475,6 @@ export function validateCommodityStep(ctx: CommodityStepCtx): { ok: boolean; err
       errors.push(ctx.isInvestment ? "Structure: Maximum investment amount is required." : "Structure: Max amount is required.")
     if (!has(ctx.termsAndConditions)) errors.push("Structure: Terms and conditions are required.")
     // Minimum holding period / moratorium days — optional per spec
-    // AirSign / Contract ID are not required for product config submit.
   }
 
   if (ctx.step === 3) {

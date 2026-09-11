@@ -142,10 +142,6 @@ export default function ConfigureCommodityDrawer({
   const [termsAndConditions, setTermsAndConditions] = useState("")
   const [moratoriumEnabled, setMoratoriumEnabled] = useState(true)
   const [moratoriumDays, setMoratoriumDays] = useState("")
-  const [contractId, setContractId] = useState("")
-  const [airSignSecretKey, setAirSignSecretKey] = useState("")
-  const [airSignUid, setAirSignUid] = useState("")
-
   const [chargeName, setChargeName] = useState("")
   const [chargeFeeType, setChargeFeeType] = useState("")
   const [chargeValue, setChargeValue] = useState("")
@@ -330,9 +326,6 @@ export default function ConfigureCommodityDrawer({
       const cfg = commodityData?.config as Record<string, unknown> | undefined
       setCompoundingFrequency(String(cfg?.compoundingFrequency ?? commodityData?.compoundingFrequency ?? ""))
     }
-    setContractId(String(commodityData?.contractId ?? structure?.contractId ?? ""))
-    setAirSignSecretKey(String(commodityData?.airSignSecretKey ?? structure?.airSignSecretKey ?? ""))
-    setAirSignUid(String(commodityData?.airSignUid ?? structure?.airSignUid ?? ""))
     setCharges(
       Array.isArray(commodityData?.charges ?? fees?.charges ?? fees?.fees)
         ? (commodityData?.charges ?? fees?.charges ?? fees?.fees)
@@ -618,9 +611,6 @@ export default function ConfigureCommodityDrawer({
     ),
     moratoriumEnabled,
     moratoriumDays,
-    contractId,
-    airSignSecretKey,
-    airSignUid,
     charges: charges.length ? charges : existingFees,
     priceRows: priceRows.length
       ? priceRows.map((r) => ({ price: removeCommas(r.price), date: r.date, source: r.source }))
@@ -683,9 +673,6 @@ export default function ConfigureCommodityDrawer({
         termsAndConditions,
         moratoriumEnabled,
         moratoriumDays,
-        contractId,
-        airSignSecretKey,
-        airSignUid,
         requireApplicantSignature: false,
         charges,
         forcefulWithdrawal,
@@ -1009,23 +996,6 @@ export default function ConfigureCommodityDrawer({
             </div>
 
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <ProductConfigInput
-                label="Contract ID"
-                placeholder="Enter Contract ID"
-                value={contractId}
-                onChange={setContractId}
-                requirement="required"
-              />
-              <ProductConfigInput
-                label="AirSign Secret Key"
-                placeholder="Enter secret key"
-                value={airSignSecretKey}
-                onChange={setAirSignSecretKey}
-                requirement="required"
-              />
-              <ProductConfigInput label="AirSign UID" placeholder="Enter UID" value={airSignUid} onChange={setAirSignUid} requirement="required" />
-            </div>
           </div>
         )}
 

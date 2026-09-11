@@ -136,10 +136,6 @@ export default function ConfigureInvestmentDrawer({
     setRoi(normalizePercentInput(value))
   }
 
-  const [contractId, setContractId] = useState("")
-  const [airSignSecretKey, setAirSignSecretKey] = useState("")
-  const [airSignUid, setAirSignUid] = useState("")
-
   const [stepErrors, setStepErrors] = useState<string[]>([])
 
   useEffect(() => {
@@ -271,9 +267,6 @@ export default function ConfigureInvestmentDrawer({
     charges,
     chargeForcefulWithdrawal,
     withdrawalPenalties,
-    contractId,
-    airSignSecretKey,
-    airSignUid,
   })
 
   const handleNext = async () => {
@@ -333,9 +326,6 @@ export default function ConfigureInvestmentDrawer({
           charges,
           chargeForcefulWithdrawal,
           withdrawalPenalties,
-          contractId,
-          airSignSecretKey,
-          airSignUid,
           requireApplicantSignature: false,
           /** Fields older flows / APIs may still read */
           purpose: description,
@@ -684,23 +674,6 @@ export default function ConfigureInvestmentDrawer({
               </>
             )}
 
-            <div className="grid grid-cols-1 gap-4 border-t border-gray-100 pt-4 sm:grid-cols-3">
-              <ProductConfigInput
-                label="Contract ID"
-                placeholder="Enter Contract ID"
-                value={contractId}
-                onChange={setContractId}
-                requirement="required"
-              />
-              <ProductConfigInput
-                label="AirSign Secret Key"
-                placeholder="Enter secret key"
-                value={airSignSecretKey}
-                onChange={setAirSignSecretKey}
-                requirement="required"
-              />
-              <ProductConfigInput label="AirSign UID" placeholder="Enter UID" value={airSignUid} onChange={setAirSignUid} requirement="required" />
-            </div>
           </div>
         )}
 

@@ -131,9 +131,6 @@ export default function ConfigureSavingsDrawer({
   const [minSavingsAmount, setMinSavingsAmount] = useState("")
   const [maxSavingsAmount, setMaxSavingsAmount] = useState("")
   const [termsAndConditions, setTermsAndConditions] = useState("")
-  const [contractId, setContractId] = useState("")
-  const [airSignSecretKey, setAirSignSecretKey] = useState("")
-  const [airSignUid, setAirSignUid] = useState("")
 
   const [chargeName, setChargeName] = useState("")
   const [chargeFeeType, setChargeFeeType] = useState("")
@@ -305,10 +302,6 @@ export default function ConfigureSavingsDrawer({
       ),
     )
     setTermsAndConditions(displayStringFromApi(savingsData.termsAndConditions ?? structure.termsAndConditions ?? structure.savingsTermsAndCondition))
-    setContractId(String(savingsData.contractId ?? structure.contractId ?? ""))
-    setAirSignSecretKey(String(savingsData.airSignSecretKey ?? structure.airSignSecretKey ?? ""))
-    setAirSignUid(String(savingsData.airSignUid ?? structure.airSignUid ?? ""))
-
     setCharges(Array.isArray(savingsData.charges ?? fees.charges) ? (savingsData.charges ?? fees.charges) : [])
     setChargeForcefulWithdrawal(
       asBool(
@@ -458,9 +451,6 @@ export default function ConfigureSavingsDrawer({
     minSavingsAmount: removeCommas(filledOrExisting(minSavingsAmount, savings.minSavingsAmount, structure.minSavingsAmount, pickRecord(structure.savingsAmount).min)),
     maxSavingsAmount: removeCommas(filledOrExisting(maxSavingsAmount, savings.maxSavingsAmount, structure.maxSavingsAmount, pickRecord(structure.savingsAmount).max)),
     termsAndConditions: filledOrExisting(termsAndConditions, savings.termsAndConditions, structure.termsAndConditions, structure.savingsTermsAndCondition),
-    contractId,
-    airSignSecretKey,
-    airSignUid,
     charges: charges.length ? charges : existingFees,
     chargeForcefulWithdrawal,
     withdrawalPenalties,
@@ -529,9 +519,6 @@ export default function ConfigureSavingsDrawer({
           minSavingsAmount: removeCommas(minSavingsAmount),
           maxSavingsAmount: removeCommas(maxSavingsAmount),
           termsAndConditions,
-          contractId,
-          airSignSecretKey,
-          airSignUid,
           requireApplicantSignature: false,
           charges,
           chargeForcefulWithdrawal,
@@ -707,29 +694,6 @@ export default function ConfigureSavingsDrawer({
             </div>
 
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <ProductConfigInput
-                label="Contract ID"
-                placeholder="Enter Contract ID"
-                value={contractId}
-                onChange={setContractId}
-                requirement="required"
-              />
-              <ProductConfigInput
-                label="AirSign Secret Key"
-                placeholder="Enter secret key"
-                value={airSignSecretKey}
-                onChange={setAirSignSecretKey}
-                requirement="required"
-              />
-              <ProductConfigInput
-                label="AirSign UID"
-                placeholder="Enter UID"
-                value={airSignUid}
-                onChange={setAirSignUid}
-                requirement="required"
-              />
-            </div>
           </div>
         )}
 
