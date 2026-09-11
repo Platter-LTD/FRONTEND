@@ -12,6 +12,8 @@ const BASE = getPlataApiBaseUrl().replace(/\/+$/, "")
 export type SettlementType = "investments" | "commodities" | "savings"
 export type SettlementMode = "manual" | "automatic"
 
+export type WithdrawalHistoryStatus = "approved" | "rejected" | "all"
+
 export type TreasuryPayoutRow = {
   id: string
   reference: string
@@ -24,9 +26,21 @@ export type TreasuryPayoutRow = {
   returnAmount?: number
   amount: number
   requestedOn?: string
+  decidedAt?: string
   maturity?: string
   requestingFrom?: string
   status: string
+  reason?: string
+}
+
+export type TreasuryPayoutHistoryPage = {
+  items: TreasuryPayoutRow[]
+  pagination: {
+    total: number
+    limit: number
+    skip: number
+    hasMore: boolean
+  }
 }
 
 export type ApproveBatchResult = {
@@ -121,6 +135,12 @@ function normalizePayoutRow(raw: Record<string, unknown>): TreasuryPayoutRow {
         : raw.requested_on != null
           ? str(raw.requested_on)
           : undefined,
+    decidedAt:
+      raw.decidedAt != null
+        ? str(raw.decidedAt)
+        : raw.decided_at != null
+          ? str(raw.decided_at)
+          : undefined,
     maturity: raw.maturity != null ? str(raw.maturity) : undefined,
     requestingFrom:
       raw.requestingFrom != null
@@ -129,6 +149,7 @@ function normalizePayoutRow(raw: Record<string, unknown>): TreasuryPayoutRow {
           ? str(raw.requesting_from)
           : undefined,
     status: str(raw.status || "pending").toLowerCase(),
+    reason: raw.reason != null ? str(raw.reason) : undefined,
   }
 }
 
@@ -140,6 +161,22 @@ function unwrapItems(body: Record<string, unknown>): TreasuryPayoutRow[] {
     .map((row) => asRecord(row))
     .filter((row): row is Record<string, unknown> => Boolean(row))
     .map(normalizePayoutRow)
+}
+
+function unwrapHistoryPage(body: Record<string, unknown>): TreasuryPayoutHistoryPage {
+  const data = asRecord(body.data) ?? body
+  const pagination = asRecord(data.pagination) ?? {}
+  const limit = num(pagination.limit, 50)
+  const skip = num(pagination.skip, 0)
+  const total = num(pagination.total, 0)
+  const hasMore =
+    pagination.hasMore != null
+      ? Boolean(pagination.hasMore)
+      : skip + limit < total
+  return {
+    items: unwrapItems(body),
+    pagination: { total, limit, skip, hasMore },
+  }
 }
 
 function unwrapApprove(body: Record<string, unknown>): ApproveBatchResult {
@@ -215,6 +252,34 @@ export const treasuryConsoleApi = {
     }
   },
 
+  async listWithdrawalsHistory(
+    appId: string,
+    opts?: {
+      status?: WithdrawalHistoryStatus
+      limit?: number
+      skip?: number
+    },
+  ): Promise<ApiResult<TreasuryPayoutHistoryPage>> {
+    try {
+      const res = await fetch(
+        `${BASE}${BACKEND.treasuryConsole.withdrawalsHistory}${qs({
+          appId,
+          status: opts?.status ?? "all",
+          limit: opts?.limit ?? 50,
+          skip: opts?.skip ?? 0,
+        })}`,
+        getFetchOpts(),
+      )
+      const body = await parseJson(res)
+      if (!res.ok || body.success === false) {
+        return { success: false, error: apiError(body, `HTTP ${res.status}`) }
+      }
+      return { success: true, data: unwrapHistoryPage(body) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  },
+
   async approveWithdrawals(
     appId: string,
     references: string[],
@@ -275,6 +340,35 @@ export const treasuryConsoleApi = {
         return { success: false, error: apiError(body, `HTTP ${res.status}`) }
       }
       return { success: true, data: { items: unwrapItems(body) } }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  },
+
+  async listSettlementsHistory(
+    appId: string,
+    settlementType: SettlementType,
+    opts?: {
+      status?: WithdrawalHistoryStatus
+      limit?: number
+      skip?: number
+    },
+  ): Promise<ApiResult<TreasuryPayoutHistoryPage>> {
+    try {
+      const res = await fetch(
+        `${BASE}${BACKEND.treasuryConsole.settlementsHistory(settlementType)}${qs({
+          appId,
+          status: opts?.status ?? "all",
+          limit: opts?.limit ?? 50,
+          skip: opts?.skip ?? 0,
+        })}`,
+        getFetchOpts(),
+      )
+      const body = await parseJson(res)
+      if (!res.ok || body.success === false) {
+        return { success: false, error: apiError(body, `HTTP ${res.status}`) }
+      }
+      return { success: true, data: unwrapHistoryPage(body) }
     } catch (err) {
       return { success: false, error: String(err) }
     }

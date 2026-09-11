@@ -221,10 +221,13 @@ export const BACKEND = {
     fundingInstructions: (walletType: "treasury" | "billing") =>
       `/api/v1/frontend-plata/treasury/wallets/${encodeURIComponent(walletType)}/funding-instructions`,
     withdrawals: "/api/v1/frontend-plata/treasury/withdrawals",
+    withdrawalsHistory: "/api/v1/frontend-plata/treasury/withdrawals/history",
     withdrawalsApprove: "/api/v1/frontend-plata/treasury/withdrawals/approve",
     withdrawalsReject: "/api/v1/frontend-plata/treasury/withdrawals/reject",
     settlements: (settlementType: "investments" | "commodities" | "savings") =>
       `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}`,
+    settlementsHistory: (settlementType: "investments" | "commodities" | "savings") =>
+      `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}/history`,
     settlementsMode: (settlementType: "investments" | "commodities" | "savings") =>
       `/api/v1/frontend-plata/treasury/settlements/${encodeURIComponent(settlementType)}/mode`,
     settlementsApprove: (settlementType: "investments" | "commodities" | "savings") =>

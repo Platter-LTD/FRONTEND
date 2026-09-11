@@ -13,10 +13,12 @@ import {
   type SettlementMode,
   type SettlementType,
   type TreasuryPayoutRow,
+  type WithdrawalHistoryStatus,
 } from "@/lib/services/treasuryConsoleService"
 import { usePermissions } from "@/hooks/usePermissions"
 
 type TabKey = "withdrawals" | SettlementType
+type HistoryFilter = Exclude<WithdrawalHistoryStatus, "all">
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "withdrawals", label: "Withdrawal Requests" },
@@ -67,7 +69,7 @@ function StatusPill({ status }: { status: string }) {
         !paid && !failed && "bg-[#FEF3DC] text-[#92610A]",
       )}
     >
-      {paid ? "Paid" : failed ? (s === "rejected" ? "Rejected" : "Failed") : "Pending"}
+      {paid ? (s === "approved" ? "Approved" : "Paid") : failed ? (s === "rejected" ? "Rejected" : "Failed") : "Pending"}
     </span>
   )
 }
@@ -100,6 +102,11 @@ export function WithdrawalsConsole({ appId }: Props) {
 
   const [withdrawals, setWithdrawals] = useState<TreasuryPayoutRow[]>([])
   const [wdSelected, setWdSelected] = useState<Set<string>>(new Set())
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("approved")
+  const [historyRows, setHistoryRows] = useState<TreasuryPayoutRow[]>([])
+  const [historyTotal, setHistoryTotal] = useState(0)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
 
   const [settlements, setSettlements] = useState<Record<SettlementType, TreasuryPayoutRow[]>>({
     investments: [],
@@ -121,6 +128,59 @@ export function WithdrawalsConsole({ appId }: Props) {
     commodities: new Set(),
     savings: new Set(),
   })
+  const [settleHistoryFilter, setSettleHistoryFilter] = useState<HistoryFilter>("approved")
+  const [settleHistoryRows, setSettleHistoryRows] = useState<TreasuryPayoutRow[]>([])
+  const [settleHistoryTotal, setSettleHistoryTotal] = useState(0)
+  const [settleHistoryLoading, setSettleHistoryLoading] = useState(false)
+  const [settleHistoryError, setSettleHistoryError] = useState<string | null>(null)
+
+  const loadHistory = useCallback(
+    async (status: HistoryFilter) => {
+      if (!appId) return
+      setHistoryLoading(true)
+      setHistoryError(null)
+      const res = await treasuryConsoleApi.listWithdrawalsHistory(appId, {
+        status,
+        limit: 50,
+        skip: 0,
+      })
+      if (!res.success) {
+        setHistoryRows([])
+        setHistoryTotal(0)
+        setHistoryError(res.error)
+        setHistoryLoading(false)
+        return
+      }
+      setHistoryRows(res.data?.items ?? [])
+      setHistoryTotal(res.data?.pagination.total ?? res.data?.items.length ?? 0)
+      setHistoryLoading(false)
+    },
+    [appId],
+  )
+
+  const loadSettleHistory = useCallback(
+    async (type: SettlementType, status: HistoryFilter) => {
+      if (!appId) return
+      setSettleHistoryLoading(true)
+      setSettleHistoryError(null)
+      const res = await treasuryConsoleApi.listSettlementsHistory(appId, type, {
+        status,
+        limit: 50,
+        skip: 0,
+      })
+      if (!res.success) {
+        setSettleHistoryRows([])
+        setSettleHistoryTotal(0)
+        setSettleHistoryError(res.error)
+        setSettleHistoryLoading(false)
+        return
+      }
+      setSettleHistoryRows(res.data?.items ?? [])
+      setSettleHistoryTotal(res.data?.pagination.total ?? res.data?.items.length ?? 0)
+      setSettleHistoryLoading(false)
+    },
+    [appId],
+  )
 
   const refresh = useCallback(async () => {
     if (!appId) return
@@ -174,6 +234,17 @@ export function WithdrawalsConsole({ appId }: Props) {
     void refresh()
   }, [refresh])
 
+  useEffect(() => {
+    if (!appId) return
+    void loadHistory(historyFilter)
+  }, [appId, historyFilter, loadHistory])
+
+  useEffect(() => {
+    if (!appId) return
+    if (tab === "withdrawals") return
+    void loadSettleHistory(tab, settleHistoryFilter)
+  }, [appId, tab, settleHistoryFilter, loadSettleHistory])
+
   const badges = useMemo(
     () => ({
       withdrawals: withdrawals.filter((r) => r.status === "pending").length,
@@ -203,6 +274,7 @@ export function WithdrawalsConsole({ appId }: Props) {
       noun: "withdrawal request(s)",
     })
     await refresh()
+    await loadHistory(historyFilter)
   }
 
   const rejectWithdrawals = async () => {
@@ -217,6 +289,7 @@ export function WithdrawalsConsole({ appId }: Props) {
     }
     toast.success(`${res.data?.paidCount ?? refs.length} withdrawal request(s) rejected`)
     await refresh()
+    await loadHistory(historyFilter)
   }
 
   const approveSettlements = async (type: SettlementType) => {
@@ -235,6 +308,7 @@ export function WithdrawalsConsole({ appId }: Props) {
       noun: "return(s)",
     })
     await refresh()
+    await loadSettleHistory(type, settleHistoryFilter)
   }
 
   const rejectSettlements = async (type: SettlementType) => {
@@ -249,6 +323,7 @@ export function WithdrawalsConsole({ appId }: Props) {
     }
     toast.success(`${res.data?.paidCount ?? refs.length} return(s) rejected`)
     await refresh()
+    await loadSettleHistory(type, settleHistoryFilter)
   }
 
   const toggleMode = async (type: SettlementType, next: boolean) => {
@@ -273,6 +348,7 @@ export function WithdrawalsConsole({ appId }: Props) {
       }
     }
     await refresh()
+    await loadSettleHistory(type, settleHistoryFilter)
   }
 
   return (
@@ -333,6 +409,12 @@ export function WithdrawalsConsole({ appId }: Props) {
             allChecked={allWdChecked}
             acting={acting}
             canApprove={canApprovePayout}
+            historyFilter={historyFilter}
+            historyRows={historyRows}
+            historyTotal={historyTotal}
+            historyLoading={historyLoading}
+            historyError={historyError}
+            onHistoryFilterChange={setHistoryFilter}
             onToggleAll={(checked) => {
               if (!checked) {
                 setWdSelected(new Set())
@@ -361,6 +443,12 @@ export function WithdrawalsConsole({ appId }: Props) {
             acting={acting}
             canApprove={canApprovePayout}
             canToggleMode={canSetAutoSettle}
+            historyFilter={settleHistoryFilter}
+            historyRows={settleHistoryRows}
+            historyTotal={settleHistoryTotal}
+            historyLoading={settleHistoryLoading}
+            historyError={settleHistoryError}
+            onHistoryFilterChange={setSettleHistoryFilter}
             onToggleMode={(on) => void toggleMode(tab, on)}
             onToggleAll={(checked) => {
               const pending = settlements[tab].filter((r) => r.status === "pending")
@@ -386,12 +474,208 @@ export function WithdrawalsConsole({ appId }: Props) {
   )
 }
 
+function DecisionHistoryCard({
+  variant,
+  description,
+  emptyNoun,
+  historyFilter,
+  historyRows,
+  historyTotal,
+  historyLoading,
+  historyError,
+  onHistoryFilterChange,
+}: {
+  variant: "withdrawals" | "settlements"
+  description: string
+  emptyNoun: string
+  historyFilter: HistoryFilter
+  historyRows: TreasuryPayoutRow[]
+  historyTotal: number
+  historyLoading: boolean
+  historyError: string | null
+  onHistoryFilterChange: (status: HistoryFilter) => void
+}) {
+  const showReason = historyFilter === "rejected"
+  const headers =
+    variant === "withdrawals"
+      ? showReason
+        ? ["Customer", "Requesting From", "Amount", "Requested", "Decided", "Reason", "Status"]
+        : ["Customer", "Requesting From", "Amount", "Requested", "Decided", "Status"]
+      : showReason
+        ? ["Customer", "Product", "Principal", "Return", "Maturity", "Decided", "Reason", "Status"]
+        : ["Customer", "Product", "Principal", "Return", "Maturity", "Decided", "Status"]
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#E4E7EC] bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E4E7EC] bg-[#F9FAFB] px-5 py-4">
+        <div>
+          <h3 className="text-[13.5px] font-extrabold text-[#1D2939]">Decision history</h3>
+          <p className="mt-0.5 text-[11.5px] text-[#667085]">{description}</p>
+        </div>
+        <div
+          role="tablist"
+          aria-label="History status filter"
+          className="inline-flex rounded-lg border border-[#E4E7EC] bg-[#F2F4F7] p-0.5"
+        >
+          {([
+            { key: "approved", label: "Approved" },
+            { key: "rejected", label: "Rejected" },
+          ] as const).map((opt) => {
+            const active = historyFilter === opt.key
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => onHistoryFilterChange(opt.key)}
+                className={cn(
+                  "rounded-md px-3.5 py-1.5 text-[12.5px] font-bold transition-colors",
+                  active
+                    ? "bg-white text-[#0B1E3B] shadow-sm"
+                    : "text-[#667085] hover:text-[#1D2939]",
+                )}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {historyError ? (
+        <div className="border-b border-yellow-200 bg-yellow-50 px-5 py-3 text-sm text-yellow-800">
+          {historyError}
+        </div>
+      ) : null}
+
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-[#E4E7EC] bg-[#FCFCFD]">
+              {headers.map((h) => (
+                <th
+                  key={h}
+                  className="px-4 py-2.5 text-left text-[10.5px] font-extrabold uppercase tracking-wider text-[#98A2B3]"
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {historyLoading ? (
+              <tr>
+                <td
+                  colSpan={headers.length}
+                  className="px-5 py-10 text-center text-sm text-[#667085]"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading history…
+                  </span>
+                </td>
+              </tr>
+            ) : historyRows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={headers.length}
+                  className="px-5 py-10 text-center text-sm text-[#667085]"
+                >
+                  No {historyFilter} {emptyNoun} yet.
+                </td>
+              </tr>
+            ) : (
+              historyRows.map((row) => {
+                if (variant === "withdrawals") {
+                  return (
+                    <tr key={row.reference} className="border-b border-[#E4E7EC] last:border-0">
+                      <td className="px-4 py-3 text-[13.5px] font-bold text-[#1D2939]">
+                        {row.customerName}
+                      </td>
+                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
+                        {row.requestingFrom || row.productName || "—"}
+                      </td>
+                      <td className="px-4 py-3 text-[13.5px] font-semibold text-[#1D2939]">
+                        {formatPlataWalletAmount(row.amount)}
+                      </td>
+                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
+                        {formatShortDate(row.requestedOn)}
+                      </td>
+                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
+                        {formatShortDate(row.decidedAt)}
+                      </td>
+                      {showReason ? (
+                        <td className="max-w-[220px] truncate px-4 py-3 text-[13.5px] text-[#667085]">
+                          {row.reason?.trim() || "—"}
+                        </td>
+                      ) : null}
+                      <td className="px-4 py-3">
+                        <StatusPill status={row.status} />
+                      </td>
+                    </tr>
+                  )
+                }
+
+                const principal = row.principal ?? 0
+                const ret = row.returnAmount ?? Math.max(0, row.amount - principal)
+                return (
+                  <tr key={row.reference} className="border-b border-[#E4E7EC] last:border-0">
+                    <td className="px-4 py-3 text-[13.5px] font-bold text-[#1D2939]">
+                      {row.customerName}
+                    </td>
+                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
+                      {row.productName || "—"}
+                    </td>
+                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
+                      {formatPlataWalletAmount(principal)}
+                    </td>
+                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
+                      {formatPlataWalletAmount(ret)}
+                    </td>
+                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
+                      {formatShortDate(row.maturity)}
+                    </td>
+                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
+                      {formatShortDate(row.decidedAt)}
+                    </td>
+                    {showReason ? (
+                      <td className="max-w-[220px] truncate px-4 py-3 text-[13.5px] text-[#667085]">
+                        {row.reason?.trim() || "—"}
+                      </td>
+                    ) : null}
+                    <td className="px-4 py-3">
+                      <StatusPill status={row.status} />
+                    </td>
+                  </tr>
+                )
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="border-t border-[#E4E7EC] bg-[#F9FAFB] px-5 py-3 text-[12.5px] font-semibold text-[#667085]">
+        {historyLoading
+          ? "…"
+          : `${historyRows.length} shown${historyTotal > historyRows.length ? ` of ${historyTotal}` : ""}`}
+      </div>
+    </div>
+  )
+}
+
 function WithdrawalsPanel({
   rows,
   selected,
   allChecked,
   acting,
   canApprove = true,
+  historyFilter,
+  historyRows,
+  historyTotal,
+  historyLoading,
+  historyError,
+  onHistoryFilterChange,
   onToggleAll,
   onToggle,
   onApprove,
@@ -402,6 +686,12 @@ function WithdrawalsPanel({
   allChecked: boolean
   acting: boolean
   canApprove?: boolean
+  historyFilter: HistoryFilter
+  historyRows: TreasuryPayoutRow[]
+  historyTotal: number
+  historyLoading: boolean
+  historyError: string | null
+  onHistoryFilterChange: (status: HistoryFilter) => void
   onToggleAll: (checked: boolean) => void
   onToggle: (ref: string, checked: boolean) => void
   onApprove: () => void
@@ -534,6 +824,18 @@ function WithdrawalsPanel({
           </div>
         </div>
       </div>
+
+      <DecisionHistoryCard
+        variant="withdrawals"
+        description="Previously approved or rejected withdrawal requests for this app."
+        emptyNoun="withdrawals"
+        historyFilter={historyFilter}
+        historyRows={historyRows}
+        historyTotal={historyTotal}
+        historyLoading={historyLoading}
+        historyError={historyError}
+        onHistoryFilterChange={onHistoryFilterChange}
+      />
     </div>
   )
 }
@@ -547,6 +849,12 @@ function SettlementPanel({
   acting,
   canApprove = true,
   canToggleMode = true,
+  historyFilter,
+  historyRows,
+  historyTotal,
+  historyLoading,
+  historyError,
+  onHistoryFilterChange,
   onToggleMode,
   onToggleAll,
   onToggle,
@@ -561,6 +869,12 @@ function SettlementPanel({
   acting: boolean
   canApprove?: boolean
   canToggleMode?: boolean
+  historyFilter: HistoryFilter
+  historyRows: TreasuryPayoutRow[]
+  historyTotal: number
+  historyLoading: boolean
+  historyError: string | null
+  onHistoryFilterChange: (status: HistoryFilter) => void
   onToggleMode: (on: boolean) => void
   onToggleAll: (checked: boolean) => void
   onToggle: (ref: string, checked: boolean) => void
@@ -739,6 +1053,18 @@ function SettlementPanel({
           ) : null}
         </div>
       </div>
+
+      <DecisionHistoryCard
+        variant="settlements"
+        description={`Previously approved or rejected matured ${type} for this app.`}
+        emptyNoun={type}
+        historyFilter={historyFilter}
+        historyRows={historyRows}
+        historyTotal={historyTotal}
+        historyLoading={historyLoading}
+        historyError={historyError}
+        onHistoryFilterChange={onHistoryFilterChange}
+      />
     </div>
   )
 }
