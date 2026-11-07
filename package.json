@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "dev": "next dev",
+    "dev": "next dev -p 4050",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start -p 4050",
+    "gen": "orval --clean",
+    "gen:watch": "orval --watch",
+    "gen:update": "node scripts/update-specs.mjs && orval --clean"
   },
   "dependencies": {
     "@emotion/is-prop-valid": "^1.3.1",
@@ -90,6 +93,7 @@
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "drizzle-kit": "^0.18.1",
+    "orval": "^8.45.0",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",

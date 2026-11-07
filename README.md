@@ -101,7 +101,7 @@ npm run dev
 # or: pnpm dev
 ```
 
-App runs at **http://localhost:3000**
+App runs at **http://localhost:4050** (port pinned in `package.json`)
 
 ### Dev Login Credentials
 

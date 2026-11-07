@@ -1,0 +1,9 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "wallet-ms",
+    "version": "0.0.0",
+    "description": "Placeholder - replace with the service's OpenAPI spec via `npm run gen:update` (see scripts/update-specs.mjs)."
+  },
+  "paths": {}
+}

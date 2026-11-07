@@ -6,7 +6,8 @@ function decodeJwtPayload(token: string): JwtPayload | null {
     if (parts.length < 2) return null
     const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/")
     const pad = normalized + "=".repeat((4 - (normalized.length % 4)) % 4)
-    const json = Buffer.from(pad, "base64").toString("utf8")
+    // atob + TextDecoder exist in Node and the browser, so lib/http clients can share this.
+    const json = new TextDecoder().decode(Uint8Array.from(atob(pad), (c) => c.charCodeAt(0)))
     const payload = JSON.parse(json) as JwtPayload
     return payload
   } catch {
