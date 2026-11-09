@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus, AlertTriangle } from "lucide-react"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import ScamAlertConfirmationDrawer from "@/components/drawers/scam-alert-confirmation-drawer"
 import ScamAlertEmailDrawer from "@/components/drawers/scam-alert-email-drawer"
 
@@ -43,6 +44,28 @@ export default function ScamAlertPage() {
       product: "Quick Money",
       productKey: "X20445-78P",
       status: "Inactive",
+    },
+  ]
+
+  type App = (typeof apps)[number]
+  const columns: ColumnDef<App, unknown>[] = [
+    { accessorKey: "name", header: "App Name", cell: ({ row }) => <span className="text-gray-900">{row.original.name}</span> },
+    { accessorKey: "appId", header: "App ID" },
+    { accessorKey: "dateCreated", header: "Date Created" },
+    { accessorKey: "product", header: "Product" },
+    { accessorKey: "productKey", header: "Product Key" },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => (
+        <span
+          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+            row.original.status === "Active" ? "bg-[#F5F1E8] text-[#9A813F]" : "bg-[#FFF3D3] text-[#B8860B]"
+          }`}
+        >
+          {row.original.status}
+        </span>
+      ),
     },
   ]
 
@@ -114,39 +137,8 @@ export default function ScamAlertPage() {
           </div>
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden mt-6">
-          <table className="w-full">
-            <thead className="bg-[#F5F5F5]">
-              <tr>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">App Name</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">App ID</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Date Created</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Product</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Product Key</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {apps.map((app, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm text-gray-900">{app.name}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.appId}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.dateCreated}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.product}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.productKey}</td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                        app.status === "Active" ? "bg-[#F5F1E8] text-[#9A813F]" : "bg-[#FFF3D3] text-[#B8860B]"
-                      }`}
-                    >
-                      {app.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-6">
+          <DataTable tableId="scam-alert-apps" columns={columns} data={apps} clientSearch download />
         </div>
       </div>
 

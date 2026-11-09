@@ -24,7 +24,7 @@ export function ConfigurePricingSheet({ open, onOpenChange }: ConfigurePricingSh
       onOpenChange={onOpenChange}
       title="Configure Pricing"
       subtitle="Manage how much your users get charged for configure pricing"
-      className="w-[40%] min-w-[500px]"
+      className="sm:max-w-[44rem]"
     >
         <div className="space-y-5">
           <div className="space-y-2">

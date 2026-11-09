@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Plus } from "lucide-react"
 import { IoIosCopy } from "react-icons/io"
 import { Button } from "@/components/ui/button"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { productApi } from "@/lib/services/product-api"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { toast } from "sonner"
@@ -274,73 +275,52 @@ export function ProductsTab() {
     setSelectedProduct(product)
   }
 
+
+  type ProductRow = (typeof products)[number]
+  const copyCell = (value: string) => (
+    <div className="flex items-center gap-2">
+      {value}
+      <button
+        type="button"
+        aria-label="Copy"
+        onClick={(e) => {
+          e.stopPropagation()
+          handleCopy(value)
+        }}
+        className="hover:text-[#9A813F]"
+      >
+        <IoIosCopy size={16} />
+      </button>
+    </div>
+  )
+  const productColumns: ColumnDef<ProductRow, unknown>[] = [
+    { accessorKey: "amount", header: "Amount", cell: ({ row }) => <span className="text-gray-900">{row.original.amount}</span> },
+    { accessorKey: "ref", header: "Ref", cell: ({ row }) => copyCell(row.original.ref) },
+    { accessorKey: "timestamp", header: "Timestamp" },
+    { accessorKey: "fee", header: "Fee" },
+    { accessorKey: "product", header: "Product" },
+    { accessorKey: "metaRef", header: "Meta_Ref", cell: ({ row }) => copyCell(row.original.metaRef) },
+    { accessorKey: "allUsers", header: "All users" },
+    { accessorKey: "userPhone", header: "User Phone" },
+  ]
   return (
     <>
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-gray-900">All Product</h2>
-        <Button onClick={() => setIsCreateProductOpen(true)} className="bg-black text-white hover:bg-gray-800 gap-2">
-          <Plus size={16} />
-          create product
-        </Button>
-      </div>
-
-      {/* Products Table */}
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-[#F5F5F5]">
-            <tr>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Amount</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Ref</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Timestamp</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Fee</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Product</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Meta_Ref</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">All users</th>
-              <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">User Phone</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {products.map((product, index) => (
-              <tr key={index} onClick={() => handleProductClick(product)} className="hover:bg-gray-50 cursor-pointer">
-                <td className="px-6 py-4 text-sm text-gray-900">{product.amount}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    {product.ref}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleCopy(product.ref)
-                      }}
-                      className="hover:text-[#9A813F]"
-                    >
-                      <IoIosCopy size={16} />
-                    </button>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{product.timestamp}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{product.fee}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{product.product}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    {product.metaRef}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleCopy(product.metaRef)
-                      }}
-                      className="hover:text-[#9A813F]"
-                    >
-                      <IoIosCopy size={16} />
-                    </button>
-                  </div>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{product.allUsers}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{product.userPhone}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        tableId="products-tab"
+        title="All Product"
+        columns={productColumns}
+        data={products}
+        clientSearch
+        download
+        rowDetails={{ drawer: true }}
+        onRowClick={(product) => handleProductClick(product)}
+        action={
+          <Button onClick={() => setIsCreateProductOpen(true)} className="gap-2 bg-black text-white hover:bg-gray-800">
+            <Plus size={16} />
+            create product
+          </Button>
+        }
+      />
 
       {/* Drawers */}
       <CreateProductDrawer

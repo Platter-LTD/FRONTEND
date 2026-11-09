@@ -2,7 +2,8 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Bell, User, Search } from "lucide-react"
+import { Bell, User } from "lucide-react"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { FiEyeOff } from "react-icons/fi"
 
 export default function WalletPage() {
@@ -58,6 +59,18 @@ export default function WalletPage() {
     },
   ]
 
+  type WalletRecord = (typeof walletRecords)[number]
+  const columns: ColumnDef<WalletRecord, unknown>[] = [
+    { accessorKey: "amount", header: "Amount", cell: ({ row }) => <span className="text-gray-900">{row.original.amount}</span> },
+    { accessorKey: "ref", header: "Ref" },
+    { accessorKey: "timestamp", header: "Timestamp" },
+    { accessorKey: "fee", header: "Fee" },
+    { accessorKey: "product", header: "Product" },
+    { accessorKey: "metaRef", header: "Meta_Ref" },
+    { accessorKey: "userEmail", header: "User email" },
+    { accessorKey: "userPhone", header: "User Phone" },
+  ]
+
   return (
     <div className="flex-1 bg-white">
       {/* Header */}
@@ -108,64 +121,14 @@ export default function WalletPage() {
           </div>
         </div>
 
-        {/* Wallet Record */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">Wallet Record</h2>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-            <input
-              type="text"
-              placeholder="Search"
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-[#9A813F] text-sm w-64"
-            />
-          </div>
-        </div>
-
-        {/* Records Table */}
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-[#F5F5F5]">
-              <tr>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Amount</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Ref</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Timestamp</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Fee</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Product</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Meta_Ref</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">User email</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">User Phone</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {walletRecords.map((record, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm text-gray-900">{record.amount}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600 flex items-center gap-2">
-                    {record.ref}
-                    <button className="text-gray-400 hover:text-gray-600">
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                        <circle cx="8" cy="8" r="8" />
-                      </svg>
-                    </button>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{record.timestamp}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{record.fee}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{record.product}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600 flex items-center gap-2">
-                    {record.metaRef}
-                    <button className="text-gray-400 hover:text-gray-600">
-                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                        <circle cx="8" cy="8" r="8" />
-                      </svg>
-                    </button>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{record.userEmail}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{record.userPhone}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          tableId="wallet-records"
+          title="Wallet Record"
+          columns={columns}
+          data={walletRecords}
+          clientSearch
+          download
+        />
       </div>
     </div>
   )

@@ -4,13 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Copy, CreditCard, Landmark, Loader2, Check } from "lucide-react"
 import { toast } from "sonner"
 
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { DrawerPanel } from "@/components/ui/drawer-panel"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { WALLET_BRAND } from "@/lib/walletBrand"
@@ -112,16 +106,15 @@ export function FundWalletDrawer({
   }, [onRefreshBalance])
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0 sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>{step === "method" ? "Fund wallet" : "Bank transfer"}</SheetTitle>
-          <SheetDescription>
-            {step === "method"
+    <DrawerPanel
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={step === "method" ? "Fund wallet" : "Bank transfer"}
+      description={<>{step === "method"
               ? "Transfer into this wallet’s virtual account. Funding is not submitted from the dashboard."
-              : `Send ${currency} to the account below. Credits arrive via PayOnUs webhook.`}
-          </SheetDescription>
-        </SheetHeader>
+              : `Send ${currency} to the account below. Credits arrive via PayOnUs webhook.`}</>}
+      bodyClassName="p-0 gap-0"
+    >
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {step === "method" ? (
@@ -226,7 +219,6 @@ export function FundWalletDrawer({
             </>
           ) : null}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DrawerPanel>
   )
 }

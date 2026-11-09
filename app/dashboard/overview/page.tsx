@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, Users, CreditCard, Activity, ArrowUpRight, ArrowDownRight, Eye } from "lucide-react"
 import { TransactionHistoryDrawer } from "@/components/transaction-history-drawer"
@@ -97,6 +98,15 @@ export default function OverviewPage() {
     }
   }
 
+
+  type RecentTransaction = (typeof recentTransactions)[number]
+  const transactionColumns: ColumnDef<RecentTransaction, unknown>[] = [
+    { accessorKey: "customer", header: "Customer", cell: ({ row }) => <span className="font-medium text-gray-900">{row.original.customer}</span> },
+    { accessorKey: "email", header: "Email" },
+    { accessorKey: "amount", header: "Amount", cell: ({ row }) => <span className="font-medium text-gray-900">{row.original.amount}</span> },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge className={getStatusColor(row.original.status)}>{row.original.status}</Badge> },
+    { accessorKey: "date", header: "Date" },
+  ]
   return (
     <div className="p-6 space-y-6">
       {/* Stats Grid */}
@@ -181,26 +191,14 @@ export default function OverviewPage() {
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="grid grid-cols-5 gap-4 text-sm font-medium text-gray-700 pb-2 border-b">
-              <div>Customer</div>
-              <div>Email</div>
-              <div>Amount</div>
-              <div>Status</div>
-              <div>Date</div>
-            </div>
-            {recentTransactions.map((transaction) => (
-              <div key={transaction.id} className="grid grid-cols-5 gap-4 text-sm py-2">
-                <div className="font-medium">{transaction.customer}</div>
-                <div className="text-gray-600">{transaction.email}</div>
-                <div className="font-medium">{transaction.amount}</div>
-                <div>
-                  <Badge className={getStatusColor(transaction.status)}>{transaction.status}</Badge>
-                </div>
-                <div className="text-gray-600">{transaction.date}</div>
-              </div>
-            ))}
-          </div>
+          <DataTable
+            tableId="overview-recent-transactions"
+            columns={transactionColumns}
+            data={recentTransactions}
+            clientSearch
+            download={{ filename: "recent-transactions", title: "Recent Transactions" }}
+            bordered={false}
+          />
         </CardContent>
       </Card>
 

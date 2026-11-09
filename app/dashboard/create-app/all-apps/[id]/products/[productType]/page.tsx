@@ -1,6 +1,5 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
@@ -9,7 +8,8 @@ import { extractProductItems } from "@/lib/productOverview"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { toast } from "sonner"
 import { mergeProductsForAppByType, productRowId } from "@/lib/mergeAppCatalogProducts"
-import { TableSkeleton } from "@/components/ui/table-skeleton"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { Switch } from "@/components/ui/switch"
 
 /** URL segment `loan` → Product MS discriminator `LOAN` (docs: canonical `type` values). */
 function productTypeParamToCanonical(param: string): string {
@@ -133,6 +133,60 @@ export default function ProductTypeListPage() {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
   }
 
+  const activationOf = (product: any) => {
+    const id = productRowId(product)
+    const toggleId = String(product?.productId ?? id)
+    return { id, toggleId, isActive: Boolean(activations[toggleId] ?? activations[id] ?? false), isPending: Boolean(pendingToggles[toggleId]) }
+  }
+
+  const columns: ColumnDef<any, unknown>[] = [
+    {
+      id: "name",
+      header: "Product Name",
+      accessorFn: (p) => p.name || p.productName,
+      cell: ({ getValue }) => <span className="font-medium text-gray-900">{String(getValue() ?? "")}</span>,
+    },
+    { id: "description", header: "Description", accessorFn: (p) => p.description || "No description" },
+    { id: "dateCreated", header: "Date Created", accessorFn: (p) => formatDate(p.createdAt || p.dateCreated) },
+    {
+      id: "status",
+      header: "Status",
+      accessorFn: (p) => (activationOf(p).isActive ? "Active" : "Inactive"),
+      cell: ({ row }) => {
+        const { isActive } = activationOf(row.original)
+        return (
+          <span
+            className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+              isActive ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
+            }`}
+          >
+            {isActive ? "Active" : "Inactive"}
+          </span>
+        )
+      },
+    },
+    {
+      id: "activate",
+      header: "Activate for App",
+      cell: ({ row }) => {
+        const { id, toggleId, isActive, isPending } = activationOf(row.original)
+        return (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Switch
+              checked={isActive}
+              disabled={isPending}
+              onCheckedChange={() => {
+                if (!isPending && toggleId) void handleToggleActivation(toggleId, id, isActive)
+              }}
+              aria-label={isActive ? "Deactivate for app" : "Activate for app"}
+              className="data-[state=checked]:bg-[#9A813F]"
+            />
+          </div>
+        )
+      },
+    },
+  ]
+
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -153,97 +207,32 @@ export default function ProductTypeListPage() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <TableSkeleton columnCount={5} rowCount={6} />
-        </div>
-      ) : loadError ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
-          <p className="mb-4 text-gray-800">Could not load products</p>
-          <p className="mb-6 text-sm text-gray-600">{loadError}</p>
-          <Button type="button" variant="outline" onClick={() => void fetchData()}>
-            Try again
-          </Button>
-        </div>
-      ) : products.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center">
-          <h3 className="mb-2 text-lg font-medium text-gray-900">No {getProductTypeDisplayName()} Products Available</h3>
-          <p className="text-gray-600">
-            There are no {productType} products in the catalog for this workspace yet. Create one from the Products
-            page, then return here to enable it for this app.
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200">
-          <table className="w-full">
-            <thead className="bg-[#F5F5F5]">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Product Name</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Description</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Date Created</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Status</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Activate for App</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {products.map((product) => {
-                const id = productRowId(product)
-                const toggleId = String(product?.productId ?? id)
-                const isActive = Boolean(activations[toggleId] ?? activations[id] ?? false)
-                const isPending = Boolean(pendingToggles[toggleId])
-                return (
-                  <tr
-                    key={id || product.name}
-                    className="cursor-pointer hover:bg-gray-50"
-                    onClick={() => {
-                      if (id) {
-                        router.push(
-                          `/dashboard/create-app/all-apps/${appId}/products/${productType.toLowerCase()}/${encodeURIComponent(id)}`,
-                        )
-                      }
-                    }}
-                  >
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{product.name || product.productName}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{product.description || "No description"}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {formatDate(product.createdAt || product.dateCreated)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
-                          isActive ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {isActive ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (!isPending && toggleId) void handleToggleActivation(toggleId, id, isActive)
-                        }}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          isActive ? "bg-[#9A813F]" : "bg-gray-200"
-                        }`}
-                        disabled={isPending}
-                        aria-label={isActive ? "Deactivate for app" : "Activate for app"}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            isActive ? "translate-x-6" : "translate-x-1"
-                          }`}
-                        />
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        tableId={`app-products-${productType}`}
+        title={`${getProductTypeDisplayName()} Products`}
+        columns={columns}
+        data={products}
+        isLoading={loading}
+        isError={!!loadError}
+        error={loadError}
+        onRefresh={() => void fetchData()}
+        clientSearch
+        download
+        rowDetails={{ drawer: true }}
+        onRowClick={(product) => {
+          const id = productRowId(product)
+          if (id) router.push(`/dashboard/create-app/all-apps/${appId}/products/${productType.toLowerCase()}/${encodeURIComponent(id)}`)
+        }}
+        empty={
+          <div className="px-8 py-14 text-center">
+            <h3 className="mb-2 text-lg font-medium text-gray-900">No {getProductTypeDisplayName()} Products Available</h3>
+            <p className="text-gray-600">
+              There are no {productType} products in the catalog for this workspace yet. Create one from the Products page, then
+              return here to enable it for this app.
+            </p>
+          </div>
+        }
+      />
     </div>
   )
 }

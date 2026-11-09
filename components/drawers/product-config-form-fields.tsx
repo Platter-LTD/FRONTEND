@@ -1,45 +1,274 @@
 "use client"
 
-import type { ChangeEvent } from "react"
+import { useEffect, useRef, type ChangeEvent, type ReactNode } from "react"
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { formatThousandsFromDigits, sanitizeAmountDigits } from "@/lib/formatAmountInput"
 
+/* ------------------------------------------------------------------ */
+/* Shared look                                                          */
+/* ------------------------------------------------------------------ */
+
+/** Base classes for every text-like control in the configure drawers. */
+export const productConfigControlClass =
+  "h-10 min-w-0 w-full max-w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900 shadow-xs outline-none transition-[color,box-shadow,border-color] placeholder:text-gray-400 hover:border-gray-400 focus:border-brand focus:ring-[3px] focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+
+/** Multi-line variant of `productConfigControlClass`. */
+export const productConfigTextareaClass =
+  "w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-xs outline-none transition-[color,box-shadow,border-color] placeholder:text-gray-400 hover:border-gray-400 focus:border-brand focus:ring-[3px] focus:ring-brand/20"
+
+const STEP_DESCRIPTIONS: Record<string, string> = {
+  "about product": "Name, tenure, description and how the product appears to customers.",
+  structure: "Rates, limits and how the product behaves over its lifetime.",
+  requirements: "Security, documents and anything else applicants must provide.",
+  "fees & charges": "Charges, penalties and how they are collected.",
+  properties: "Properties customers can apply for under this product.",
+  "inspection dates": "Slots customers can book to inspect a property.",
+  "unit price": "How the unit price is set and where it comes from.",
+  "commodity price": "How the commodity price is set and where it comes from.",
+}
+
+/* ------------------------------------------------------------------ */
+/* Step navigation                                                     */
+/* ------------------------------------------------------------------ */
+
 interface ProductConfigTabsProps {
-  steps: string[]
+  steps: readonly string[]
   activeStep: number
   onStepChange: (step: number) => void
 }
 
+/**
+ * Numbered step tabs. Rendered in the drawer's sticky `subHeader` slot so they
+ * stay visible while the step scrolls. Earlier steps show a check.
+ */
 export function ProductConfigTabs({ steps, activeStep, onStepChange }: ProductConfigTabsProps) {
+  const navRef = useRef<HTMLElement>(null)
+  // Keep the active tab visible when the strip scrolls horizontally (narrow screens).
+  useEffect(() => {
+    navRef.current
+      ?.querySelector<HTMLElement>('[aria-current="step"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" })
+  }, [activeStep])
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-5 border-b border-gray-200">
-      {steps.map((step, index) => {
-        const current = index + 1
-        const isActive = current === activeStep
-        return (
-          <button
-            key={step}
-            type="button"
-            onClick={() => onStepChange(current)}
-            className={cn(
-              "border-b-2 pb-2 text-sm font-medium transition-colors",
-              isActive ? "border-[#9A813F] text-[#9A813F]" : "border-transparent text-gray-600 hover:text-gray-900",
-            )}
-          >
-            {step}
-          </button>
-        )
-      })}
+    <div className="shrink-0 border-b border-gray-200 bg-white">
+      <nav ref={navRef} aria-label="Configuration steps" className="flex gap-1 overflow-x-auto px-4 pt-3 sm:px-6 [scrollbar-width:none]">
+        {steps.map((label, index) => {
+          const current = index + 1
+          const isActive = current === activeStep
+          const isDone = current < activeStep
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => onStepChange(current)}
+              aria-current={isActive ? "step" : undefined}
+              className={cn(
+                "group flex shrink-0 items-center gap-2 border-b-2 px-2.5 pt-1.5 pb-3 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 rounded-t-md",
+                isActive ? "border-brand text-gray-900" : "border-transparent text-gray-500 hover:text-gray-900",
+              )}
+            >
+              <span
+                className={cn(
+                  "flex size-6 items-center justify-center rounded-full text-xs font-semibold transition-colors",
+                  isActive && "bg-brand text-brand-foreground shadow-sm",
+                  isDone && "bg-brand/15 text-brand",
+                  !isActive && !isDone && "bg-gray-100 text-gray-500 group-hover:bg-gray-200",
+                )}
+              >
+                {isDone ? <Check className="size-3.5" strokeWidth={3} /> : current}
+              </span>
+              {label}
+            </button>
+          )
+        })}
+      </nav>
     </div>
   )
 }
 
-function requirementSuffix(requirement?: "required" | "optional") {
-  if (requirement === "required") return " (Required)"
-  if (requirement === "optional") return " (Optional)"
-  return ""
+/** White card holding one step: eyebrow, title, description, then the fields. */
+export function ProductConfigStepCard({
+  steps,
+  activeStep,
+  children,
+}: {
+  steps: readonly string[]
+  activeStep: number
+  children: ReactNode
+}) {
+  const title = steps[activeStep - 1] ?? ""
+  const description = STEP_DESCRIPTIONS[title.trim().toLowerCase()]
+  const ref = useRef<HTMLElement>(null)
+  // A new step starts at the top of the scrolling drawer body.
+  useEffect(() => {
+    ref.current?.parentElement?.scrollTo({ top: 0 })
+  }, [activeStep])
+  return (
+    <section ref={ref} className="w-full rounded-xl border border-gray-200 bg-white shadow-xs">
+      <header className="border-b border-gray-100 px-5 py-4">
+        <p className="text-xs font-semibold tracking-wide text-brand uppercase">
+          Step {activeStep} of {steps.length}
+        </p>
+        <h3 className="mt-0.5 text-base font-semibold text-gray-900">{title}</h3>
+        {description ? <p className="mt-0.5 text-sm text-gray-500">{description}</p> : null}
+      </header>
+      <div className="space-y-5 p-5">{children}</div>
+    </section>
+  )
+}
+
+/** Validation summary shown at the top of a step. */
+export function ProductConfigStepErrors({ errors }: { errors: string[] }) {
+  if (errors.length === 0) return null
+  return (
+    <div className="flex gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+      <AlertCircle className="mt-0.5 size-4 shrink-0 text-red-600" aria-hidden />
+      <div>
+        <p className="font-medium">Please fix the following before continuing:</p>
+        <ul className="mt-1.5 list-inside list-disc space-y-1 text-red-700">
+          {errors.map((msg) => (
+            <li key={msg}>{msg}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+/** Sticky Back / Next (Submit on the last step) row for the drawer footer. */
+export function ProductConfigFooter({
+  step,
+  total,
+  isSubmitting,
+  onBack,
+  onNext,
+  submitLabel = "Save product",
+}: {
+  step: number
+  total: number
+  isSubmitting: boolean
+  onBack: () => void
+  onNext: () => void
+  submitLabel?: string
+}) {
+  const isLast = step === total
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onBack}
+        disabled={isSubmitting || step === 1}
+        className="h-10 gap-1.5 rounded-lg border-gray-300 px-4 text-gray-700"
+      >
+        <ArrowLeft className="size-4" />
+        Back
+      </Button>
+      <span className="hidden text-sm text-gray-500 sm:block">
+        Step <span className="font-medium text-gray-900">{step}</span> of {total}
+      </span>
+      <Button
+        type="button"
+        onClick={onNext}
+        disabled={isSubmitting}
+        className="h-10 min-w-[9rem] gap-1.5 rounded-lg bg-brand px-5 text-brand-foreground shadow-sm hover:bg-brand/90 disabled:opacity-70"
+      >
+        {isSubmitting && isLast ? (
+          <>
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            Saving…
+          </>
+        ) : isLast ? (
+          <>
+            <Check className="size-4" />
+            {submitLabel}
+          </>
+        ) : (
+          <>
+            Continue
+            <ArrowRight className="size-4" />
+          </>
+        )}
+      </Button>
+    </div>
+  )
+}
+
+/** Titled group inside a step (e.g. "Document requirements"). */
+export function ProductConfigSubsection({
+  title,
+  requirement,
+  description,
+  action,
+  children,
+  className,
+}: {
+  title: ReactNode
+  requirement?: "required" | "optional"
+  description?: ReactNode
+  action?: ReactNode
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn("space-y-3 rounded-lg border border-gray-200 bg-gray-50/50 p-4", className)}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-900">
+            {title}
+            <RequirementMark requirement={requirement} />
+          </p>
+          {description ? <p className="mt-0.5 text-xs text-gray-500">{description}</p> : null}
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Fields                                                              */
+/* ------------------------------------------------------------------ */
+
+/** Red asterisk for required, muted "Optional" for optional. */
+export function RequirementMark({ requirement }: { requirement?: "required" | "optional" }) {
+  if (requirement === "required")
+    return (
+      <>
+        <span className="ml-0.5 text-red-600" title="Required" aria-hidden="true">
+          *
+        </span>
+        <span className="sr-only"> (required)</span>
+      </>
+    )
+  if (requirement === "optional") return <span className="ml-1.5 text-[11px] font-normal text-gray-400">Optional</span>
+  return null
+}
+
+export function ProductConfigLabel({
+  children,
+  requirement,
+  htmlFor,
+}: {
+  children: ReactNode
+  requirement?: "required" | "optional"
+  htmlFor?: string
+}) {
+  return (
+    <label
+      htmlFor={htmlFor}
+      title={typeof children === "string" ? children : undefined}
+      className="block truncate text-[13px] leading-5 font-medium text-gray-700"
+    >
+      {children}
+      <RequirementMark requirement={requirement} />
+    </label>
+  )
 }
 
 interface ProductConfigInputProps {
@@ -54,7 +283,7 @@ interface ProductConfigInputProps {
   disabled?: boolean
   /** Shown next to the label per merchant validation spec */
   requirement?: "required" | "optional"
-  /** Use a red * instead of “ (Required)” so labels stay on one line in tight grids. */
+  /** Kept for compatibility; required fields always show a red asterisk. */
   requirementMark?: "text" | "asterisk"
 }
 
@@ -68,7 +297,6 @@ export function ProductConfigInput({
   formatThousands = false,
   disabled = false,
   requirement,
-  requirementMark = "text",
 }: ProductConfigInputProps) {
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (formatThousands) {
@@ -85,22 +313,8 @@ export function ProductConfigInput({
   }
 
   return (
-    <div className="min-w-0 w-full space-y-2">
-      {label.trim() ? (
-        <label className="block text-sm font-medium text-gray-700">
-          {label}
-          {requirement === "required" && requirementMark === "asterisk" ? (
-            <>
-              <span className="ml-0.5 font-normal text-red-600" title="Required" aria-hidden="true">
-                *
-              </span>
-              <span className="sr-only"> required</span>
-            </>
-          ) : (
-            <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
-          )}
-        </label>
-      ) : null}
+    <div className="min-w-0 w-full space-y-1.5">
+      {label.trim() ? <ProductConfigLabel requirement={requirement}>{label}</ProductConfigLabel> : null}
       <input
         type={type}
         value={value}
@@ -108,7 +322,8 @@ export function ProductConfigInput({
         inputMode={numericOnly || formatThousands ? "decimal" : undefined}
         disabled={disabled}
         placeholder={placeholder}
-        className="h-10 min-w-0 w-full max-w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400"
+        aria-label={label.trim() ? label : placeholder}
+        className={productConfigControlClass}
       />
     </div>
   )
@@ -122,6 +337,7 @@ interface ProductConfigSelectProps {
   options: string[] | Array<{ value: string; label: string }>
   onChange: (value: string) => void
   requirement?: "required" | "optional"
+  /** Kept for compatibility; required fields always show a red asterisk. */
   requirementMark?: "text" | "asterisk"
 }
 
@@ -150,7 +366,6 @@ export function ProductConfigSelect({
   options,
   onChange,
   requirement,
-  requirementMark = "text",
 }: ProductConfigSelectProps) {
   const normalized = normalizeSelectOptions(options)
   const optionsWithCurrent = (() => {
@@ -176,39 +391,32 @@ export function ProductConfigSelect({
   })()
 
   return (
-    <div className="min-w-0 w-full space-y-2">
-      {label.trim() ? (
-        <label className="block text-sm font-medium text-gray-700">
-          {label}
-          {requirement === "required" && requirementMark === "asterisk" ? (
-            <>
-              <span className="ml-0.5 font-normal text-red-600" title="Required" aria-hidden="true">
-                *
-              </span>
-              <span className="sr-only"> required</span>
-            </>
-          ) : (
-            <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
-          )}
-        </label>
-      ) : null}
+    <div className="min-w-0 w-full space-y-1.5">
+      {label.trim() ? <ProductConfigLabel requirement={requirement}>{label}</ProductConfigLabel> : null}
       <Select value={resolvedValue} onValueChange={onChange}>
         <SelectTrigger
-          className="h-10 min-w-0 w-full max-w-full data-[size=default]:h-10 rounded-md border border-[#e5e7eb] bg-white px-3 py-0 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 shadow-none"
+          aria-label={label.trim() ? label : placeholder}
+          className={cn(productConfigControlClass, "py-0 data-[size=default]:h-10 data-[placeholder]:text-gray-400")}
         >
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
-        <SelectContent className="py-4">
-          {optionsWithCurrent.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
+        <SelectContent className="max-h-72">
+          {optionsWithCurrent.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-gray-500">No options available</div>
+          ) : (
+            optionsWithCurrent.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))
+          )}
         </SelectContent>
       </Select>
     </div>
   )
 }
+
+const SWITCH_CLASS = "h-5 w-9 shrink-0 data-[state=checked]:bg-brand data-[state=unchecked]:bg-gray-200"
 
 interface ProductConfigToggleProps {
   id: string
@@ -216,22 +424,27 @@ interface ProductConfigToggleProps {
   checked: boolean
   onChange: (checked: boolean) => void
   requirement?: "required" | "optional"
+  /** Smaller help text under the label. */
+  description?: string
 }
 
-export function ProductConfigToggle({ id, label, checked, onChange, requirement }: ProductConfigToggleProps) {
+/** A whole-row toggle card: label on the left, switch on the right, tinted when on. */
+export function ProductConfigToggle({ id, label, checked, onChange, requirement, description }: ProductConfigToggleProps) {
   return (
-    <div className="flex items-center gap-3">
-      <Switch
-        id={id}
-        checked={checked}
-        onCheckedChange={onChange}
-        className="h-5 w-9 shrink-0 data-[state=checked]:bg-[#9A813F] data-[state=unchecked]:bg-slate-200"
-      />
-      <label htmlFor={id} className="cursor-pointer text-sm leading-snug text-gray-700">
+    <label
+      htmlFor={id}
+      className={cn(
+        "flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-lg border px-3.5 py-2.5 transition-colors",
+        checked ? "border-brand/40 bg-brand/5" : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/60",
+      )}
+    >
+      <span className="min-w-0 text-sm leading-snug text-gray-800">
         {label}
-        <span className="font-normal text-gray-500">{requirementSuffix(requirement)}</span>
-      </label>
-    </div>
+        <RequirementMark requirement={requirement} />
+        {description ? <span className="mt-0.5 block text-xs text-gray-500">{description}</span> : null}
+      </span>
+      <Switch id={id} checked={checked} onCheckedChange={onChange} className={SWITCH_CLASS} />
+    </label>
   )
 }
 
@@ -289,8 +502,8 @@ export interface ProductConfigRepaymentWorkflowPanelProps {
 }
 
 /**
- * Single container: left = repayment options as mutually exclusive switches; right = amount fields.
- * Use on loan & mortgage configure drawers (and any future product with the same pattern).
+ * Repayment order as selectable cards (left) next to the amount fields (right).
+ * Used on loan & mortgage configure drawers.
  */
 export function ProductConfigRepaymentWorkflowPanel({
   workflows = [...DEFAULT_REPAYMENT_WORKFLOWS],
@@ -312,82 +525,92 @@ export function ProductConfigRepaymentWorkflowPanel({
 }: ProductConfigRepaymentWorkflowPanelProps) {
   const list = workflows.length ? workflows : [...DEFAULT_REPAYMENT_WORKFLOWS]
 
-  const handleSwitchChange = (workflow: string, checked: boolean) => {
-    if (checked) {
-      onSelectWorkflow(workflow)
-      return
-    }
-    if (selectedWorkflow !== workflow) return
-    const other = list.find((w) => w !== workflow)
-    if (other) onSelectWorkflow(other)
-  }
-
   return (
-    <div className="rounded-xl bg-white ">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-4 sm:items-start">
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-slate-800">
-            Repayment Workflow
-            <span className="font-normal text-gray-500">{requirementSuffix(workflowRequirement)}</span>
-          </h3>
-          <div className="flex flex-col gap-3">
-            {list.map((wf) => {
-              const id = `repayment-workflow-${wf.replace(/\s/g, "-")}`
-              return (
-                <div key={wf} className="flex items-center gap-3">
-                  <Switch
-                    id={id}
-                    checked={selectedWorkflow === wf}
-                    onCheckedChange={(on) => handleSwitchChange(wf, on)}
-                    className="h-5 w-9 shrink-0 data-[state=checked]:bg-[#9A813F] data-[state=unchecked]:bg-slate-200"
-                  />
-                  <label htmlFor={id} className="cursor-pointer text-sm leading-snug text-slate-700">
-                    {formatWorkflowLabel(wf)}
-                  </label>
-                </div>
-              )
-            })}
-          </div>
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
+      <ProductConfigSubsection
+        title="Repayment workflow"
+        requirement={workflowRequirement}
+        description="The order repayments are applied in."
+      >
+        <div role="radiogroup" aria-label="Repayment workflow" className="flex flex-col gap-2">
+          {list.map((wf) => {
+            const selected = selectedWorkflow === wf
+            const parts = wf.split("->").map((p) => p.trim()).filter(Boolean)
+            return (
+              <button
+                key={wf}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                aria-label={formatWorkflowLabel(wf)}
+                onClick={() => onSelectWorkflow(wf)}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg border bg-white px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/30",
+                  selected ? "border-brand ring-1 ring-brand/30" : "border-gray-200 hover:border-gray-300",
+                )}
+              >
+                <span
+                  className={cn(
+                    "flex size-4 shrink-0 items-center justify-center rounded-full border",
+                    selected ? "border-brand" : "border-gray-300",
+                  )}
+                >
+                  {selected ? <span className="size-2 rounded-full bg-brand" /> : null}
+                </span>
+                <span className="flex flex-wrap items-center gap-1 text-xs">
+                  {parts.map((part, i) => (
+                    <span key={`${part}-${i}`} className="flex items-center gap-1">
+                      {i > 0 ? <ArrowRight className="size-3 text-gray-400" aria-hidden /> : null}
+                      <span
+                        className={cn(
+                          "rounded-md px-1.5 py-0.5 font-medium",
+                          selected ? "bg-brand/10 text-brand" : "bg-gray-100 text-gray-700",
+                        )}
+                      >
+                        {part}
+                      </span>
+                    </span>
+                  ))}
+                </span>
+              </button>
+            )
+          })}
         </div>
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-slate-800">
-            {amountLabel}
-            <span className="font-normal text-gray-500">{requirementSuffix(amountFieldsRequirement)}</span>
-          </h3>
-          {amountMode === "single" ? (
+      </ProductConfigSubsection>
+      <ProductConfigSubsection title={amountLabel} requirement={amountFieldsRequirement} description="Limits customers can apply for.">
+        {amountMode === "single" ? (
+          <ProductConfigInput
+            label="Amount"
+            placeholder={singleAmountPlaceholder}
+            value={singleAmount}
+            onChange={onSingleAmountChange ?? (() => {})}
+            numericOnly
+            formatThousands
+            requirement={amountFieldsRequirement}
+          />
+        ) : (
+          <div className="space-y-3">
             <ProductConfigInput
-              label="Amount"
-              placeholder={singleAmountPlaceholder}
-              value={singleAmount}
-              onChange={onSingleAmountChange ?? (() => {})}
+              label="Minimum"
+              placeholder={minPlaceholder}
+              value={minAmount}
+              onChange={onMinAmountChange}
               numericOnly
               formatThousands
               requirement={amountFieldsRequirement}
             />
-          ) : (
-            <div className="space-y-2">
-              <ProductConfigInput
-                label="Minimum"
-                placeholder={minPlaceholder}
-                value={minAmount}
-                onChange={onMinAmountChange}
-                numericOnly
-                formatThousands
-                requirement={amountFieldsRequirement}
-              />
-              <ProductConfigInput
-                label="Maximum"
-                placeholder={maxPlaceholder}
-                value={maxAmount}
-                onChange={onMaxAmountChange}
-                numericOnly
-                formatThousands
-                requirement={amountFieldsRequirement}
-              />
-            </div>
-          )}
-        </div>
-      </div>
+            <ProductConfigInput
+              label="Maximum"
+              placeholder={maxPlaceholder}
+              value={maxAmount}
+              onChange={onMaxAmountChange}
+              numericOnly
+              formatThousands
+              requirement={amountFieldsRequirement}
+            />
+          </div>
+        )}
+      </ProductConfigSubsection>
     </div>
   )
 }

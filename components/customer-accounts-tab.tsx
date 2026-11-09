@@ -16,15 +16,8 @@ import {
 } from "lucide-react"
 import AccountDetailDrawer from "@/components/drawers/account-detail-drawer"
 import { toast } from "sonner"
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table"
-import { TableSkeleton } from "@/components/ui/table-skeleton"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { rowActionsColumn } from "@/components/ui/row-actions"
 
 interface CustomerAccountsTabProps {
     customerId: string
@@ -191,6 +184,59 @@ export default function CustomerAccountsTab({ customerId }: CustomerAccountsTabP
     const savingsTotal = accounts.filter(a => a.type === "savings").reduce((sum, acc) => sum + acc.balance, 0)
     const loanTotal = accounts.filter(a => a.type === "loan" || a.type === "mortgage").reduce((sum, acc) => sum + acc.balance, 0)
 
+
+    const accountColumns: ColumnDef<Account, unknown>[] = [
+        { id: "name", header: "Name of User", accessorFn: () => customerName || "Loading...", cell: ({ row }) => <span className="font-medium text-gray-900">{customerName || "Loading..."}</span> },
+        {
+            accessorKey: "balance",
+            header: "Balance",
+            cell: ({ row }) => <span className="font-semibold text-gray-900">{formatCurrency(row.original.balance, row.original.currency)}</span>,
+        },
+        { id: "userId", header: "User ID", accessorFn: () => customerId, cell: () => <span className="font-mono text-xs text-gray-500">{customerId}</span> },
+        {
+            id: "interest",
+            header: "Interest",
+            accessorFn: (a) => a.metadata?.interestRate ?? "",
+            cell: ({ row }) =>
+                row.original.metadata?.interestRate ? (
+                    <span className="rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-600">{row.original.metadata.interestRate}%</span>
+                ) : (
+                    <span className="text-gray-400">-</span>
+                ),
+        },
+        {
+            accessorKey: "status",
+            header: "Status",
+            cell: ({ row: { original: account } }) => (
+                <span
+                    className={`rounded-full border px-2.5 py-1 text-xs font-medium capitalize ${
+                        account.status === "active"
+                            ? "border-green-200 bg-green-50 text-green-700"
+                            : account.status === "inactive"
+                              ? "border-gray-200 bg-gray-50 text-gray-700"
+                              : account.status === "suspended"
+                                ? "border-red-200 bg-red-50 text-red-700"
+                                : "border-gray-200 bg-gray-100 text-gray-500"
+                    }`}
+                >
+                    {account.status}
+                </span>
+            ),
+        },
+        {
+            accessorKey: "type",
+            header: "Account Type",
+            cell: ({ row }) => (
+                <div className="flex items-center gap-2">
+                    <div className="rounded-md bg-gray-100 p-1.5 text-gray-600">{getAccountIcon(row.original.type)}</div>
+                    <span className="font-medium text-gray-700 capitalize">{row.original.type}</span>
+                </div>
+            ),
+        },
+        { accessorKey: "currency", header: "Currency" },
+        rowActionsColumn<Account>([{ label: "View account", icon: Eye, onClick: (a) => handleAccountClick(a) }]),
+    ]
+
     return (
         <div className="space-y-6">
             {/* Header */}
@@ -230,81 +276,24 @@ export default function CustomerAccountsTab({ customerId }: CustomerAccountsTabP
             </div>
 
             {/* Accounts Table */}
-            {isLoading ? (
-                <div className="p-4">
-                    <TableSkeleton columnCount={8} rowCount={6} />
-                </div>
-            ) : accounts.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-                    <DollarSign className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-700 mb-2">No Accounts</h3>
-                    <p className="text-gray-500">This customer doesn't have any accounts yet.</p>
-                </div>
-            ) : (
-                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="bg-gray-50/50">
-                                <TableHead className="py-4 px-6 text-gray-600 font-medium">Name of User</TableHead>
-                                <TableHead className="py-4 px-6 text-gray-600 font-medium">Balance</TableHead>
-                                <TableHead className="py-4 px-6 text-gray-600 font-medium">User ID</TableHead>
-                                <TableHead className="py-4 px-6 text-gray-600 font-medium">Interest</TableHead>
-                                <TableHead className="py-4 px-6 text-gray-600 font-medium">Status</TableHead>
-                                <TableHead className="py-4 px-6 text-gray-600 font-medium">Account Type</TableHead>
-                                <TableHead className="py-4 px-6 text-gray-600 font-medium">Currency</TableHead>
-                                <TableHead className="py-4 px-6 text-gray-600 font-medium text-right">Action</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {accounts.map((account) => (
-                                <TableRow
-                                    key={account.id}
-                                    className="cursor-pointer hover:bg-purple-50/30 transition-colors border-b border-gray-100 last:border-0"
-                                    onClick={() => handleAccountClick(account)}
-                                >
-                                    <TableCell className="py-4 px-6 font-medium text-gray-900">{customerName || "Loading..."}</TableCell>
-                                    <TableCell className="py-4 px-6 font-semibold text-gray-900">
-                                        {formatCurrency(account.balance, account.currency)}
-                                    </TableCell>
-                                    <TableCell className="py-4 px-6 text-gray-500 font-mono text-xs">{customerId}</TableCell>
-                                    <TableCell className="py-4 px-6">
-                                        {account.metadata?.interestRate ? (
-                                            <span className="text-green-600 font-medium bg-green-50 px-2 py-1 rounded-md text-xs">
-                                                {account.metadata.interestRate}%
-                                            </span>
-                                        ) : (
-                                            <span className="text-gray-400">-</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell className="py-4 px-6">
-                                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium capitalize border ${account.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' :
-                                                account.status === 'inactive' ? 'bg-gray-50 text-gray-700 border-gray-200' :
-                                                    account.status === 'suspended' ? 'bg-red-50 text-red-700 border-red-200' :
-                                                        'bg-gray-100 text-gray-500 border-gray-200'
-                                            }`}>
-                                            {account.status}
-                                        </span>
-                                    </TableCell>
-                                    <TableCell className="py-4 px-6">
-                                        <div className="flex items-center gap-2">
-                                            <div className="p-1.5 rounded-md bg-gray-100 text-gray-600">
-                                                {getAccountIcon(account.type)}
-                                            </div>
-                                            <span className="capitalize text-gray-700 font-medium">{account.type}</span>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="py-4 px-6 text-gray-600">{account.currency}</TableCell>
-                                    <TableCell className="py-4 px-6 text-right">
-                                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 hover:bg-gray-100 rounded-full">
-                                            <Eye className="h-4 w-4 text-gray-400" />
-                                        </Button>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-            )}
+            <DataTable
+                tableId="customer-accounts"
+                title="Accounts"
+                columns={accountColumns}
+                data={accounts}
+                isLoading={isLoading}
+                onRefresh={fetchAccounts}
+                clientSearch
+                download
+                onRowClick={handleAccountClick}
+                empty={
+                    <div className="px-8 py-14 text-center">
+                        <DollarSign className="mx-auto mb-4 h-12 w-12 text-gray-300" />
+                        <h3 className="mb-2 text-lg font-medium text-gray-700">No Accounts</h3>
+                        <p className="text-gray-500">This customer doesn&apos;t have any accounts yet.</p>
+                    </div>
+                }
+            />
 
             {/* Account Detail Drawer */}
             <AccountDetailDrawer

@@ -3,16 +3,8 @@
 import type { ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { Search, RefreshCw, Clock, CheckCircle2, XCircle, FileText, MoreVertical, DollarSign, Building2, Calendar, Loader2, ExternalLink, X } from "lucide-react"
+import { Clock, CheckCircle2, XCircle, FileText, DollarSign, Building2, Calendar, Loader2, ExternalLink, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,7 +16,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { TableSkeleton } from "@/components/ui/table-skeleton"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { rowActionsColumn, type RowAction } from "@/components/ui/row-actions"
 import {
   accountService,
   type LoanWorkflowApplication,
@@ -509,6 +502,84 @@ export default function PlataApplicationsPage() {
     }
   }
 
+
+  const columns: ColumnDef<LoanWorkflowApplication, unknown>[] = [
+    {
+      id: "customer",
+      header: "Customer",
+      accessorFn: (a) => getApplicant(a).label,
+      cell: ({ row }) => {
+        const customer = getApplicant(row.original)
+        return (
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#9A813F] text-sm font-bold text-white">
+              {customer.initials}
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-900">{customer.label}</p>
+              <p className="text-xs text-gray-500">{customer.subtitle}</p>
+            </div>
+          </div>
+        )
+      },
+    },
+    {
+      id: "type",
+      header: "Type",
+      accessorFn: (a) => getProductName(a),
+      cell: ({ row: { original: application } }) => (
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#FFF9EB] text-[#9A813F]">
+            {String(application.productType).toUpperCase() === "MORTGAGE" ? <Building2 className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
+          </div>
+          <div>
+            <p className="text-sm font-medium text-gray-900">{getProductName(application)}</p>
+            <p className="text-xs tracking-wide text-gray-400 uppercase">{getProductType(application)}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "reference",
+      header: "Reference",
+      accessorFn: (a) => getReference(a),
+      cell: ({ getValue }) => <span className="font-mono text-gray-500">{String(getValue() ?? "")}</span>,
+    },
+    {
+      id: "amount",
+      header: "Amount",
+      accessorFn: (a) => getAmount(a),
+      cell: ({ getValue }) => <span className="font-bold text-gray-900">{String(getValue() ?? "")}</span>,
+    },
+    { id: "status", header: "Status", accessorFn: (a) => workflowStatus(a), cell: ({ row }) => getStatusBadge(workflowStatus(row.original)) },
+    { id: "submitted", header: "Submitted", accessorFn: (a) => formatSubmittedDate(a) },
+    rowActionsColumn<LoanWorkflowApplication>((application) => {
+      const status = workflowStatus(application)
+      const isActionable = status === "requested" || status === "under_review"
+      const busy = processing?.id === application.id
+      return [
+        { label: "View details", icon: FileText, onClick: (a) => void handleOpenApplication(a) },
+        ...(isActionable
+          ? ([
+              {
+                label: busy && processing?.action === "approve" ? "Processing..." : "Approve",
+                icon: CheckCircle2,
+                separatorBefore: true,
+                disabled: () => busy,
+                onClick: (a) => setConfirm({ action: "approve", application: a }),
+              },
+              {
+                label: busy && processing?.action === "reject" ? "Processing..." : "Reject",
+                icon: XCircle,
+                destructive: true,
+                disabled: () => busy,
+                onClick: (a) => setConfirm({ action: "reject", application: a }),
+              },
+            ] satisfies RowAction<LoanWorkflowApplication>[])
+          : []),
+      ]
+    }),
+  ]
   return (
     <div className="p-8">
       <div className="mb-8 flex items-center justify-between">
@@ -525,10 +596,6 @@ export default function PlataApplicationsPage() {
           >
             <Clock className="h-4 w-4" />
             Pending ({stats.pending})
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => void fetchApplications()} className="gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Refresh
           </Button>
         </div>
       </div>
@@ -547,136 +614,53 @@ export default function PlataApplicationsPage() {
         ))}
       </div>
 
-      <div className="mb-6 flex flex-wrap gap-4">
-        <div className="relative max-w-md flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <Input
-            placeholder="Search by ID, user, or product..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "all" | LoanWorkflowStatus)}>
-          <SelectTrigger className="w-[170px]"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Statuses</SelectItem>
-            <SelectItem value="requested">Requested</SelectItem>
-            <SelectItem value="under_review">Under Review</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="declined">Rejected</SelectItem>
-            <SelectItem value="blacklisted">Blacklisted</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Type" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Types</SelectItem>
-            <SelectItem value="LOAN">Loan</SelectItem>
-            <SelectItem value="MORTGAGE">Mortgage</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-[#E8DFD0] bg-white">
-        {isLoading ? (
-          <div className="p-4"><TableSkeleton columnCount={7} rowCount={8} /></div>
-        ) : visibleApplications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <FileText className="mb-4 h-12 w-12 text-[#D6C795]" />
-            <p className="text-gray-500">No applications found</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="border-b border-[#E8DFD0] bg-[#FFF9EB]">
-                <tr>
-                  {["Customer", "Type", "Reference", "Amount", "Status", "Submitted", "Actions"].map((heading) => (
-                    <th key={heading} className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-[#7A642F]">
-                      {heading}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {visibleApplications.map((application) => {
-                  const customer = getApplicant(application)
-                  const status = workflowStatus(application)
-                  const isActionable = status === "requested" || status === "under_review"
-                  const isApproving = processing?.id === application.id && processing.action === "approve"
-                  const isRejecting = processing?.id === application.id && processing.action === "reject"
-                  return (
-                    <tr
-                      key={application.id}
-                      onClick={() => void handleOpenApplication(application)}
-                      className="cursor-pointer hover:bg-[#FFF9EB]/40"
-                    >
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-4">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#9A813F] text-sm font-bold text-white">
-                            {customer.initials}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">{customer.label}</p>
-                            <p className="text-xs text-gray-500">{customer.subtitle}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#FFF9EB] text-[#9A813F]">
-                            {String(application.productType).toUpperCase() === "MORTGAGE" ? <Building2 className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{getProductName(application)}</p>
-                            <p className="text-xs uppercase tracking-wide text-gray-400">{getProductType(application)}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-5 font-mono text-sm text-gray-500">{getReference(application)}</td>
-                      <td className="px-6 py-5 text-sm font-bold text-gray-900">{getAmount(application)}</td>
-                      <td className="px-6 py-5">{getStatusBadge(status)}</td>
-                      <td className="px-6 py-5 text-sm text-gray-600">{formatSubmittedDate(application)}</td>
-                      <td className="px-6 py-5 text-right" onClick={(event) => event.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {isActionable ? (
-                              <>
-                                <DropdownMenuItem
-                                  disabled={isApproving || isRejecting}
-                                  onClick={() => setConfirm({ action: "approve", application })}
-                                  className="text-green-700 focus:bg-green-50 focus:text-green-700"
-                                >
-                                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                                  {isApproving ? "Processing..." : "Approve"}
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  disabled={isApproving || isRejecting}
-                                  onClick={() => setConfirm({ action: "reject", application })}
-                                  className="text-red-600 focus:bg-red-50 focus:text-red-600"
-                                >
-                                  <XCircle className="mr-2 h-4 w-4" />
-                                  {isRejecting ? "Processing..." : "Reject"}
-                                </DropdownMenuItem>
-                              </>
-                            ) : (
-                              <DropdownMenuItem disabled>No actions available</DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      <DataTable
+        tableId="plata-applications"
+        title="Workflow applications"
+        columns={columns}
+        data={visibleApplications}
+        isLoading={isLoading}
+        onRefresh={() => void fetchApplications()}
+        onSearch={setSearchQuery}
+        searchPlaceholder="Search by ID, user, or product..."
+        download
+        resetPageSignal={`${searchQuery}|${statusFilter}|${typeFilter}`}
+        onRowClick={(application) => void handleOpenApplication(application)}
+        empty="No applications found"
+        filters={{
+          content: (
+            <div className="flex flex-wrap gap-4">
+              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as "all" | LoanWorkflowStatus)}>
+                <SelectTrigger className="w-[170px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="requested">Requested</SelectItem>
+                  <SelectItem value="under_review">Under Review</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="declined">Rejected</SelectItem>
+                  <SelectItem value="blacklisted">Blacklisted</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-[160px]"><SelectValue placeholder="Type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="LOAN">Loan</SelectItem>
+                  <SelectItem value="MORTGAGE">Mortgage</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ),
+          activeCount: (statusFilter !== "all" ? 1 : 0) + (typeFilter !== "all" ? 1 : 0),
+          onClear:
+            statusFilter !== "all" || typeFilter !== "all"
+              ? () => {
+                  setStatusFilter("all")
+                  setTypeFilter("all")
+                }
+              : undefined,
+        }}
+      />
       <WorkflowApplicationDrawer
         application={selectedApplication}
         isOpen={isDetailDrawerOpen}

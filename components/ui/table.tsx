@@ -6,13 +6,19 @@ import { cn } from '@/lib/utils'
 
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
+    // `data-scrollbar="top"` is set by `TableTopScrollbar` when it draws the
+    // horizontal bar above the table; the native bottom bar is then hidden so
+    // there's only one. Wheel/trackpad scrolling is unaffected.
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      className="relative w-full overflow-x-auto data-[scrollbar=top]:[scrollbar-width:none] data-[scrollbar=top]:[&::-webkit-scrollbar]:hidden"
     >
       <table
         data-slot="table"
-        className={cn('w-full caption-bottom text-sm', className)}
+        // `min-w-full` (not `w-full`) so the table is at least the container
+        // width but can grow to its intrinsic min-content when nowrap cells
+        // need more room — that's what triggers the wrapper's overflow-x-auto.
+        className={cn('min-w-full caption-bottom text-sm', className)}
         {...props}
       />
     </div>
@@ -57,7 +63,7 @@ function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
     <tr
       data-slot="table-row"
       className={cn(
-        'hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors',
+        'hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors',
         className,
       )}
       {...props}
@@ -70,6 +76,9 @@ function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
     <th
       data-slot="table-head"
       className={cn(
+        // Nowrap by default so the table reaches its natural min-content width
+        // and the in-card overflow-x-auto handles the scroll. Opt out per
+        // column with `whitespace-normal` for prose-y cells.
         'text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className,
       )}

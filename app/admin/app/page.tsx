@@ -1,9 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { MoreVertical, X } from "lucide-react"
+import { Eye, X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { rowActionsColumn } from "@/components/ui/row-actions"
 import SuspendProductDrawer from "@/components/drawers/suspend-product-drawer"
 import SuspendAccountDrawer from "@/components/drawers/suspend-account-drawer"
 
@@ -61,6 +64,45 @@ export default function AdminAppPage() {
     setSelectedApps((prev) => (prev.includes(appId) ? prev.filter((id) => id !== appId) : [...prev, appId]))
   }
 
+  const statusPill = (status: string) => (
+    <span
+      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+        status === "Active" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
+      }`}
+    >
+      {status}
+    </span>
+  )
+
+  type App = (typeof apps)[number]
+  const columns: ColumnDef<App, unknown>[] = [
+    ...(activeTab === "suspended"
+      ? [
+          {
+            id: "select",
+            size: 48,
+            header: () => <span className="sr-only">Select</span>,
+            meta: { label: "Select" },
+            cell: ({ row }) => (
+              <Checkbox
+                checked={selectedApps.includes(row.original.id)}
+                onCheckedChange={() => handleSelectApp(row.original.id)}
+                onClick={(e) => e.stopPropagation()}
+                aria-label={`Select ${row.original.name}`}
+              />
+            ),
+          } satisfies ColumnDef<App, unknown>,
+        ]
+      : []),
+    { accessorKey: "name", header: "App Name", cell: ({ row }) => <span className="text-gray-900">{row.original.name}</span> },
+    { accessorKey: "appId", header: "App ID" },
+    { accessorKey: "dateCreated", header: "Date Created" },
+    { accessorKey: "product", header: "Product" },
+    { accessorKey: "productKey", header: "Product Key" },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => statusPill(row.original.status) },
+    ...(activeTab === "all" ? [rowActionsColumn<App>([{ label: "View app", icon: Eye, onClick: (app) => router.push(`/admin/app/${app.id}`) }])] : []),
+  ]
+
   const handleSuspendApps = () => {
     setIsSuspendDrawerOpen(true)
   }
@@ -109,82 +151,15 @@ export default function AdminAppPage() {
           </h2>
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-[#F5F5F5]">
-              <tr>
-                {activeTab === "suspended" && (
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-700 w-12"></th>
-                )}
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">App Name</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">App ID</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Date Created</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Product</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Product Key</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {apps.map((app) => (
-                <tr
-                  key={app.id}
-                  onClick={() => {
-                    if (activeTab === "all") {
-                      router.push(`/admin/app/${app.id}`)
-                    }
-                  }}
-                  className={activeTab === "all" ? "hover:bg-gray-50 cursor-pointer" : "hover:bg-gray-50"}
-                >
-                  {activeTab === "suspended" && (
-                    <td className="px-6 py-4">
-                      <input
-                        type="radio"
-                        name="selectedApp"
-                        checked={selectedApps.includes(app.id)}
-                        onChange={() => handleSelectApp(app.id)}
-                        className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                      />
-                    </td>
-                  )}
-                  <td className="px-6 py-4 text-sm text-gray-900">{app.name}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.appId}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.dateCreated}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.product}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.productKey}</td>
-                  <td className="px-6 py-4">
-                    {activeTab === "all" ? (
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            app.status === "Active" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
-                          }`}
-                        >
-                          {app.status}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                          }}
-                          className="text-gray-400 hover:text-gray-600"
-                        >
-                          <MoreVertical size={20} />
-                        </button>
-                      </div>
-                    ) : (
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                          app.status === "Active" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
-                        }`}
-                      >
-                        {app.status}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          tableId={`admin-apps-${activeTab}`}
+          columns={columns}
+          data={apps}
+          clientSearch
+          searchPlaceholder="Search apps"
+          download
+          onRowClick={activeTab === "all" ? (app) => router.push(`/admin/app/${app.id}`) : undefined}
+        />
       </div>
 
       <SuspendProductDrawer
