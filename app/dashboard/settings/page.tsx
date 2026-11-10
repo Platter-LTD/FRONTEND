@@ -2,11 +2,35 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ChevronRight, CircleHelp, Copy, Flag, Trash2, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import Tabs from "@/components/Tabs"
+import {
+    AlertTriangle,
+    Globe,
+    KeyRound,
+    LifeBuoy,
+    Mail,
+    MessageCircle,
+    MonitorSmartphone,
+    Power,
+    ShieldCheck,
+    UserRound,
+} from "lucide-react"
+import {
+    PasswordInput,
+    PasswordStrength,
+    ProfileSummary,
+    SessionItem,
+    SessionsSkeleton,
+    SettingsCard,
+    SettingsEmpty,
+    SettingsField,
+    SettingsShell,
+    SettingsSubmit,
+    settingsDangerButtonClass,
+    settingsInputClass,
+    useSettingsTab,
+    type SettingsNavItem,
+} from "@/components/settings/settings-ui"
+import { cn } from "@/lib/utils"
 import { CountrySelect } from "@/components/ui/country-select"
 import { useCountries } from "@/hooks/useCountries"
 import { toast } from "sonner"
@@ -27,7 +51,6 @@ import APIKeysSection from "@/components/APIKeysSection"
 import { usePermissions } from "@/hooks/usePermissions"
 import {
     AlertDialog,
-    AlertDialogAction,
     AlertDialogCancel,
     AlertDialogContent,
     AlertDialogDescription,
@@ -36,13 +59,23 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-/** Primary actions — Plata brand brown (matches compliance / dashboard CTAs). */
-const PLATA_PRIMARY_BTN =
-    "bg-[#9A813F] text-white hover:bg-[#8A7335] focus-visible:ring-2 focus-visible:ring-[#9A813F]/40 rounded-md px-6"
+const SETTINGS_SECTIONS: SettingsNavItem[] = [
+    { id: "account-settings", label: "Account", description: "Profile and email", icon: UserRound },
+    { id: "login-security", label: "Login & security", description: "Password, sessions, API keys", icon: ShieldCheck },
+    { id: "contact-support", label: "Contact support", description: "Get help from PLATA", icon: LifeBuoy },
+    { id: "account-control", label: "Account control", description: "Deactivate account", icon: Power, tone: "danger" },
+]
+
+const SUPPORT_CHANNELS = [
+    { label: "Customer support", description: "Chat with our support team about your account.", icon: LifeBuoy },
+    { label: "Website", description: "Guides, documentation and service status.", icon: Globe },
+    { label: "WhatsApp", description: "Message us for quick questions.", icon: MessageCircle },
+]
 
 export default function SettingsPage() {
     const dispatch = useAppDispatch()
-    const [activeTab, setActiveTab] = useState("account-settings")
+    const [activeTab, setActiveTab] = useSettingsTab(SETTINGS_SECTIONS, "account-settings")
+    const [revokingId, setRevokingId] = useState<string | null>(null)
     const [deactivateOpen, setDeactivateOpen] = useState(false)
     const router = useRouter()
     const { actions } = usePermissions()
@@ -88,13 +121,6 @@ export default function SettingsPage() {
         if (resolvedCountryCode === "ng") return "+234"
         return selectedDialCode
     }, [resolvedCountryCode, selectedDialCode])
-
-    const tabs = [
-        { id: "account-settings", label: "Account Settings" },
-        { id: "login-security", label: "Login & Security" },
-        { id: "contact-support", label: "Contact Support" },
-        { id: "account-control", label: "Account Control" },
-    ]
 
     useEffect(() => {
         void dispatch(fetchMerchantProfileThunk())
@@ -173,9 +199,13 @@ export default function SettingsPage() {
 
     const handleRevokeSession = async (sessionId: string) => {
         try {
+            setRevokingId(sessionId)
             await dispatch(revokeMerchantSessionThunk(sessionId)).unwrap()
+            toast.success("Signed out of that device")
         } catch {
-            /* ignore */
+            toast.error("Could not sign out of that device.")
+        } finally {
+            setRevokingId(null)
         }
     }
 
@@ -190,244 +220,213 @@ export default function SettingsPage() {
         }
     }
 
+    const emailMismatch = !!confirmEmail && newEmail !== confirmEmail
+    const emailReady = !!newEmail && !!confirmEmail && !emailMismatch && !!emailCurrentPassword
+    const passwordMismatch = !!passwordConfirm && passwordNew !== passwordConfirm
+    const passwordReady = !!passwordCurrent && !!passwordNew && !!passwordConfirm && !passwordMismatch
+
     return (
-        <div className="px-8 pb-4 bg-white min-h-full w-full max-w-full">
-            <div className="flex flex-col space-y-4 w-full">
-             
+        <SettingsShell
+            description="Manage your account, security and API access."
+            items={SETTINGS_SECTIONS}
+            active={activeTab}
+            onChange={setActiveTab}
+        >
+            {activeTab === "account-settings" && (
+                <>
+                    <ProfileSummary name={fullName} email={currentEmail} loading={profileLoading && !currentEmail} />
 
-                {/* Header with Tabs */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-gray-200 pb-0 w-full">
-                    <div className="flex-1 w-full min-w-0">
-                        <Tabs
-                            tabs={tabs}
-                            activeTab={activeTab}
-                            onTabChange={setActiveTab}
-                            containerClassName="border-b-0"
-                            activeTabClassName="border-[#9A813F] text-[#9A813F]"
-                        />
-                    </div>
-                </div>
-
-                {/* Tab Content */}
-                {activeTab === "account-settings" && (
-                    <div className="space-y-6 w-full max-w-full">
-                          <div>
-                                <h3 className="text-lg font-semibold text-gray-900">Update Account</h3>
-                                <p className="text-sm text-gray-500">Update your account information.</p>
-                            </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 w-full">
-                            <div className="space-y-2">
-                                <Label htmlFor="fullName" className="text-gray-600 font-normal">
-                                    Full name
-                                </Label>
-                                <Input
+                    <SettingsCard
+                        icon={UserRound}
+                        title="Personal information"
+                        description="Your name and contact details."
+                        footer={
+                            <SettingsSubmit busy={profileSaving} onClick={() => void handleUpdateProfile()}>
+                                Save changes
+                            </SettingsSubmit>
+                        }
+                    >
+                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                            <SettingsField label="Full name" htmlFor="fullName" className="md:col-span-2">
+                                <input
                                     id="fullName"
-                                    placeholder="Please enter your full name"
+                                    placeholder="e.g. Ada Okafor"
                                     value={fullName}
                                     onChange={(e) => dispatch(setAccountFields({ fullName: e.target.value }))}
-                                    className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12"
+                                    className={settingsInputClass}
+                                    autoComplete="name"
                                 />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="email" className="text-gray-600 font-normal">
-                                    Email
-                                </Label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    value={currentEmail}
-                                    readOnly
-                                    className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12"
+                            </SettingsField>
+                            <SettingsField label="Country">
+                                <CountrySelect
+                                    value={resolvedCountryCode}
+                                    onValueChange={(value) => dispatch(setAccountFields({ country: value }))}
+                                    placeholder="Select country"
+                                    triggerClassName={settingsInputClass}
                                 />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="country" className="text-gray-600 font-normal">
-                                    Country
-                                </Label>
-                                <div className="grid grid-cols-1 gap-3">
-                                    <CountrySelect
-                                        value={resolvedCountryCode}
-                                        onValueChange={(value) => dispatch(setAccountFields({ country: value }))}
-                                        placeholder="Select Country"
-                                        triggerClassName="w-full !h-12 bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400"
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="phone" className="text-gray-600 font-normal">
-                                    Phone number
-                                </Label>
-                                <div className="flex w-full min-w-0">
-                                    <div className="flex items-center justify-center bg-[#F0F2F5] px-3 rounded-l-md border-r border-gray-300 text-gray-500 h-12 min-w-[56px] w-[56px] shrink-0">
+                            </SettingsField>
+                            <SettingsField label="Phone number" htmlFor="phone">
+                                <div className="flex h-11 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-xs transition-[box-shadow,border-color] focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand/20 hover:border-gray-400">
+                                    <span className="flex min-w-[4rem] items-center justify-center border-r border-gray-200 bg-gray-50 px-3 text-sm text-gray-600">
                                         {normalizedDialCode || "+"}
-                                    </div>
-                                    <Input
+                                    </span>
+                                    <input
                                         id="phone"
-                                        placeholder="Please enter your phone number"
+                                        inputMode="tel"
+                                        placeholder="801 234 5678"
                                         value={phone}
                                         onChange={(e) => dispatch(setAccountFields({ phone: e.target.value }))}
-                                        className="flex-1 min-w-0 bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 rounded-l-none"
+                                        className="min-w-0 flex-1 bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                                        autoComplete="tel-national"
                                     />
                                 </div>
-                            </div>
+                            </SettingsField>
                         </div>
+                    </SettingsCard>
 
-                        <div className="mt-6">
-                            <Button
-                                className={PLATA_PRIMARY_BTN}
-                                onClick={() => void handleUpdateProfile()}
-                                disabled={profileSaving}
-                            >
-                                {profileSaving ? "Updating..." : "Update Profile"}
-                            </Button>
-                        </div>
-
-                        <div className="rounded-lg py-6 space-y-4 w-full">
-                            <div>
-                                <h3 className="text-lg font-semibold text-gray-900">Update Email</h3>
-                                <p className="text-sm text-gray-500">Confirm your password and provide the new email.</p>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 w-full">
-                                <div className="space-y-2 w-full min-w-0">
-                                    <Label htmlFor="newEmail" className="text-gray-600 font-normal">
-                                        New email
-                                    </Label>
-                                    <Input
-                                        id="newEmail"
-                                        type="email"
-                                        placeholder="Please enter your new email"
-                                        value={newEmail}
-                                        onChange={(e) => dispatch(setEmailFields({ newEmail: e.target.value }))}
-                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full"
-                                    />
-                                </div>
-                                <div className="space-y-2 w-full min-w-0">
-                                    <Label htmlFor="confirmEmail" className="text-gray-600 font-normal">
-                                        Confirm new email
-                                    </Label>
-                                    <Input
-                                        id="confirmEmail"
-                                        type="email"
-                                        placeholder="Please confirm your new email"
-                                        value={confirmEmail}
-                                        onChange={(e) => dispatch(setEmailFields({ confirmEmail: e.target.value }))}
-                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full"
-                                    />
-                                </div>
-
-                                <div className="space-y-2 w-full min-w-0 md:col-span-2 xl:col-span-1">
-                                    <Label htmlFor="emailCurrentPassword" className="text-gray-600 font-normal">
-                                        Current password
-                                    </Label>
-                                    <Input
-                                        id="emailCurrentPassword"
-                                        type="password"
-                                        placeholder="Enter your current password"
-                                        value={emailCurrentPassword}
-                                        onChange={(e) => dispatch(setEmailFields({ emailCurrentPassword: e.target.value }))}
-                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full"
-                                    />
-                                </div>
-                            </div>
-
-                            <Button
-                                className={PLATA_PRIMARY_BTN}
+                    <SettingsCard
+                        icon={Mail}
+                        title="Email address"
+                        description="Confirm your password and enter the new address."
+                        footer={
+                            <SettingsSubmit
+                                busy={emailSaving}
+                                disabled={!emailReady || profileSaving}
                                 onClick={() => void handleUpdateEmail()}
-                                disabled={emailSaving || profileSaving}
                             >
-                                {emailSaving ? "Updating..." : "Update Email"}
-                            </Button>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === "login-security" && (
-                    <div className="space-y-10 w-full max-w-full">
-                        {/* Change Password Section */}
-                        <section>
-                            <div className="mb-6">
-                                <h2 className="text-lg font-semibold text-gray-900">Change Password</h2>
-                                <p className="text-sm text-gray-500">Update your password to keep your account secure</p>
-                            </div>
-                            <div className="space-y-6 w-full max-w-full">
-                                <Input
-                                    placeholder="Enter Current Password"
-                                    type="password"
-                                    value={passwordCurrent}
-                                    onChange={(e) => dispatch(setPasswordFields({ passwordCurrent: e.target.value }))}
-                                    className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full max-w-full"
+                                Change email
+                            </SettingsSubmit>
+                        }
+                    >
+                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                            <SettingsField label="Current email" htmlFor="email" className="md:col-span-2 md:max-w-[calc(50%-0.625rem)]">
+                                <input id="email" type="email" value={currentEmail} readOnly className={settingsInputClass} />
+                            </SettingsField>
+                            <SettingsField label="New email" htmlFor="newEmail">
+                                <input
+                                    id="newEmail"
+                                    type="email"
+                                    placeholder="name@company.com"
+                                    value={newEmail}
+                                    onChange={(e) => dispatch(setEmailFields({ newEmail: e.target.value }))}
+                                    className={settingsInputClass}
+                                    autoComplete="email"
                                 />
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                                    <Input
-                                        placeholder="Enter New Password"
-                                        type="password"
-                                        value={passwordNew}
-                                        onChange={(e) => dispatch(setPasswordFields({ passwordNew: e.target.value }))}
-                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full min-w-0"
-                                    />
-                                    <Input
-                                        placeholder="Confirm New Password"
-                                        type="password"
-                                        value={passwordConfirm}
-                                        onChange={(e) => dispatch(setPasswordFields({ passwordConfirm: e.target.value }))}
-                                        className="bg-[#F0F2F5] border-none text-gray-900 placeholder:text-gray-400 h-12 w-full min-w-0"
-                                    />
-                                </div>
-                            </div>
-                            
-                            <div className="mt-6">
-                                <Button
-                                    className={PLATA_PRIMARY_BTN}
-                                    onClick={() => void handleChangePassword()}
-                                    disabled={passwordSaving}
-                                >
-                                    {passwordSaving ? "Updating..." : "Update Password"}
-                                </Button>
-                            </div>
-                        </section>
+                            </SettingsField>
+                            <SettingsField
+                                label="Confirm new email"
+                                htmlFor="confirmEmail"
+                                error={emailMismatch ? "Emails don't match" : undefined}
+                            >
+                                <input
+                                    id="confirmEmail"
+                                    type="email"
+                                    placeholder="name@company.com"
+                                    value={confirmEmail}
+                                    onChange={(e) => dispatch(setEmailFields({ confirmEmail: e.target.value }))}
+                                    className={cn(settingsInputClass, emailMismatch && "border-red-400")}
+                                />
+                            </SettingsField>
+                            <SettingsField
+                                label="Current password"
+                                htmlFor="emailCurrentPassword"
+                                hint="Required to confirm it's you."
+                                className="md:col-span-2 md:max-w-[calc(50%-0.625rem)]"
+                            >
+                                <PasswordInput
+                                    id="emailCurrentPassword"
+                                    value={emailCurrentPassword}
+                                    onChange={(v) => dispatch(setEmailFields({ emailCurrentPassword: v }))}
+                                    placeholder="Enter your password"
+                                />
+                            </SettingsField>
+                        </div>
+                    </SettingsCard>
+                </>
+            )}
 
-                        {/* Active Sessions Section */}
-                        <section>
-                            <div className="mb-6">
-                                <h2 className="text-lg font-semibold text-gray-900">Active Sessions</h2>
-                                <p className="text-sm text-gray-500">Manage your active login sessions across devices.</p>
+            {activeTab === "login-security" && (
+                <>
+                    <SettingsCard
+                        icon={KeyRound}
+                        title="Password"
+                        description="Use a strong password you don't use anywhere else."
+                        footer={
+                            <SettingsSubmit
+                                busy={passwordSaving}
+                                disabled={!passwordReady}
+                                onClick={() => void handleChangePassword()}
+                            >
+                                Update password
+                            </SettingsSubmit>
+                        }
+                    >
+                        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                            <SettingsField label="Current password" htmlFor="passwordCurrent" className="md:col-span-2 md:max-w-[calc(50%-0.625rem)]">
+                                <PasswordInput
+                                    id="passwordCurrent"
+                                    value={passwordCurrent}
+                                    onChange={(v) => dispatch(setPasswordFields({ passwordCurrent: v }))}
+                                    placeholder="Enter current password"
+                                />
+                            </SettingsField>
+                            <SettingsField label="New password" htmlFor="passwordNew">
+                                <PasswordInput
+                                    id="passwordNew"
+                                    value={passwordNew}
+                                    onChange={(v) => dispatch(setPasswordFields({ passwordNew: v }))}
+                                    placeholder="Enter new password"
+                                    autoComplete="new-password"
+                                />
+                            </SettingsField>
+                            <SettingsField
+                                label="Confirm new password"
+                                htmlFor="passwordConfirm"
+                                error={passwordMismatch ? "Passwords don't match" : undefined}
+                            >
+                                <PasswordInput
+                                    id="passwordConfirm"
+                                    value={passwordConfirm}
+                                    onChange={(v) => dispatch(setPasswordFields({ passwordConfirm: v }))}
+                                    placeholder="Re-enter new password"
+                                    autoComplete="new-password"
+                                />
+                            </SettingsField>
+                            <div className="md:col-span-2">
+                                <PasswordStrength password={passwordNew} />
                             </div>
-                            <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4 w-full">
-                                {sessionsLoading ? (
-                                    <p className="text-sm text-gray-500">Loading sessions...</p>
-                                ) : sessions.length === 0 ? (
-                                    <p className="text-sm text-gray-500">No active sessions.</p>
-                                ) : (
-                                    sessions.map((s) => (
-                                        <div key={s.id} className="flex justify-between items-center bg-white p-4 rounded-md shadow-sm">
-                                            <div>
-                                                <p className="font-medium text-gray-900">{s.deviceInfo || "Unknown device"}</p>
-                                                <p className="text-sm text-gray-500">
-                                                    {s.ipAddress ? `${s.ipAddress} • ` : ""}
-                                                    {s.lastActiveAt ? `Last active: ${s.lastActiveAt}` : "Active"}
-                                                </p>
-                                            </div>
-                                            {s.isCurrent ? (
-                                                <span className="text-green-600 text-sm font-medium">Current</span>
-                                            ) : (
-                                                <button
-                                                    className="text-red-500 text-sm font-medium hover:text-red-600"
-                                                    onClick={() => void handleRevokeSession(s.id)}
-                                                >
-                                                    Revoke
-                                                </button>
-                                            )}
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </section>
+                        </div>
+                    </SettingsCard>
 
-                        {canManageApiKeys ? (
+                    <SettingsCard
+                        icon={MonitorSmartphone}
+                        title="Active sessions"
+                        description="Devices currently signed in to your account. Sign out of any you don't recognise."
+                    >
+                        {sessionsLoading ? (
+                            <SessionsSkeleton />
+                        ) : sessions.length === 0 ? (
+                            <SettingsEmpty icon={MonitorSmartphone} title="No active sessions" />
+                        ) : (
+                            <ul className="divide-y divide-gray-100">
+                                {[...sessions]
+                                    .sort((a, b) => Number(!!b.isCurrent) - Number(!!a.isCurrent))
+                                    .map((s) => (
+                                        <SessionItem
+                                            key={s.id}
+                                            device={s.deviceInfo || "Unknown device"}
+                                            ip={s.ipAddress || undefined}
+                                            lastActive={s.lastActiveAt ? (Number.isNaN(Date.parse(s.lastActiveAt)) ? s.lastActiveAt : new Date(s.lastActiveAt).toLocaleString()) : undefined}
+                                            isCurrent={s.isCurrent}
+                                            revoking={revokingId === s.id}
+                                            onRevoke={() => void handleRevokeSession(s.id)}
+                                        />
+                                    ))}
+                            </ul>
+                        )}
+                    </SettingsCard>
+
+                    {canManageApiKeys ? (
                         <APIKeysSection
                             className="w-full"
                             footerNote={
@@ -438,118 +437,92 @@ export default function SettingsPage() {
                                 </>
                             }
                         />
-                        ) : (
-                          <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-600">
-                            API key management requires Admin access. Contact an Admin or account owner
-                            if you need keys created or rotated.
-                          </div>
-                        )}
-                    </div>
-                )}
+                    ) : (
+                        <SettingsCard
+                            icon={KeyRound}
+                            title="API keys"
+                            description="API key management requires Admin access. Contact an Admin or the account owner if you need keys created or rotated."
+                        />
+                    )}
+                </>
+            )}
 
-                {activeTab === "contact-support" && (
-                    <div className="w-full max-w-full">
-                        <div className="mb-6">
-                            <h2 className="text-lg font-semibold text-gray-900">Frequently Asked Questions</h2>
-                            <p className="text-sm text-gray-500">Find answers to common questions about PLATA</p>
-                        </div>
-                        <div className="bg-[#F0F2F5] rounded-lg p-6 space-y-4 w-full">
-                            <button
-                                type="button"
-                                className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm border border-transparent hover:border-[#9A813F]/35 hover:bg-[#FFF9EB]/80 transition-colors group"
-                            >
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className="w-8 h-8 shrink-0 rounded-full bg-[#9A813F] flex items-center justify-center">
-                                        <CircleHelp className="w-5 h-5 text-white" />
-                                    </div>
-                                    <span className="font-medium text-gray-900 truncate">Customer Support</span>
+            {activeTab === "contact-support" && (
+                <SettingsCard
+                    icon={LifeBuoy}
+                    title="Contact support"
+                    description="Find answers to common questions or reach the PLATA team."
+                >
+                    <ul className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        {SUPPORT_CHANNELS.map(({ label, description, icon: Icon }) => (
+                            <li key={label} className="flex items-start gap-3 rounded-lg border border-gray-200 p-4">
+                                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+                                    <Icon className="size-4" />
+                                </span>
+                                <div className="min-w-0">
+                                    <p className="text-sm font-medium text-gray-900">{label}</p>
+                                    <p className="mt-0.5 text-xs text-gray-500">{description}</p>
                                 </div>
-                                <ChevronRight className="w-5 h-5 shrink-0 text-[#9A813F]/70 group-hover:text-[#9A813F]" />
-                            </button>
+                            </li>
+                        ))}
+                    </ul>
+                </SettingsCard>
+            )}
 
-                            <button
-                                type="button"
-                                className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm border border-transparent hover:border-[#9A813F]/35 hover:bg-[#FFF9EB]/80 transition-colors group"
-                            >
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className="w-8 h-8 shrink-0 rounded-full bg-[#9A813F] flex items-center justify-center">
-                                        <CircleHelp className="w-5 h-5 text-white" />
-                                    </div>
-                                    <span className="font-medium text-gray-900 truncate">Website</span>
-                                </div>
-                                <ChevronRight className="w-5 h-5 shrink-0 text-[#9A813F]/70 group-hover:text-[#9A813F]" />
-                            </button>
+            {activeTab === "account-control" && (
+                <SettingsCard
+                    icon={Power}
+                    tone="danger"
+                    title="Deactivate account"
+                    description="Temporarily switch off your account. Your data is kept and you can come back any time by signing in."
+                    footer={
+                        <button type="button" className={settingsDangerButtonClass} onClick={() => setDeactivateOpen(true)}>
+                            <Power className="size-4" />
+                            Deactivate account
+                        </button>
+                    }
+                >
+                    <p className="mb-3 text-sm font-medium text-gray-900">What happens when you deactivate</p>
+                    <ul className="space-y-2.5 text-sm text-gray-600">
+                        {[
+                            "Your profile won't be visible to others.",
+                            "Active subscriptions are paused.",
+                            "You can reactivate within 90 days by signing in.",
+                            "After 90 days, your account may be permanently deleted.",
+                        ].map((line) => (
+                            <li key={line} className="flex items-start gap-2.5">
+                                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                                {line}
+                            </li>
+                        ))}
+                    </ul>
+                </SettingsCard>
+            )}
 
-                            <button
-                                type="button"
-                                className="w-full flex items-center justify-between bg-white p-4 rounded-md shadow-sm border border-transparent hover:border-[#9A813F]/35 hover:bg-[#FFF9EB]/80 transition-colors group"
-                            >
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <div className="w-8 h-8 shrink-0 rounded-full bg-[#9A813F] flex items-center justify-center">
-                                        <Flag className="w-5 h-5 text-white" />
-                                    </div>
-                                    <span className="font-medium text-gray-900 truncate">WhatsApp</span>
-                                </div>
-                                <ChevronRight className="w-5 h-5 shrink-0 text-[#9A813F]/70 group-hover:text-[#9A813F]" />
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {activeTab === "account-control" && (
-                    <div className="w-full max-w-full">
-                        <div className="mb-6">
-                            <h2 className="text-lg font-semibold text-gray-900">Deactivate Account</h2>
-                        </div>
-                        <div className="bg-[#F0F2F5] rounded-lg p-8 w-full">
-                            <p className="text-gray-600 mb-6">
-                                Temporarily deactivate your account. Your data will be preserved and you can reactivate anytime by logging back in. Your subscription will be paused during deactivation.
-                            </p>
-                            <ul className="list-disc pl-5 space-y-2 text-gray-600 mb-8">
-                                <li>Your profile will not be visible to others.</li>
-                                <li>Active subscriptions will be paused.</li>
-                                <li>You can reactivate within 90 days.</li>
-                                <li>After 90 days, your account may be permanently deleted.</li>
-                            </ul>
-                            <Button
-                                onClick={() => setDeactivateOpen(true)}
-                                className="bg-[#FF4D4F] hover:bg-[#FF7875] text-white border-none px-6"
-                            >
-                                Deactivate Account
-                            </Button>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Deactivate account confirmation modal */}
             <AlertDialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
-                <AlertDialogContent className="sm:max-w-md text-center">
+                <AlertDialogContent className="sm:max-w-md">
                     <AlertDialogHeader>
-                        <div className="flex justify-center mb-2">
-                            <div className="w-14 h-14 rounded-full bg-red-500 flex items-center justify-center">
-                                <X className="w-7 h-7 text-white" strokeWidth={2.5} />
-                            </div>
+                        <div className="mb-2 flex size-11 items-center justify-center rounded-full bg-red-50 text-red-600">
+                            <AlertTriangle className="size-5" />
                         </div>
-                        <AlertDialogTitle className="text-xl">Deactivate</AlertDialogTitle>
-                        <AlertDialogDescription className="text-base text-gray-600">
-                            Are you sure to deactivate your account?
+                        <AlertDialogTitle>Deactivate your account?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            You&apos;ll be signed out and your subscriptions paused. You can reactivate within 90 days by signing in again.
                         </AlertDialogDescription>
                     </AlertDialogHeader>
-                    <AlertDialogFooter className="flex gap-3 sm:justify-center mt-6">
-                        <AlertDialogCancel className="border-gray-300 bg-white text-gray-900 hover:bg-gray-50 px-6">
-                            No, Cancel
-                        </AlertDialogCancel>
-                        <AlertDialogAction
-                            className="bg-[#FF4D4F] hover:bg-[#FF7875] text-white px-6"
-                                    onClick={() => void handleDeactivate()}
-                                    disabled={deactivating}
+                    <AlertDialogFooter className="gap-2">
+                        <AlertDialogCancel className="h-10 rounded-lg">Keep account</AlertDialogCancel>
+                        <SettingsSubmit
+                            variant="danger"
+                            busy={deactivating}
+                            busyLabel="Deactivating…"
+                            onClick={() => void handleDeactivate()}
                         >
-                                    {deactivating ? "Deactivating..." : "Yes"}
-                        </AlertDialogAction>
+                            Yes, deactivate
+                        </SettingsSubmit>
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </div>
+        </SettingsShell>
     )
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState, type ReactNode } from "react"
-import { Copy, Eye, EyeOff, Trash2 } from "lucide-react"
+import { Copy, Eye, EyeOff, KeyRound, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -218,35 +218,45 @@ export default function APIKeysSection({ className = "", footerNote }: APIKeysSe
   }
 
   return (
-    <section className={className}>
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-gray-900">API Keys</h2>
-          <p className="text-sm text-gray-500">
-            Merchant account keys for Plata gateway integrations (not per-app)
-          </p>
+    <section className={`overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xs ${className}`}>
+      <div className="flex flex-col gap-3 border-b border-gray-100 px-5 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
+            <KeyRound className="size-[18px]" />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-gray-900">API keys</h2>
+            <p className="mt-0.5 text-sm text-gray-500">
+              Merchant account keys for Plata gateway integrations (not per-app).
+            </p>
+          </div>
         </div>
         <Button
           type="button"
-          className="w-full shrink-0 rounded-md bg-[#9A813F] px-6 text-white hover:bg-[#8A7335] sm:w-auto"
+          className="h-10 w-full shrink-0 gap-1.5 rounded-lg bg-brand px-4 text-brand-foreground shadow-sm hover:bg-brand/90 sm:w-auto"
           onClick={() => setCreateOpen(true)}
         >
-          Generate New Key
+          <Plus className="size-4" />
+          Generate new key
         </Button>
       </div>
 
-      <div className="space-y-4 rounded-lg border border-gray-200/80 bg-[#F0F2F5] p-6">
+      <div className="space-y-3 px-5 py-5 sm:px-6">
         {loading ? (
           Array.from({ length: 3 }).map((_, idx) => (
-            <div key={`skeleton-key-${idx}`} className="rounded-md border border-gray-200 bg-white p-4 shadow-sm">
+            <div key={`skeleton-key-${idx}`} className="rounded-lg border border-gray-200 bg-white p-4">
               <Skeleton className="mb-2 h-5 w-40" />
               <Skeleton className="mb-3 h-4 w-48" />
               <Skeleton className="h-8 w-full" />
             </div>
           ))
         ) : keys.length === 0 ? (
-          <div className="rounded-md border border-gray-200 bg-white p-6 text-center text-sm text-gray-500 shadow-sm">
-            No API keys found. Generate your first key to get started.
+          <div className="flex flex-col items-center rounded-lg border border-dashed border-gray-300 px-6 py-10 text-center">
+            <span className="flex size-11 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+              <KeyRound className="size-5" />
+            </span>
+            <p className="mt-3 text-sm font-medium text-gray-900">No API keys yet</p>
+            <p className="mt-1 text-sm text-gray-500">Generate your first key to start integrating.</p>
           </div>
         ) : (
           keys.map((key) => {
@@ -255,7 +265,7 @@ export default function APIKeysSection({ className = "", footerNote }: APIKeysSe
             return (
               <div
                 key={key.id}
-                className="space-y-4 rounded-md border border-gray-200 bg-white p-4 shadow-sm"
+                className="space-y-4 rounded-lg border border-gray-200 bg-white p-4"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 space-y-1">
@@ -310,7 +320,9 @@ export default function APIKeysSection({ className = "", footerNote }: APIKeysSe
         )}
       </div>
 
-      {footerNote ? <div className="mt-4 text-sm text-gray-500">{footerNote}</div> : null}
+      {footerNote ? (
+        <div className="border-t border-gray-100 bg-gray-50/70 px-5 py-3.5 text-xs text-gray-500 sm:px-6">{footerNote}</div>
+      ) : null}
 
       {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
