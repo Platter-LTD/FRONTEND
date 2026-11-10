@@ -33,7 +33,7 @@ export function ProductDetailModal({ open, onOpenChange, product }: ProductDetai
       open={open} 
       onOpenChange={onOpenChange}
       title={product.title || "Product Details"}
-      className="w-[45%] min-w-[400px]"
+      className="sm:max-w-[40rem]"
     >
         <div className="space-y-6">
            <div className="space-y-1">

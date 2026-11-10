@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState, type ChangeEvent, useRef } from "react"
-import { Loader2, X } from "lucide-react"
+import { X } from "lucide-react"
 import { toast } from "sonner"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { getPdfFileValidationError } from "@/lib/fileValidation"
@@ -27,7 +27,11 @@ import {
   ProductConfigInput,
   ProductConfigRepaymentWorkflowPanel,
   ProductConfigSelect,
+  ProductConfigFooter,
+  ProductConfigStepCard,
+  ProductConfigStepErrors,
   ProductConfigTabs,
+  RequirementMark,
   ProductConfigToggle,
   withRepaymentStructureOptions,
 } from "@/components/drawers/product-config-form-fields"
@@ -1021,24 +1025,22 @@ export default function ConfigureLoanDrawer({
       onOpenChange={onClose}
       title="Configure Loan Product"
       subtitle="Select the loan option you want to create with us"
-      className="w-full min-w-0 rounded-none sm:w-[92%] md:w-[78%] lg:w-[62%] xl:w-[52%] 2xl:w-[45%] sm:min-w-[400px] sm:rounded-bl-[40px] sm:rounded-tl-[40px]"
+      className="sm:max-w-[48rem]"
+      bodyClassName="bg-gray-50/70 p-4 sm:p-6"
+      subHeader={<ProductConfigTabs steps={STEPS} activeStep={step} onStepChange={setStep} />}
+      footer={
+        <ProductConfigFooter
+          step={step}
+          total={STEPS.length}
+          isSubmitting={isSubmitting}
+          onBack={handleBack}
+          onNext={handleNext}
+        />
+      }
     >
-      <div className="mx-auto w-full">
-        <ProductConfigTabs steps={STEPS} activeStep={step} onStepChange={setStep} />
+      <ProductConfigStepCard steps={STEPS} activeStep={step}>
 
-      {stepErrors.length > 0 ? (
-        <div
-          className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-          role="alert"
-        >
-          <p className="mb-2 font-medium">Please fix the following before continuing:</p>
-          <ul className="list-inside list-disc space-y-1">
-            {stepErrors.map((msg) => (
-              <li key={msg}>{msg}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <ProductConfigStepErrors errors={stepErrors} />
 
       {step === 1 && (
         <ProductConfigAboutStep
@@ -1088,7 +1090,7 @@ export default function ConfigureLoanDrawer({
 
       {step === 2 && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end">
             <ProductConfigInput
               label="Interest Rate"
               placeholder="e.g 10%"
@@ -1122,7 +1124,7 @@ export default function ConfigureLoanDrawer({
               onChange={setAutoApproveLoans}
               requirement="optional"
             />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
               <ProductConfigSelect
                 label="Select Duration"
                 placeholder="Select Section"
@@ -1165,7 +1167,7 @@ export default function ConfigureLoanDrawer({
             amountLabel="Loan Amount"
           />
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end">
             <ProductConfigSelect
               label="Repayment Structure"
               placeholder="Select Section"
@@ -1234,7 +1236,7 @@ export default function ConfigureLoanDrawer({
         <div className="space-y-4">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-gray-700">
-              Security Requirements <span className="font-normal text-gray-500">(Required)</span>
+              Security Requirements<RequirementMark requirement="required" />
             </label>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {mergedSecurityOptions.map((option) => (
@@ -1297,7 +1299,7 @@ export default function ConfigureLoanDrawer({
             requirement="optional"
           />
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
             <ProductConfigInput
               label="Contract ID"
               placeholder="Enter Contract ID"
@@ -1326,7 +1328,7 @@ export default function ConfigureLoanDrawer({
 
       {step === 4 && (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
             <ProductConfigInput
               label="Name of Charges or Fee"
               placeholder="e.g Processing Fee"
@@ -1350,14 +1352,14 @@ export default function ConfigureLoanDrawer({
               numericOnly
               formatThousands={!isPercentType(chargeFeeType)}
             />
-              <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+              <Button type="button" onClick={addCharge} className="h-10 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90">
               Add
             </Button>
           </div>
 
           {charges.length > 0 && (
-            <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+            <div className="rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
+              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-200 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
                 <span>Name</span>
                 <span>Type</span>
                 <span>Value</span>
@@ -1366,7 +1368,7 @@ export default function ConfigureLoanDrawer({
               {charges.map((charge, index) => (
                 <div
                   key={`${charge.name}-${index}`}
-                  className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                  className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2.5 text-sm text-gray-800 last:border-0"
                 >
                   <span className="pr-2">{charge.name}</span>
                   <span>{charge.feeType}</span>
@@ -1375,7 +1377,7 @@ export default function ConfigureLoanDrawer({
                     <button
                       type="button"
                       onClick={() => removeCharge(index)}
-                      className="text-red-600 hover:text-red-700"
+                      className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                       aria-label={`Remove ${charge.name}`}
                     >
                       <X size={18} />
@@ -1409,7 +1411,7 @@ export default function ConfigureLoanDrawer({
             requirement="required"
           />
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_1fr_auto] sm:items-end">
             <ProductConfigInput
               label="Name of Penalty"
               placeholder="e.g Processing Fee"
@@ -1446,14 +1448,14 @@ export default function ConfigureLoanDrawer({
               requirement="required"
               requirementMark="asterisk"
             />
-            <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+            <Button type="button" onClick={addPenalty} className="h-10 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90">
               Add
             </Button>
           </div>
 
           {penalties.length > 0 && (
-            <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-              <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+            <div className="rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
+              <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-200 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
                 <span>Name</span>
                 <span>Type</span>
                 <span>Value</span>
@@ -1463,7 +1465,7 @@ export default function ConfigureLoanDrawer({
               {penalties.map((penalty, index) => (
                 <div
                   key={`${penalty.name}-${index}`}
-                  className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                  className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2.5 text-sm text-gray-800 last:border-0"
                 >
                   <span className="pr-2">{penalty.name}</span>
                   <span>{penalty.type}</span>
@@ -1476,7 +1478,7 @@ export default function ConfigureLoanDrawer({
                     <button
                       type="button"
                       onClick={() => removePenalty(index)}
-                      className="text-red-600 hover:text-red-700"
+                      className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                       aria-label={`Remove ${penalty.name}`}
                     >
                       <X size={18} />
@@ -1488,34 +1490,7 @@ export default function ConfigureLoanDrawer({
           )}
         </div>
       )}
-
-      <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <Button
-          onClick={handleBack}
-          variant="outline"
-          disabled={isSubmitting}
-          className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent"
-        >
-          Back
-        </Button>
-        <Button
-          onClick={handleNext}
-          disabled={isSubmitting}
-          className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335] disabled:opacity-70"
-        >
-          {isSubmitting && step === STEPS.length ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
-              Saving…
-            </>
-          ) : step === STEPS.length ? (
-            "Submit"
-          ) : (
-            "Next"
-          )}
-        </Button>
-      </div>
-      </div>
+      </ProductConfigStepCard>
     </Drawer>
   )
 }

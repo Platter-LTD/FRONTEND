@@ -2,7 +2,9 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { X, Package, MoreVertical } from "lucide-react"
+import { X, Package, Eye } from "lucide-react"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { rowActionsColumn } from "@/components/ui/row-actions"
 import { useParams } from "next/navigation"
 
 export default function ApplicationDetailsPage() {
@@ -86,6 +88,58 @@ export default function ApplicationDetailsPage() {
       paymentMethod: "Mastercard 5031",
       transactionId: "3456788944",
       paymentLink: "Download",
+    },
+  ]
+
+  const statusPill = (status: string) => (
+    <span
+      className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+        status === "Successful" ? "bg-green-100 text-green-700" : status === "Failed" ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"
+      }`}
+    >
+      {status}
+    </span>
+  )
+
+  type Customer = (typeof customers)[number]
+  const customerColumns: ColumnDef<Customer, unknown>[] = [
+    { accessorKey: "name", header: "Name", cell: ({ row }) => <span className="text-gray-900">{row.original.name}</span> },
+    { accessorKey: "email", header: "Email" },
+    { accessorKey: "phone", header: "Phone" },
+    { accessorKey: "dateTime", header: "Date/time" },
+    {
+      id: "upload",
+      header: "Upload",
+      cell: () => (
+        <button type="button" className="text-sm font-medium text-[#6B7FE8] hover:text-[#5568d3]">
+          View upload
+        </button>
+      ),
+    },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => statusPill(row.original.status) },
+    rowActionsColumn<Customer>([{ label: "View upload", icon: Eye, onClick: () => {} }]),
+  ]
+
+  type Transaction = (typeof transactions)[number]
+  const transactionColumns: ColumnDef<Transaction, unknown>[] = [
+    { accessorKey: "date", header: "Date", cell: ({ row }) => <span className="text-gray-900">{row.original.date}</span> },
+    { accessorKey: "amount", header: "Amount", cell: ({ row }) => <span className="text-gray-900">{row.original.amount}</span> },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => statusPill(row.original.status) },
+    { accessorKey: "paymentMethod", header: "Payment Method" },
+    { accessorKey: "transactionId", header: "Transaction ID" },
+    {
+      accessorKey: "paymentLink",
+      header: "Payment link",
+      cell: ({ row }) => (
+        <Button
+          type="button"
+          variant={row.original.paymentLink === "Download" ? "outline" : "ghost"}
+          size="sm"
+          disabled={row.original.paymentLink === "Unavailable"}
+        >
+          {row.original.paymentLink}
+        </Button>
+      ),
     },
   ]
 
@@ -179,103 +233,25 @@ export default function ApplicationDetailsPage() {
         )}
 
         {(activeTab === "customers" || activeTab === "submission") && (
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-[#F5F5F5]">
-                <tr>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Name</th>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Email</th>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Phone</th>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Date/time</th>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Upload</th>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Status</th>
-                  <th className="text-left px-6 py-3 text-sm font-medium text-gray-700"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {customers.map((customer, index) => (
-                  <tr key={index} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 text-sm text-gray-900">{customer.name}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{customer.email}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{customer.phone}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{customer.dateTime}</td>
-                    <td className="px-6 py-4">
-                      <button className="text-sm text-[#6B7FE8] hover:text-[#5568d3] font-medium">View upload</button>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                        {customer.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button className="text-gray-400 hover:text-gray-600">
-                        <MoreVertical size={20} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            tableId={`admin-app-${activeTab}`}
+            title={activeTab === "customers" ? "Customers" : "New Submissions"}
+            columns={customerColumns}
+            data={customers}
+            clientSearch
+            download
+          />
         )}
 
         {activeTab === "transaction" && (
-          <div>
-            <div className="flex justify-end mb-4">
-              <select className="border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-600">
-                <option>Sort by</option>
-              </select>
-            </div>
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <table className="w-full">
-                <thead className="bg-[#F5F5F5]">
-                  <tr>
-                    <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Date</th>
-                    <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Amount</th>
-                    <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Status</th>
-                    <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Payment Method</th>
-                    <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Transaction ID</th>
-                    <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Payment link</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {transactions.map((transaction, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm text-gray-900">{transaction.date}</td>
-                      <td className="px-6 py-4 text-sm text-gray-900">{transaction.amount}</td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            transaction.status === "Successful"
-                              ? "bg-green-100 text-green-700"
-                              : transaction.status === "Failed"
-                                ? "bg-red-100 text-red-700"
-                                : "bg-orange-100 text-orange-700"
-                          }`}
-                        >
-                          {transaction.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{transaction.paymentMethod}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{transaction.transactionId}</td>
-                      <td className="px-6 py-4">
-                        <button
-                          className={`px-4 py-1.5 rounded-lg text-sm font-medium ${
-                            transaction.paymentLink === "Download"
-                              ? "border border-gray-300 text-gray-700 hover:bg-gray-50"
-                              : "text-gray-400 cursor-not-allowed"
-                          }`}
-                          disabled={transaction.paymentLink === "Unavailable"}
-                        >
-                          {transaction.paymentLink}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <DataTable
+            tableId="admin-app-transactions"
+            title="Transactions"
+            columns={transactionColumns}
+            data={transactions}
+            clientSearch
+            download
+          />
         )}
       </div>
     </div>

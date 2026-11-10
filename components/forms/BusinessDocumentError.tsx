@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { AlertTriangle } from "lucide-react";
-import UploadCard from "./UploadCard";
+import { AlertTriangle, FolderUp } from "lucide-react";
+import { BrandButton, DocumentDropTile, SectionCard, StepFooter } from "@/components/compliance/compliance-ui";
+import { isPdfFile } from "@/lib/isPdfFile";
 import { fileToBase64 } from "@/lib/fileUtils";
 import { submitBusinessKyc } from "@/lib/services/kycService";
 import { toast } from "react-toastify";
@@ -96,65 +97,54 @@ const BusinessDocumentWithError: React.FC<Props> = ({ missingIds = [] }) => {
     }
   };
 
+  const docs = [...leftList, ...rightList];
+  const stillMissing = docs.filter((d) => !selected[d.id]).length;
+
   return (
-    <div className="px-8 py-6 space-y-4">
-      {/* Warning Banner */}
-      <div className="flex justify-center items-center bg-yellow-50 border-l-4 border-[#AF4949] p-4 rounded-md">
-        <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
-        <p className="text-sm text-gray-700">
-          Some required documents are missing. Please upload the highlighted items and try again.
-        </p>
-      </div>
-
-      {/* Document Upload Section */}
-      <div className="bg-gray-100 rounded-2xl p-6 border border-gray-200">
-        <div className="text-center mb-4">
-          <h2 className="text-[24px] font-semibold text-gray-900">
-            Business Document Upload
-          </h2>
-          <p className="text-xs text-gray-500 mt-1">Upload company documents</p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            {leftList.map((item) => (
-              <UploadCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                buttonColor={markError(item.id) ? "#DC2626" : "#9A813F"}
-                error={markError(item.id)}
-                onFileSelected={(file) => setSelected((p) => ({ ...p, [item.id]: file }))}
-              />
-            ))}
-          </div>
-          <div className="space-y-4">
-            {rightList.map((item) => (
-              <UploadCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                buttonColor={markError(item.id) ? "#DC2626" : "#9A813F"}
-                error={markError(item.id)}
-                onFileSelected={(file) => setSelected((p) => ({ ...p, [item.id]: file }))}
-              />
-            ))}
-          </div>
+    <div className="space-y-6">
+      <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3.5">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600">
+          <AlertTriangle className="size-4" />
+        </span>
+        <div>
+          <p className="text-sm font-semibold text-red-900">Some required documents are missing</p>
+          <p className="text-sm text-red-800/80">Please upload the highlighted items and try again.</p>
         </div>
       </div>
 
-      {/* Keep user in place with same primary action */}
-      <div className="mt-6 flex justify-end">
-        <button
-          type="button"
-          className="px-4 py-2 rounded-md text-sm font-medium shadow-sm cursor-pointer disabled:opacity-60"
-          style={{ backgroundColor: "#9A813F", color: "#fff" }}
-          onClick={handleSubmit}
-          disabled={submitting}
-        >
-          {submitting ? "Submitting..." : "Save & Continue"}
-        </button>
-      </div>
+      <SectionCard
+        icon={<FolderUp />}
+        title="Business document upload"
+        description="Upload the missing company documents as PDF files."
+        action={
+          <span className="hidden text-sm font-semibold text-gray-900 tabular-nums sm:block">
+            {docs.length - stillMissing} / {docs.length} uploaded
+          </span>
+        }
+      >
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {docs.map((item) => (
+            <DocumentDropTile
+              key={item.id}
+              id={item.id}
+              title={item.title}
+              hint="PDF format · Max. 5MB"
+              accept=".pdf,application/pdf"
+              required
+              file={selected[item.id] ?? null}
+              invalid={markError(item.id)}
+              validate={(file: File) => (!isPdfFile(file) ? "Only PDF files are allowed." : file.size > 5 * 1024 * 1024 ? "File must be 5MB or smaller." : null)}
+              onFile={(file) => setSelected((p) => ({ ...p, [item.id]: file }))}
+            />
+          ))}
+        </div>
+      </SectionCard>
+
+      <StepFooter hint={stillMissing > 0 ? `${stillMissing} document${stillMissing === 1 ? "" : "s"} still missing.` : "All documents are ready to submit."}>
+        <BrandButton onClick={handleSubmit} loading={submitting}>
+          {submitting ? "Submitting…" : "Save & continue"}
+        </BrandButton>
+      </StepFooter>
     </div>
   );
 };

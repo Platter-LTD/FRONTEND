@@ -6,13 +6,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { MortgageWorkflowDetailSkeleton } from "@/components/ui/app-loading-skeleton"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { DrawerPanel } from "@/components/ui/drawer-panel"
 import { applicationApi } from "@/lib/services/accountService"
 import { pendingApprovedLoanApi } from "@/lib/pendingApprovedLoanApi"
 import {
@@ -461,14 +455,14 @@ export function LoanWorkflowDetailSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <SheetHeader className="shrink-0 space-y-1 border-b border-gray-100 px-6 py-5 text-left">
-          <SheetTitle className="text-lg">Loan application</SheetTitle>
-          <SheetDescription className="text-sm leading-relaxed">
-            Review applicant details below, then use workflow actions when required.
-          </SheetDescription>
-        </SheetHeader>
+    <DrawerPanel
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Loan application"
+      description="Review applicant details below, then use workflow actions when required."
+      className="sm:max-w-2xl"
+      bodyClassName="p-0 gap-0"
+    >
 
         {loading ? (
           <div className="flex-1 overflow-y-auto">
@@ -532,7 +526,6 @@ export function LoanWorkflowDetailSheet({
         ) : (
           <p className="px-6 py-12 text-center text-sm text-gray-500">Application not found.</p>
         )}
-      </SheetContent>
-    </Sheet>
+      </DrawerPanel>
   )
 }

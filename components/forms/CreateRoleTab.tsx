@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, Search, Edit, Trash2, Loader2, RefreshCw } from "lucide-react"
+import { Plus, Edit, Trash2, Loader2, RefreshCw, Eye } from "lucide-react"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { rowActionsColumn, type RowAction } from "@/components/ui/row-actions"
 import {
   Dialog,
   DialogContent,
@@ -93,6 +95,28 @@ export function CreateRoleTab({ onCreateRole, onEditRole, team }: CreateRoleTabP
     void refetch()
   }
 
+  type RoleRow = (typeof filtered)[number]
+  const roleColumns: ColumnDef<RoleRow, unknown>[] = [
+    { accessorKey: "name", header: "Name of roles", cell: ({ row }) => <span className="font-medium text-gray-900">{row.original.name}</span> },
+    { id: "createdBy", header: "Created by", accessorFn: () => "Admin" },
+    {
+      id: "permissions",
+      header: "Permissions",
+      cell: ({ row }) => (
+        <Button variant="outline" size="sm" className="border-[#9A813F] bg-transparent text-[#9A813F]" onClick={() => setViewRole(row.original)}>
+          View permission
+        </Button>
+      ),
+    },
+    rowActionsColumn<RoleRow>((role) => {
+      const actions: RowAction<RoleRow>[] = [{ label: "View permissions", icon: Eye, onClick: (r) => setViewRole(r) }]
+      if (canManageRoles) actions.push({ label: "Edit role", icon: Edit, onClick: (r) => onEditRole?.(r) })
+      if (canManageRoles && !isStandardRoleName(role.name))
+        actions.push({ label: "Delete role", icon: Trash2, destructive: true, onClick: (r) => setDeleteRole(r) })
+      return actions
+    }),
+  ]
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center gap-3 flex-wrap">
@@ -139,83 +163,20 @@ export function CreateRoleTab({ onCreateRole, onEditRole, team }: CreateRoleTabP
         </p>
       ) : null}
 
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="text-lg font-medium">Roles</h3>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search roles"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm"
-            />
-          </div>
-        </div>
-
-        <div className="overflow-hidden">
-          <div className="grid grid-cols-4 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
-            <div>Name of roles</div>
-            <div>created by</div>
-            <div>Permissions</div>
-            <div>Actions</div>
-          </div>
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 p-10 text-sm text-gray-500">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading roles…
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="p-8 text-center text-sm text-gray-500">No roles yet.</p>
-          ) : (
-            filtered.map((role) => {
-              const standard = isStandardRoleName(role.name)
-              return (
-                <div
-                  key={role.id}
-                  className="grid grid-cols-4 gap-4 p-4 border-b border-gray-100 last:border-b-0 text-sm items-center"
-                >
-                  <div className="font-medium">{role.name}</div>
-                  <div>Admin</div>
-                  <div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-[#9A813F] border-[#9A813F] bg-transparent"
-                      onClick={() => setViewRole(role)}
-                    >
-                      View permission
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {canManageRoles ? (
-                      <button
-                        type="button"
-                        className="text-gray-400 hover:text-gray-600"
-                        onClick={() => onEditRole?.(role)}
-                        aria-label={`Edit ${role.name}`}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                    ) : null}
-                    {canManageRoles && !standard ? (
-                      <button
-                        type="button"
-                        className="text-gray-400 hover:text-red-600"
-                        onClick={() => setDeleteRole(role)}
-                        aria-label={`Delete ${role.name}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </div>
-      </div>
+            <DataTable
+        tableId="roles"
+        onRefresh={() => void refetch()}
+        title="Roles"
+        columns={roleColumns}
+        data={filtered}
+        isLoading={loading}
+        onSearch={setSearch}
+        initialSearch={search}
+        searchPlaceholder="Search roles"
+        download
+        resetPageSignal={search}
+        empty="No roles yet."
+      />
 
       <Dialog open={Boolean(viewRole)} onOpenChange={(open) => !open && setViewRole(null)}>
         <DialogContent>

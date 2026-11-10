@@ -1,18 +1,12 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertCircle, Check, Loader2, MoreVertical, RefreshCw, X } from "lucide-react"
+import { AlertCircle, Check, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { TableSkeleton } from "@/components/ui/table-skeleton"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { rowActionsColumn, type RowAction } from "@/components/ui/row-actions"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -277,24 +271,61 @@ export function WorkflowTable({
     [rows],
   )
 
+
+  const showReason = activeTab === "blacklisted" || activeTab === "declined"
+  const columns: ColumnDef<PlataWorkflowRow, unknown>[] = [
+    { accessorKey: "requestLabel", header: requestColumnLabel, meta: { label: requestColumnLabel }, cell: ({ row }) => <span className="text-gray-900">{row.original.requestLabel}</span> },
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <span>{row.original.name}</span>
+          {row.original.pepFlagged ? <Badge className="bg-[#FEE4E2] text-[#B42318] hover:bg-[#FEE4E2]">PEP</Badge> : null}
+        </div>
+      ),
+    },
+    { accessorKey: "ref", header: "Ref" },
+    { accessorKey: "date", header: "Date" },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => <Badge className={statusBadge(row.original.status)}>{row.original.status.replaceAll("_", " ")}</Badge>,
+    },
+    ...(showReason
+      ? [
+          {
+            accessorKey: "reason",
+            header: "Reason",
+            size: 240,
+            cell: ({ row }) => (
+              <span className="line-clamp-2 whitespace-normal" title={row.original.reason || undefined}>
+                {row.original.reason || "—"}
+              </span>
+            ),
+          } satisfies ColumnDef<PlataWorkflowRow, unknown>,
+        ]
+      : []),
+    rowActionsColumn<PlataWorkflowRow>((row) => {
+      const canAct = row.status !== "approved" && row.status !== "declined" && row.status !== "blacklisted" && row.status !== "completed"
+      // Blacklist is allowed from active or approved states; not once already blacklisted.
+      const canBlacklist = row.status !== "blacklisted" && row.status !== "declined" && row.status !== "completed"
+      const busy = () => busyId === row.id
+      const actions: RowAction<PlataWorkflowRow>[] = []
+      if (canAct) {
+        actions.push({ label: "Approve", icon: Check, disabled: busy, onClick: (r) => void handleApprove(r) })
+        actions.push({ label: "Reject", icon: X, destructive: true, disabled: busy, onClick: (r) => setConfirm({ kind: "reject", row: r, reason: "" }) })
+      }
+      if (canBlacklist) {
+        actions.push({ label: "Blacklist", icon: AlertCircle, disabled: busy, onClick: (r) => setConfirm({ kind: "blacklist", row: r, reason: "" }) })
+      }
+      return actions
+    }),
+  ]
   return (
     <div className="flex-1 bg-white p-8">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-2xl font-semibold text-gray-900">{title}</h1>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void fetchRows(true)}
-          disabled={refreshing || loading}
-          className="gap-2"
-        >
-          {refreshing || loading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="h-4 w-4" />
-          )}
-          Refresh
-        </Button>
       </div>
 
       <div className="mb-6 border-b border-gray-200">
@@ -316,136 +347,21 @@ export function WorkflowTable({
         </div>
       </div>
 
-      {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
-
-      {loading ? (
-        <TableSkeleton columnCount={6} rowCount={6} />
-      ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200">
-          <table className="w-full">
-            <thead className="bg-[#F5F5F5]">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">
-                  {requestColumnLabel}
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Name</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Ref</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Date</th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Status</th>
-                {(activeTab === "blacklisted" || activeTab === "declined") && (
-                  <th className="px-6 py-3 text-left text-sm font-medium text-gray-700">Reason</th>
-                )}
-                <th className="w-12" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {displayRows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={activeTab === "blacklisted" || activeTab === "declined" ? 7 : 6}
-                    className="px-6 py-12 text-center text-sm text-gray-500"
-                  >
-                    No applications found.
-                  </td>
-                </tr>
-              ) : (
-                displayRows.map((row) => {
-                  const canAct =
-                    row.status !== "approved" &&
-                    row.status !== "declined" &&
-                    row.status !== "blacklisted" &&
-                    row.status !== "completed"
-                  const canApprove = canAct
-                  const canReject = canAct
-                  // Blacklist is allowed from active or approved states; not once already blacklisted.
-                  const canBlacklist =
-                    row.status !== "blacklisted" &&
-                    row.status !== "declined" &&
-                    row.status !== "completed"
-
-                  return (
-                    <tr
-                      key={row.id}
-                      className="cursor-pointer hover:bg-gray-50"
-                      onClick={() => setDetailId(row.id)}
-                    >
-                      <td className="px-6 py-4 text-sm text-gray-900">{row.requestLabel}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span>{row.name}</span>
-                          {row.pepFlagged ? (
-                            <Badge className="bg-[#FEE4E2] text-[#B42318] hover:bg-[#FEE4E2]">
-                              PEP
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{row.ref}</td>
-                      <td className="px-6 py-4 text-sm text-gray-600">{row.date}</td>
-                      <td className="px-6 py-4">
-                        <Badge className={statusBadge(row.status)}>
-                          {row.status.replaceAll("_", " ")}
-                        </Badge>
-                      </td>
-                      {(activeTab === "blacklisted" || activeTab === "declined") && (
-                        <td className="max-w-[240px] px-6 py-4 text-sm text-gray-600">
-                          <span className="line-clamp-2" title={row.reason || undefined}>
-                            {row.reason || "—"}
-                          </span>
-                        </td>
-                      )}
-                      <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              disabled={busyId === row.id}
-                              className="rounded p-1 hover:bg-gray-100 disabled:opacity-50"
-                              aria-label="Actions"
-                            >
-                              {busyId === row.id ? (
-                                <Loader2 size={16} className="animate-spin text-gray-400" />
-                              ) : (
-                                <MoreVertical size={18} className="text-gray-400" />
-                              )}
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {canApprove && (
-                              <DropdownMenuItem onSelect={() => void handleApprove(row)}>
-                                <Check className="mr-2 h-4 w-4 text-green-600" />
-                                Approve
-                              </DropdownMenuItem>
-                            )}
-                            {canReject && (
-                              <DropdownMenuItem
-                                onSelect={() => setConfirm({ kind: "reject", row, reason: "" })}
-                              >
-                                <X className="mr-2 h-4 w-4 text-red-600" />
-                                Reject
-                              </DropdownMenuItem>
-                            )}
-                            {canBlacklist && (
-                              <DropdownMenuItem
-                                onSelect={() => setConfirm({ kind: "blacklist", row, reason: "" })}
-                              >
-                                <AlertCircle className="mr-2 h-4 w-4 text-gray-600" />
-                                Blacklist
-                              </DropdownMenuItem>
-                            )}
-                            {!canApprove && !canReject && !canBlacklist && (
-                              <DropdownMenuItem disabled>No actions</DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DataTable
+        tableId={`workflow-${productType.toLowerCase()}`}
+        columns={columns}
+        data={displayRows}
+        isLoading={loading}
+        isRefetching={refreshing}
+        isError={!!error}
+        error={error}
+        onRefresh={() => void fetchRows(true)}
+        clientSearch
+        download
+        resetPageSignal={activeTab}
+        empty="No applications found."
+        onRowClick={(row) => setDetailId(row.id)}
+      />
 
       <AlertDialog open={confirm !== null} onOpenChange={(open) => !open && setConfirm(null)}>
         <AlertDialogContent>

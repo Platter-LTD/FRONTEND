@@ -9,6 +9,8 @@ interface CurrencyVolumeFieldProps {
   onChange: (digitsOnly: string) => void
   accentColor?: string
   countryCode?: string | null
+  className?: string
+  id?: string
 }
 
 /**
@@ -19,6 +21,8 @@ export function CurrencyVolumeField({
   onChange,
   accentColor = "#9A813F",
   countryCode,
+  className,
+  id,
 }: CurrencyVolumeFieldProps) {
   const signupCountry = useAppSelector((s) => s.auth.user?.country)
   const effectiveCountry = countryCode ?? signupCountry
@@ -28,6 +32,7 @@ export function CurrencyVolumeField({
 
   return (
     <input
+      id={id}
       type="text"
       inputMode="numeric"
       autoComplete="off"
@@ -37,7 +42,7 @@ export function CurrencyVolumeField({
         onChange(next)
       }}
       placeholder="Monthly processed volume"
-      className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-gray-900"
+      className={className ?? "w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-gray-900"}
       style={{ outlineColor: accentColor }}
       aria-label="Monthly processed volume"
     />

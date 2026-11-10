@@ -1,9 +1,9 @@
 "use client"
 
 import type { ChangeEvent, RefObject } from "react"
-import { Upload, X } from "lucide-react"
+import { FileText, Upload, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { ProductConfigInput } from "@/components/drawers/product-config-form-fields"
+import { ProductConfigInput, ProductConfigSubsection } from "@/components/drawers/product-config-form-fields"
 
 export type ProductDocumentDraft = {
   name: string
@@ -33,46 +33,37 @@ export function ProductConfigDocumentRequirementsPanel({
   helperText = "Requires customer to fill the form",
   uploadVariant = "button",
 }: ProductConfigDocumentRequirementsPanelProps) {
+  const uploadButton = (
+    <Button
+      type="button"
+      variant="outline"
+      onClick={() => uploadInputRef.current?.click()}
+      className="h-10 gap-1.5 rounded-lg border-brand/40 px-4 text-brand hover:bg-brand/5 hover:text-brand"
+    >
+      <Upload className="size-4" />
+      Upload PDF
+    </Button>
+  )
   return (
-    <div className="space-y-2 rounded-md border border-dashed border-[#cdbf8b] p-4">
-      <p className="text-sm font-medium text-gray-700">
-        Document Requirements{" "}
-        <span className="font-normal text-gray-500">(Optional)</span>
-      </p>
-      <p className="text-xs text-gray-500">
-        {helperText}. You can skip this section or add documents later.
-      </p>
-
+    <ProductConfigSubsection
+      title="Document requirements"
+      requirement="optional"
+      description={`${helperText}. You can skip this or add documents later.`}
+    >
       <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[1fr_auto]">
         <ProductConfigInput
-          label="Name Document"
-          placeholder="Name document"
+          label="Document name"
+          placeholder="e.g. Loan agreement form"
           value={documentName}
           onChange={onDocumentNameChange}
-          requirement="optional"
         />
         {uploadVariant === "card" ? (
-          <div className="flex flex-col gap-2 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center">
-            <Upload className="shrink-0 text-gray-500" size={18} />
-            <div className="min-w-0 flex-1 text-xs text-gray-600">
-              Add document <span className="text-gray-400">PDF format • Max. 5MB</span>
-            </div>
-            <Button
-              type="button"
-              onClick={() => uploadInputRef.current?.click()}
-              className="h-10 shrink-0 bg-[#9A813F] text-white hover:bg-[#8A7335]"
-            >
-              Upload
-            </Button>
+          <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-2 pl-3">
+            <span className="text-xs text-gray-500">PDF · Max. 5MB</span>
+            {uploadButton}
           </div>
         ) : (
-          <Button
-            type="button"
-            onClick={() => uploadInputRef.current?.click()}
-            className="h-10 bg-[#9A813F] text-white hover:bg-[#8A7335]"
-          >
-            Upload
-          </Button>
+          uploadButton
         )}
         <input
           ref={uploadInputRef}
@@ -84,27 +75,37 @@ export function ProductConfigDocumentRequirementsPanel({
       </div>
 
       {documents.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {documents.map((doc, index) => (
-            <span
+            <li
               key={`${doc.file?.name ?? doc.fileUrl ?? doc.name}-${index}`}
-              className="inline-flex items-center gap-2 rounded-md bg-[#9A813F] px-3 py-2 text-xs text-white"
+              className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2"
             >
-              {doc.name}
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">
+                <FileText className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-gray-900">{doc.name}</span>
+                <span className="block truncate text-xs text-gray-500">
+                  {doc.file?.name ?? (doc.fileUrl ? "Uploaded" : "PDF")}
+                </span>
+              </span>
               <button
                 type="button"
                 onClick={() => onDocumentsChange(documents.filter((_, current) => current !== index))}
-                className="text-white/90 hover:text-white"
+                className="shrink-0 rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                 aria-label={`Remove ${doc.name}`}
               >
-                <X size={14} />
+                <X className="size-4" />
               </button>
-            </span>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : (
-        <p className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-500">No documents added yet.</p>
+        <p className="rounded-lg border border-dashed border-gray-200 bg-white px-3 py-3 text-center text-xs text-gray-500">
+          No documents added yet.
+        </p>
       )}
-    </div>
+    </ProductConfigSubsection>
   )
 }

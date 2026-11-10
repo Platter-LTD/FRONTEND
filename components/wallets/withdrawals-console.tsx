@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { formatPlataWalletAmount } from "@/lib/walletDisplay"
 import {
   treasuryConsoleApi,
@@ -432,6 +433,8 @@ export function WithdrawalsConsole({ appId }: Props) {
             }}
             onApprove={() => void approveWithdrawals()}
             onReject={() => void rejectWithdrawals()}
+            onRefresh={() => void refresh()}
+            onRefreshHistory={() => void loadHistory(historyFilter)}
           />
         ) : (
           <SettlementPanel
@@ -467,11 +470,89 @@ export function WithdrawalsConsole({ appId }: Props) {
             }}
             onApprove={() => void approveSettlements(tab)}
             onReject={() => void rejectSettlements(tab)}
+            onRefresh={() => void refresh()}
+            onRefreshHistory={() => void loadSettleHistory(tab, settleHistoryFilter)}
           />
         )}
       </div>
     </div>
   )
+}
+
+const customerColumn: ColumnDef<TreasuryPayoutRow, unknown> = {
+  accessorKey: "customerName",
+  header: "Customer",
+  cell: ({ row }) => <span className="font-bold text-[#1D2939]">{row.original.customerName}</span>,
+}
+const requestingFromColumn: ColumnDef<TreasuryPayoutRow, unknown> = {
+  id: "requestingFrom",
+  header: "Requesting From",
+  accessorFn: (r) => r.requestingFrom || r.productName || "—",
+}
+const productColumn: ColumnDef<TreasuryPayoutRow, unknown> = {
+  id: "product",
+  header: "Product",
+  accessorFn: (r) => r.productName || "—",
+}
+const amountColumn: ColumnDef<TreasuryPayoutRow, unknown> = {
+  accessorKey: "amount",
+  header: "Amount",
+  cell: ({ row }) => <span className="font-semibold text-[#1D2939]">{formatPlataWalletAmount(row.original.amount)}</span>,
+}
+const principalOf = (r: TreasuryPayoutRow) => r.principal ?? 0
+const returnOf = (r: TreasuryPayoutRow) => r.returnAmount ?? Math.max(0, r.amount - principalOf(r))
+const principalColumn: ColumnDef<TreasuryPayoutRow, unknown> = {
+  id: "principal",
+  header: "Principal",
+  accessorFn: principalOf,
+  cell: ({ row }) => formatPlataWalletAmount(principalOf(row.original)),
+}
+const returnColumn: ColumnDef<TreasuryPayoutRow, unknown> = {
+  id: "return",
+  header: "Return",
+  accessorFn: returnOf,
+  cell: ({ row }) => formatPlataWalletAmount(returnOf(row.original)),
+}
+
+/** Leading checkbox column for the batch-approve queues. */
+function selectColumn({
+  selected,
+  allChecked,
+  disabled,
+  selectable,
+  onToggleAll,
+  onToggle,
+}: {
+  selected: Set<string>
+  allChecked: boolean
+  disabled: boolean
+  selectable: (row: TreasuryPayoutRow) => boolean
+  onToggleAll: (checked: boolean) => void
+  onToggle: (ref: string, checked: boolean) => void
+}): ColumnDef<TreasuryPayoutRow, unknown> {
+  return {
+    id: "select",
+    size: 44,
+    meta: { label: "Select" },
+    header: () => (
+      <Checkbox
+        checked={allChecked}
+        disabled={disabled}
+        onCheckedChange={(v) => onToggleAll(v === true)}
+        aria-label="Select all"
+        className="border-[#98A2B3] data-[state=checked]:border-[#0B1E3B] data-[state=checked]:bg-[#0B1E3B]"
+      />
+    ),
+    cell: ({ row }) =>
+      selectable(row.original) ? (
+        <Checkbox
+          checked={selected.has(row.original.reference)}
+          onCheckedChange={(v) => onToggle(row.original.reference, v === true)}
+          aria-label={`Select ${row.original.customerName}`}
+          className="border-[#98A2B3] data-[state=checked]:border-[#0B1E3B] data-[state=checked]:bg-[#0B1E3B]"
+        />
+      ) : null,
+  }
 }
 
 function DecisionHistoryCard({
@@ -484,6 +565,7 @@ function DecisionHistoryCard({
   historyLoading,
   historyError,
   onHistoryFilterChange,
+  onRefresh,
 }: {
   variant: "withdrawals" | "settlements"
   description: string
@@ -494,29 +576,68 @@ function DecisionHistoryCard({
   historyLoading: boolean
   historyError: string | null
   onHistoryFilterChange: (status: HistoryFilter) => void
+  onRefresh?: () => void
 }) {
   const showReason = historyFilter === "rejected"
-  const headers =
+  const reasonColumn: ColumnDef<TreasuryPayoutRow, unknown>[] = showReason
+    ? [
+        {
+          id: "reason",
+          header: "Reason",
+          size: 220,
+          accessorFn: (r) => r.reason?.trim() || "—",
+          cell: ({ getValue }) => <span className="block truncate text-[#667085]">{String(getValue())}</span>,
+        },
+      ]
+    : []
+  const statusColumn: ColumnDef<TreasuryPayoutRow, unknown> = {
+    accessorKey: "status",
+    header: "Status",
+    cell: ({ row }) => <StatusPill status={row.original.status} />,
+  }
+  const columns: ColumnDef<TreasuryPayoutRow, unknown>[] =
     variant === "withdrawals"
-      ? showReason
-        ? ["Customer", "Requesting From", "Amount", "Requested", "Decided", "Reason", "Status"]
-        : ["Customer", "Requesting From", "Amount", "Requested", "Decided", "Status"]
-      : showReason
-        ? ["Customer", "Product", "Principal", "Return", "Maturity", "Decided", "Reason", "Status"]
-        : ["Customer", "Product", "Principal", "Return", "Maturity", "Decided", "Status"]
+      ? [
+          customerColumn,
+          requestingFromColumn,
+          amountColumn,
+          { id: "requested", header: "Requested", accessorFn: (r) => formatShortDate(r.requestedOn) },
+          { id: "decided", header: "Decided", accessorFn: (r) => formatShortDate(r.decidedAt) },
+          ...reasonColumn,
+          statusColumn,
+        ]
+      : [
+          customerColumn,
+          productColumn,
+          principalColumn,
+          returnColumn,
+          { id: "maturity", header: "Maturity", accessorFn: (r) => formatShortDate(r.maturity) },
+          { id: "decided", header: "Decided", accessorFn: (r) => formatShortDate(r.decidedAt) },
+          ...reasonColumn,
+          statusColumn,
+        ]
 
   return (
-    <div className="overflow-hidden rounded-xl border border-[#E4E7EC] bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E4E7EC] bg-[#F9FAFB] px-5 py-4">
-        <div>
-          <h3 className="text-[13.5px] font-extrabold text-[#1D2939]">Decision history</h3>
-          <p className="mt-0.5 text-[11.5px] text-[#667085]">{description}</p>
-        </div>
-        <div
-          role="tablist"
-          aria-label="History status filter"
-          className="inline-flex rounded-lg border border-[#E4E7EC] bg-[#F2F4F7] p-0.5"
-        >
+    <DataTable
+      tableId={`decision-history-${variant}-${historyFilter}`}
+      title="Decision history"
+      description={
+        <>
+          {description}
+          {historyTotal > historyRows.length ? ` Showing ${historyRows.length} of ${historyTotal}.` : ""}
+        </>
+      }
+      columns={columns}
+      data={historyRows}
+      isLoading={historyLoading}
+      isError={!!historyError}
+      error={historyError}
+      onRefresh={onRefresh}
+      clientSearch
+      download
+      empty={`No ${historyFilter} ${emptyNoun} yet.`}
+      action={
+        <div role="tablist" aria-label="History status filter" className="inline-flex rounded-lg border border-[#E4E7EC] bg-[#F2F4F7] p-0.5">
           {([
             { key: "approved", label: "Approved" },
             { key: "rejected", label: "Rejected" },
@@ -531,9 +652,7 @@ function DecisionHistoryCard({
                 onClick={() => onHistoryFilterChange(opt.key)}
                 className={cn(
                   "rounded-md px-3.5 py-1.5 text-[12.5px] font-bold transition-colors",
-                  active
-                    ? "bg-white text-[#0B1E3B] shadow-sm"
-                    : "text-[#667085] hover:text-[#1D2939]",
+                  active ? "bg-white text-[#0B1E3B] shadow-sm" : "text-[#667085] hover:text-[#1D2939]",
                 )}
               >
                 {opt.label}
@@ -541,126 +660,8 @@ function DecisionHistoryCard({
             )
           })}
         </div>
-      </div>
-
-      {historyError ? (
-        <div className="border-b border-yellow-200 bg-yellow-50 px-5 py-3 text-sm text-yellow-800">
-          {historyError}
-        </div>
-      ) : null}
-
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-b border-[#E4E7EC] bg-[#FCFCFD]">
-              {headers.map((h) => (
-                <th
-                  key={h}
-                  className="px-4 py-2.5 text-left text-[10.5px] font-extrabold uppercase tracking-wider text-[#98A2B3]"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {historyLoading ? (
-              <tr>
-                <td
-                  colSpan={headers.length}
-                  className="px-5 py-10 text-center text-sm text-[#667085]"
-                >
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Loading history…
-                  </span>
-                </td>
-              </tr>
-            ) : historyRows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={headers.length}
-                  className="px-5 py-10 text-center text-sm text-[#667085]"
-                >
-                  No {historyFilter} {emptyNoun} yet.
-                </td>
-              </tr>
-            ) : (
-              historyRows.map((row) => {
-                if (variant === "withdrawals") {
-                  return (
-                    <tr key={row.reference} className="border-b border-[#E4E7EC] last:border-0">
-                      <td className="px-4 py-3 text-[13.5px] font-bold text-[#1D2939]">
-                        {row.customerName}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                        {row.requestingFrom || row.productName || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] font-semibold text-[#1D2939]">
-                        {formatPlataWalletAmount(row.amount)}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                        {formatShortDate(row.requestedOn)}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                        {formatShortDate(row.decidedAt)}
-                      </td>
-                      {showReason ? (
-                        <td className="max-w-[220px] truncate px-4 py-3 text-[13.5px] text-[#667085]">
-                          {row.reason?.trim() || "—"}
-                        </td>
-                      ) : null}
-                      <td className="px-4 py-3">
-                        <StatusPill status={row.status} />
-                      </td>
-                    </tr>
-                  )
-                }
-
-                const principal = row.principal ?? 0
-                const ret = row.returnAmount ?? Math.max(0, row.amount - principal)
-                return (
-                  <tr key={row.reference} className="border-b border-[#E4E7EC] last:border-0">
-                    <td className="px-4 py-3 text-[13.5px] font-bold text-[#1D2939]">
-                      {row.customerName}
-                    </td>
-                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                      {row.productName || "—"}
-                    </td>
-                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                      {formatPlataWalletAmount(principal)}
-                    </td>
-                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                      {formatPlataWalletAmount(ret)}
-                    </td>
-                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                      {formatShortDate(row.maturity)}
-                    </td>
-                    <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                      {formatShortDate(row.decidedAt)}
-                    </td>
-                    {showReason ? (
-                      <td className="max-w-[220px] truncate px-4 py-3 text-[13.5px] text-[#667085]">
-                        {row.reason?.trim() || "—"}
-                      </td>
-                    ) : null}
-                    <td className="px-4 py-3">
-                      <StatusPill status={row.status} />
-                    </td>
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="border-t border-[#E4E7EC] bg-[#F9FAFB] px-5 py-3 text-[12.5px] font-semibold text-[#667085]">
-        {historyLoading
-          ? "…"
-          : `${historyRows.length} shown${historyTotal > historyRows.length ? ` of ${historyTotal}` : ""}`}
-      </div>
-    </div>
+      }
+    />
   )
 }
 
@@ -680,6 +681,8 @@ function WithdrawalsPanel({
   onToggle,
   onApprove,
   onReject,
+  onRefresh,
+  onRefreshHistory,
 }: {
   rows: TreasuryPayoutRow[]
   selected: Set<string>
@@ -696,6 +699,8 @@ function WithdrawalsPanel({
   onToggle: (ref: string, checked: boolean) => void
   onApprove: () => void
   onReject: () => void
+  onRefresh?: () => void
+  onRefreshHistory?: () => void
 }) {
   const pending = rows.filter((r) => r.status === "pending")
   const selCount = selected.size
@@ -713,86 +718,33 @@ function WithdrawalsPanel({
       </div>
 
       <div className="overflow-hidden rounded-xl border border-[#E4E7EC] bg-white">
-        <div className="flex items-center justify-between border-b border-[#E4E7EC] bg-[#F9FAFB] px-5 py-4">
-          <div>
-            <h3 className="text-[13.5px] font-extrabold text-[#1D2939]">Pending Withdrawal Requests</h3>
-            <p className="mt-0.5 text-[11.5px] text-[#667085]">
-              Select one or more requests, then approve or reject as a batch.
-            </p>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-[#E4E7EC] bg-[#FCFCFD]">
-                <th className="w-9 px-4 py-2.5 text-left">
-                  <Checkbox
-                    checked={allChecked}
-                    disabled={pending.length === 0}
-                    onCheckedChange={(v) => onToggleAll(v === true)}
-                    className="border-[#98A2B3] data-[state=checked]:border-[#0B1E3B] data-[state=checked]:bg-[#0B1E3B]"
-                  />
-                </th>
-                {["Customer", "Requesting From", "Amount", "Requested", "Status"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-2.5 text-left text-[10.5px] font-extrabold uppercase tracking-wider text-[#98A2B3]"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-sm text-[#667085]">
-                    No withdrawal requests right now.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => {
-                  const isPending = row.status === "pending"
-                  return (
-                    <tr
-                      key={row.reference}
-                      className={cn(
-                        "border-b border-[#E4E7EC] last:border-0",
-                        !isPending && "opacity-55",
-                      )}
-                    >
-                      <td className="px-4 py-3">
-                        {isPending ? (
-                          <Checkbox
-                            checked={selected.has(row.reference)}
-                            onCheckedChange={(v) => onToggle(row.reference, v === true)}
-                            className="border-[#98A2B3] data-[state=checked]:border-[#0B1E3B] data-[state=checked]:bg-[#0B1E3B]"
-                          />
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] font-bold text-[#1D2939]">
-                        {row.customerName}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                        {row.requestingFrom || row.productName || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] font-semibold text-[#1D2939]">
-                        {formatPlataWalletAmount(row.amount)}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                        {formatShortDate(row.requestedOn)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusPill status={row.status} />
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          bordered={false}
+          tableId="pending-withdrawals"
+          title="Pending Withdrawal Requests"
+          description="Select one or more requests, then approve or reject as a batch."
+          columns={[
+            selectColumn({
+              selected,
+              allChecked,
+              disabled: pending.length === 0,
+              selectable: (r) => r.status === "pending",
+              onToggleAll,
+              onToggle,
+            }),
+            customerColumn,
+            requestingFromColumn,
+            amountColumn,
+            { id: "requested", header: "Requested", accessorFn: (r) => formatShortDate(r.requestedOn) },
+            { accessorKey: "status", header: "Status", cell: ({ row }) => <StatusPill status={row.original.status} /> },
+          ]}
+          data={rows}
+          onRefresh={onRefresh}
+          clientSearch
+          download
+          rowClassName={(r) => (r.status === "pending" ? undefined : "opacity-55")}
+          empty="No withdrawal requests right now."
+        />
 
         <div className="flex items-center justify-between border-t border-[#E4E7EC] bg-[#F9FAFB] px-5 py-3 text-[12.5px]">
           <span className="font-semibold text-[#667085]">{selCount} selected</span>
@@ -835,6 +787,7 @@ function WithdrawalsPanel({
         historyLoading={historyLoading}
         historyError={historyError}
         onHistoryFilterChange={onHistoryFilterChange}
+        onRefresh={onRefreshHistory}
       />
     </div>
   )
@@ -860,6 +813,8 @@ function SettlementPanel({
   onToggle,
   onApprove,
   onReject,
+  onRefresh,
+  onRefreshHistory,
 }: {
   type: SettlementType
   rows: TreasuryPayoutRow[]
@@ -880,6 +835,8 @@ function SettlementPanel({
   onToggle: (ref: string, checked: boolean) => void
   onApprove: () => void
   onReject: () => void
+  onRefresh?: () => void
+  onRefreshHistory?: () => void
 }) {
   const meta = SETTLEMENT_META[type]
   const isAuto = mode === "automatic"
@@ -937,82 +894,32 @@ function SettlementPanel({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-[#E4E7EC] bg-[#FCFCFD]">
-                <th className="w-9 px-4 py-2.5 text-left">
-                  <Checkbox
-                    checked={allChecked}
-                    disabled={isAuto || pending.length === 0}
-                    onCheckedChange={(v) => onToggleAll(v === true)}
-                    className="border-[#98A2B3] data-[state=checked]:border-[#0B1E3B] data-[state=checked]:bg-[#0B1E3B]"
-                  />
-                </th>
-                {["Customer", "Product", "Principal", "Return", "Maturity", "Status"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-2.5 text-left text-[10.5px] font-extrabold uppercase tracking-wider text-[#98A2B3]"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-sm text-[#667085]">
-                    No matured {type} pending settlement.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) => {
-                  const isPending = row.status === "pending"
-                  const principal = row.principal ?? 0
-                  const ret = row.returnAmount ?? Math.max(0, row.amount - principal)
-                  return (
-                    <tr
-                      key={row.reference}
-                      className={cn(
-                        "border-b border-[#E4E7EC] last:border-0",
-                        !isPending && "opacity-55",
-                      )}
-                    >
-                      <td className="px-4 py-3">
-                        {isPending && !isAuto ? (
-                          <Checkbox
-                            checked={selected.has(row.reference)}
-                            onCheckedChange={(v) => onToggle(row.reference, v === true)}
-                            className="border-[#98A2B3] data-[state=checked]:border-[#0B1E3B] data-[state=checked]:bg-[#0B1E3B]"
-                          />
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] font-bold text-[#1D2939]">
-                        {row.customerName}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                        {row.productName || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                        {formatPlataWalletAmount(principal)}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                        {formatPlataWalletAmount(ret)}
-                      </td>
-                      <td className="px-4 py-3 text-[13.5px] text-[#1D2939]">
-                        {formatShortDate(row.maturity)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <StatusPill status={row.status} />
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          bordered={false}
+          tableId={`settlements-${type}`}
+          columns={[
+            selectColumn({
+              selected,
+              allChecked,
+              disabled: isAuto || pending.length === 0,
+              selectable: (r) => r.status === "pending" && !isAuto,
+              onToggleAll,
+              onToggle,
+            }),
+            customerColumn,
+            productColumn,
+            principalColumn,
+            returnColumn,
+            { id: "maturity", header: "Maturity", accessorFn: (r) => formatShortDate(r.maturity) },
+            { accessorKey: "status", header: "Status", cell: ({ row }) => <StatusPill status={row.original.status} /> },
+          ]}
+          data={rows}
+          onRefresh={onRefresh}
+          clientSearch
+          download={{ filename: `matured-${type}`, title: meta.title }}
+          rowClassName={(r) => (r.status === "pending" ? undefined : "opacity-55")}
+          empty={`No matured ${type} pending settlement.`}
+        />
 
         <div className="flex items-center justify-between gap-3 border-t border-[#E4E7EC] bg-[#F9FAFB] px-5 py-3 text-[12.5px]">
           {isAuto ? (
@@ -1064,6 +971,7 @@ function SettlementPanel({
         historyLoading={historyLoading}
         historyError={historyError}
         onHistoryFilterChange={onHistoryFilterChange}
+        onRefresh={onRefreshHistory}
       />
     </div>
   )

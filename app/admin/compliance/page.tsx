@@ -1,8 +1,8 @@
 "use client"
 
 import { useState } from "react"
-import { Search, ChevronDown, Eye, MoreVertical, AlertTriangle, Clock } from "lucide-react"
-import { Input } from "@/components/ui/input"
+import { ChevronDown, AlertTriangle, Clock } from "lucide-react"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 
@@ -42,6 +42,25 @@ export default function AdminCompliancePage() {
       riskLevel: "High risk",
       assignTo: "Adedayo",
     },
+  ]
+
+  type KycItem = (typeof kycQueue)[number]
+  const pill = (value: string, good: string, bad: string) => (
+    <span
+      className={`inline-flex items-center rounded-full px-3 py-1 text-sm ${
+        value === good ? "bg-green-100 text-green-700" : value === bad ? "bg-red-100 text-red-700" : "bg-orange-100 text-orange-700"
+      }`}
+    >
+      {value}
+    </span>
+  )
+  const columns: ColumnDef<KycItem, unknown>[] = [
+    { accessorKey: "customer", header: "Customer" },
+    { accessorKey: "documentType", header: "Document type" },
+    { accessorKey: "submissionDate", header: "Submission date" },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => pill(row.original.status, "Approved", "Rejected") },
+    { accessorKey: "riskLevel", header: "Risk level", cell: ({ row }) => pill(row.original.riskLevel, "Low", "High risk") },
+    { accessorKey: "assignTo", header: "Assign to" },
   ]
 
   return (
@@ -179,95 +198,30 @@ export default function AdminCompliancePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-6 mb-6">
-          <h2 className="text-xl font-medium text-gray-900 whitespace-nowrap">KYC Verification Queue</h2>
-
-          <div className="flex-1 flex justify-center">
-            <div className="w-96">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input placeholder="Search" className="pl-10 bg-white border-gray-200" />
-              </div>
-            </div>
-          </div>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="border-gray-200 text-gray-700 hover:bg-gray-50 bg-transparent">
-                Filter
-                <ChevronDown className="ml-2 h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem>All</DropdownMenuItem>
-              <DropdownMenuItem>Approved</DropdownMenuItem>
-              <DropdownMenuItem>Under review</DropdownMenuItem>
-              <DropdownMenuItem>Rejected</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        <div className="bg-gray-50 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-200">
-                <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Costumer</th>
-                <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Document type</th>
-                <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Submission date</th>
-                <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Status</th>
-                <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Risk level</th>
-                <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Assign to</th>
-                <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {kycQueue.map((item, index) => (
-                <tr key={index} className="border-b border-gray-200 bg-white">
-                  <td className="py-4 px-4 text-sm">{item.customer}</td>
-                  <td className="py-4 px-4 text-sm text-gray-600">{item.documentType}</td>
-                  <td className="py-4 px-4 text-sm text-gray-600">{item.submissionDate}</td>
-                  <td className="py-4 px-4">
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
-                        item.status === "Approved"
-                          ? "bg-green-100 text-green-700"
-                          : item.status === "Rejected"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-orange-100 text-orange-700"
-                      }`}
-                    >
-                      {item.status}
-                    </span>
-                  </td>
-                  <td className="py-4 px-4">
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
-                        item.riskLevel === "Low"
-                          ? "bg-green-100 text-green-700"
-                          : item.riskLevel === "High risk"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-orange-100 text-orange-700"
-                      }`}
-                    >
-                      {item.riskLevel}
-                    </span>
-                  </td>
-                  <td className="py-4 px-4 text-sm">{item.assignTo}</td>
-                  <td className="py-4 px-4">
-                    <div className="flex items-center gap-2">
-                      <button className="p-1 hover:bg-gray-100 rounded">
-                        <Eye className="h-4 w-4 text-gray-600" />
-                      </button>
-                      <button className="p-1 hover:bg-gray-100 rounded">
-                        <MoreVertical className="h-4 w-4 text-gray-600" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          tableId="admin-kyc-queue"
+          title="KYC Verification Queue"
+          columns={columns}
+          data={kycQueue}
+          clientSearch
+          download
+          action={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="border-gray-200 bg-transparent text-gray-700 hover:bg-gray-50">
+                  Filter
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem>All</DropdownMenuItem>
+                <DropdownMenuItem>Approved</DropdownMenuItem>
+                <DropdownMenuItem>Under review</DropdownMenuItem>
+                <DropdownMenuItem>Rejected</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+        />
       </div>
     </div>
   )

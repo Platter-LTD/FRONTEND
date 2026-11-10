@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Search, RefreshCw, WalletCards, Copy } from "lucide-react"
-import { Input } from "@/components/ui/input"
+import { RefreshCw, Copy } from "lucide-react"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { adminWalletApi, AdminWalletTransaction } from "@/lib/services/adminService"
 import WalletHistoryDrawer from "@/components/drawers/wallet-history-drawer"
 import { toast } from "sonner"
@@ -17,7 +17,6 @@ export default function AdminWalletPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
   const [transactions, setTransactions] = useState<AdminWalletTransaction[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState("")
   const [summary, setSummary] = useState<{
     totalWallets?: number
     totalBalance?: number
@@ -46,15 +45,6 @@ export default function AdminWalletPage() {
 
   useEffect(() => { fetchData() }, [])
 
-  const filteredTx = transactions.filter(tx => {
-    const q = searchQuery.toLowerCase()
-    return (
-      tx.referenceId?.toLowerCase().includes(q) ||
-      tx.description?.toLowerCase().includes(q) ||
-      tx.userEmail?.toLowerCase().includes(q) ||
-      tx.id.toLowerCase().includes(q)
-    )
-  })
 
   const formatCurrency = (n: number) =>
     `₦${n.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -63,6 +53,82 @@ export default function AdminWalletPage() {
     const date = new Date(d)
     return `${date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })} / ${date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
   }
+
+  const columns: ColumnDef<AdminWalletTransaction, unknown>[] = [
+    {
+      accessorKey: "amount",
+      header: "Amount",
+      cell: ({ row: { original: tx } }) => (
+        <span className={`font-semibold ${tx.type === "CREDIT" ? "text-green-700" : "text-red-700"}`}>
+          {tx.type === "CREDIT" ? "+" : "-"}{formatCurrency(tx.amount)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "type",
+      header: "Type",
+      cell: ({ row: { original: tx } }) => (
+        <span className={`rounded px-2 py-0.5 text-xs font-medium ${tx.type === "CREDIT" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+          {tx.type}
+        </span>
+      ),
+    },
+    {
+      id: "reference",
+      header: "Reference",
+      accessorFn: (tx) => tx.referenceId ?? tx.id,
+      cell: ({ row: { original: tx } }) => (
+        <div className="flex items-center gap-1 font-mono">
+          <span>{tx.referenceId?.slice(0, 16) ?? tx.id.slice(0, 12)}</span>
+          <button
+            type="button"
+            aria-label="Copy reference"
+            className="text-gray-400 hover:text-gray-600"
+            onClick={(e) => {
+              e.stopPropagation()
+              copyToClipboard(tx.referenceId ?? tx.id)
+            }}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ),
+    },
+    { accessorKey: "createdAt", header: "Timestamp", cell: ({ row }) => formatDate(row.original.createdAt) },
+    {
+      accessorKey: "description",
+      header: "Description",
+      size: 220,
+      cell: ({ row }) => <span className="block truncate" title={row.original.description}>{row.original.description || "—"}</span>,
+    },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row: { original: tx } }) => (
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+            tx.status === "COMPLETED" ? "bg-green-100 text-green-700" : tx.status === "FAILED" ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"
+          }`}
+        >
+          {tx.status}
+        </span>
+      ),
+    },
+    {
+      id: "user",
+      header: "User",
+      accessorFn: (tx) => tx.userEmail ?? "",
+      cell: ({ row: { original: tx } }) =>
+        tx.userEmail ? (
+          <div>
+            <div>{tx.userEmail}</div>
+            {tx.userPhone && <div className="text-xs text-gray-400">{tx.userPhone}</div>}
+          </div>
+        ) : (
+          "—"
+        ),
+    },
+  ]
 
   return (
     <div className="flex-1 bg-white">
@@ -130,107 +196,18 @@ export default function AdminWalletPage() {
           </div>
         </div>
 
-        {/* Wallet History */}
-        <div className="mb-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-medium">Transaction History</h3>
-            <div className="relative w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search by ref, email..."
-                className="pl-10 bg-white border-gray-200"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="bg-gray-50 rounded-lg overflow-hidden">
-          {loading ? (
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-7 gap-4">
-                {Array.from({ length: 7 }).map((_, i) => (
-                  <Skeleton key={`head-${i}`} className="h-4 w-24" />
-                ))}
-              </div>
-              {Array.from({ length: 8 }).map((_, row) => (
-                <div key={`row-${row}`} className="grid grid-cols-7 gap-4">
-                  {Array.from({ length: 7 }).map((_, col) => (
-                    <Skeleton key={`cell-${row}-${col}`} className="h-4 w-24" />
-                  ))}
-                </div>
-              ))}
-            </div>
-          ) : filteredTx.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <WalletCards className="w-10 h-10 text-gray-300 mb-3" />
-              <p className="text-sm text-gray-500">
-                {searchQuery ? "No transactions match your search." : "No transactions yet."}
-              </p>
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Amount</th>
-                  <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Type</th>
-                  <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Reference</th>
-                  <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Timestamp</th>
-                  <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Description</th>
-                  <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">Status</th>
-                  <th className="text-left py-4 px-4 text-sm font-normal text-gray-700">User</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTx.map((tx) => (
-                  <tr key={tx.id} className="border-b border-gray-200 bg-white hover:bg-gray-50 transition-colors">
-                    <td className="py-4 px-4 text-sm font-semibold">
-                      <span className={tx.type === "CREDIT" ? "text-green-700" : "text-red-700"}>
-                        {tx.type === "CREDIT" ? "+" : "-"}{formatCurrency(tx.amount)}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${tx.type === "CREDIT" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {tx.type}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm font-mono text-gray-600">
-                      <div className="flex items-center gap-1">
-                        <span>{tx.referenceId?.slice(0, 16) ?? tx.id.slice(0, 12)}</span>
-                        <button
-                          className="text-gray-400 hover:text-gray-600"
-                          onClick={() => copyToClipboard(tx.referenceId ?? tx.id)}
-                        >
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-gray-500">{formatDate(tx.createdAt)}</td>
-                    <td className="py-4 px-4 text-sm text-gray-600 max-w-[200px] truncate">{tx.description || "—"}</td>
-                    <td className="py-4 px-4 text-sm">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tx.status === "COMPLETED" ? "bg-green-100 text-green-700" :
-                          tx.status === "FAILED" ? "bg-red-100 text-red-700" :
-                            "bg-gray-100 text-gray-600"
-                        }`}>
-                        {tx.status}
-                      </span>
-                    </td>
-                    <td className="py-4 px-4 text-sm text-gray-600">
-                      {tx.userEmail ? (
-                        <div>
-                          <div>{tx.userEmail}</div>
-                          {tx.userPhone && <div className="text-xs text-gray-400">{tx.userPhone}</div>}
-                        </div>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <DataTable
+          tableId="admin-wallet-transactions"
+          title="Transaction History"
+          columns={columns}
+          data={transactions}
+          isLoading={loading}
+          onRefresh={fetchData}
+          clientSearch
+          searchPlaceholder="Search by ref, email..."
+          download
+          empty="No transactions yet."
+        />
       </div>
 
       <WalletHistoryDrawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} />

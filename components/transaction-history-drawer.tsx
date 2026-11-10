@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { X, Download, Share } from "lucide-react"
+import { DrawerPanel } from "@/components/ui/drawer-panel"
+import { Download, Share } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
@@ -81,128 +81,78 @@ export const TransactionHistoryDrawer = ({
     : ""
   const initials = initialsFromName || (displayEmail?.charAt(0) ?? "U").toUpperCase()
 
-  // ESC close
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && open) {
-        onOpenChange(false)
-      }
-    }
 
-    if (open) {
-      document.addEventListener("keydown", handleKeyDown)
-      document.body.style.overflow = "hidden"
-    }
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown)
-      document.body.style.overflow = "unset"
-    }
-  }, [open, onOpenChange])
+  if (!record) return null
 
   return (
-    <AnimatePresence>
-      {open && record && (
-        <div
-          className="fixed inset-0 z-50 flex pointer-events-none"
-          // backdrop + drawer wrapper
+    <DrawerPanel
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onOpenChange(false)
+      }}
+      title={<>Transaction History {record.transactionId}</>}
+      bodyClassName="p-0 gap-0"
+    >
+
+
+    {/* Content */}
+    <div className="flex-1 px-12 py-12 space-y-2">
+      <TransactionDetailRow
+        label="Payment for"
+        value={<span className="text-sm font-medium text-transaction-value">Loan product creation</span>}
+      />
+      <TransactionDetailRow
+        label="Amount"
+        value={<span className="text-lg font-bold text-transaction-value">{record.amount}</span>}
+      />
+      <TransactionDetailRow
+        label="Transaction ID"
+        value={<span className="text-sm font-medium text-transaction-value">{record.transactionId}</span>}
+      />
+      <TransactionDetailRow
+        label="Date"
+        value={<span className="text-sm font-medium text-transaction-value">{record.date}</span>}
+      />
+      <TransactionDetailRow label="Status" value={<StatusBadge status={record.status} />} />
+      <TransactionDetailRow
+        label="Initiated by"
+        value={
+          <div className="flex items-center gap-3">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="bg-primary/10 text-primary text-xs">{initials}</AvatarFallback>
+            </Avatar>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-transaction-value">{displayName}</span>
+              <span className="text-xs text-transaction-label">{displayEmail}</span>
+            </div>
+          </div>
+        }
+        className="pb-0 border-b-0"
+      />
+    </div>
+
+    {/* Footer */}
+    <div className="flex justify-center gap-32 px-8 py-12 mb-[150px] bg-background rounded-bl-[40px]">
+      <div className="flex flex-col items-center gap-3">
+        <button
+          onClick={onDownload}
+          className="h-14 w-14 rounded-full bg-[#E0D8C3] flex items-center justify-center"
         >
-          {/* Backdrop */}
-          <motion.div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => onOpenChange(false)}
-          />
+          <Download className="h-5 w-5" style={{ color: "#9A813F" }} />
+        </button>
+        <span className="text-xs text-transaction-label font-medium">Download</span>
+      </div>
+      <div className="flex flex-col items-center gap-3">
+        <button
+          onClick={onShare}
+          className="h-14 w-14 rounded-full bg-[#E0D8C3] flex items-center justify-center"
+        >
+          <Share className="h-5 w-5" style={{ color: "#9A813F" }} />
+        </button>
+        <span className="text-xs text-transaction-label font-medium">Share</span>
+      </div>
+    </div>
 
-          {/* Drawer */}
-          <motion.div
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className={cn(
-              "relative ml-auto w-[45%] min-w-[400px] bg-background shadow-2xl",
-              "border-l border-t border-b border-border flex flex-col max-h-screen",
-              "rounded-tl-[40px] rounded-bl-[40px] pointer-events-auto",
-            )}
-          >
-            {/* Close button */}
-            <button
-              onClick={() => onOpenChange(false)}
-              className="absolute -left-20 top-6 h-10 w-10 flex items-center justify-center rounded-full bg-background shadow-md hover:bg-muted"
-            >
-              <X className="h-5 w-5 text-foreground" />
-            </button>
-
-            {/* Header */}
-            <div className="px-12 py-12  rounded-tl-[40px] bg-background">
-              <h2 className="text-center text-xl font-semibold text-transaction-value pr-8">
-                Transaction History {record.transactionId}
-              </h2>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 px-12 py-12 space-y-2">
-              <TransactionDetailRow
-                label="Payment for"
-                value={<span className="text-sm font-medium text-transaction-value">Loan product creation</span>}
-              />
-              <TransactionDetailRow
-                label="Amount"
-                value={<span className="text-lg font-bold text-transaction-value">{record.amount}</span>}
-              />
-              <TransactionDetailRow
-                label="Transaction ID"
-                value={<span className="text-sm font-medium text-transaction-value">{record.transactionId}</span>}
-              />
-              <TransactionDetailRow
-                label="Date"
-                value={<span className="text-sm font-medium text-transaction-value">{record.date}</span>}
-              />
-              <TransactionDetailRow label="Status" value={<StatusBadge status={record.status} />} />
-              <TransactionDetailRow
-                label="Initiated by"
-                value={
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback className="bg-primary/10 text-primary text-xs">{initials}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium text-transaction-value">{displayName}</span>
-                      <span className="text-xs text-transaction-label">{displayEmail}</span>
-                    </div>
-                  </div>
-                }
-                className="pb-0 border-b-0"
-              />
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-center gap-32 px-8 py-12 mb-[150px] bg-background rounded-bl-[40px]">
-              <div className="flex flex-col items-center gap-3">
-                <button
-                  onClick={onDownload}
-                  className="h-14 w-14 rounded-full bg-[#E0D8C3] flex items-center justify-center"
-                >
-                  <Download className="h-5 w-5" style={{ color: "#9A813F" }} />
-                </button>
-                <span className="text-xs text-transaction-label font-medium">Download</span>
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <button
-                  onClick={onShare}
-                  className="h-14 w-14 rounded-full bg-[#E0D8C3] flex items-center justify-center"
-                >
-                  <Share className="h-5 w-5" style={{ color: "#9A813F" }} />
-                </button>
-                <span className="text-xs text-transaction-label font-medium">Share</span>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+    </DrawerPanel>
   )
 }

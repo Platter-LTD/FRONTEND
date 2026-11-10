@@ -3,15 +3,15 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Copy } from "lucide-react"
-import { CiMenuKebab } from "react-icons/ci"
+import { UserPlus } from "lucide-react"
+import { BrandButton } from "@/components/compliance/compliance-ui"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { CreateShareholderDrawer } from "@/components/CreateShareholderDrawer"
 import { ComplianceService } from "@/lib/services/complianceService"
 import { toast } from "react-toastify"
 import { useAuth } from "@/hooks/useAuth"
 import { useComplianceForm } from "@/providers/ComplianceFormProvider"
 import type { ShareholderRow } from "@/providers/ComplianceFormProvider"
-import { Skeleton } from "@/components/ui/skeleton"
 import { pickShareholderPhone } from "@/lib/pickShareholderPhone"
 import { pickShareholderKycUrl } from "@/lib/pickShareholderKycUrl"
 
@@ -19,6 +19,7 @@ export function ShareholderInfo() {
   const { user, loading: authLoading } = useAuth()
   const { shareholders, setShareholders, setShareholderDrawerOpen } = useComplianceForm()
   const [loading, setLoading] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
 
   // Fetch shareholders on mount so the table persists after refresh (merchant or admin)
   useEffect(() => {
@@ -57,7 +58,7 @@ export function ShareholderInfo() {
     }
 
     load()
-  }, [authLoading, user, setShareholders])
+  }, [authLoading, user, setShareholders, reloadKey])
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -71,8 +72,6 @@ export function ShareholderInfo() {
         return "bg-gray-100 text-gray-800"
     }
   }
-
-  const colCount = 8
 
   const copyKycUrl = async (url: string) => {
     try {
@@ -100,120 +99,74 @@ export function ShareholderInfo() {
     window.location.href = `mailto:${encodeURIComponent(row.email.trim())}?subject=${subject}&body=${body}`
   }
 
+  const columns: ColumnDef<ShareholderRow, unknown>[] = [
+    { accessorKey: "name", header: "Name", cell: ({ row }) => <span className="text-gray-900">{row.original.name}</span> },
+    { accessorKey: "email", header: "Email" },
+    { accessorKey: "phone", header: "Phone" },
+    { accessorKey: "date", header: "Date/time" },
+    {
+      id: "kyc",
+      header: "KYC",
+      accessorFn: (r) => r.kycUrl ?? "",
+      cell: ({ row: { original: row } }) =>
+        row.kycUrl ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-[#9A813F] hover:text-[#7A6449]"
+              onClick={() => void copyKycUrl(row.kycUrl!)}
+            >
+              Copy link
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-[#9A813F] hover:text-[#7A6449]"
+              onClick={() => emailKycLink(row)}
+              disabled={!row.email?.trim()}
+            >
+              Email link
+            </Button>
+          </div>
+        ) : (
+          <span className="text-xs text-gray-400">No link</span>
+        ),
+    },
+    {
+      id: "upload",
+      header: "Upload",
+      cell: () => (
+        <Button variant="ghost" size="sm" className="text-[#9A813F] hover:text-[#7A6449]">
+          Upload
+        </Button>
+      ),
+    },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge className={getStatusColor(row.original.status)}>{row.original.status}</Badge> },
+  ]
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-end">
-        <Button onClick={() => setShareholderDrawerOpen(true)} className="bg-[#9A813F] hover:bg-[#8A7335] text-white">
-          <Copy className="w-4 h-4 mr-2" />
-          Create shareholder
-        </Button>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Date/time
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">KYC</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Upload</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"></th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {loading ? (
-              Array.from({ length: 4 }).map((_, i) => (
-                <tr key={`sk-${i}`}>
-                  <td className="px-6 py-4">
-                    <Skeleton className="h-4 w-36" />
-                  </td>
-                  <td className="px-6 py-4">
-                    <Skeleton className="h-4 w-44" />
-                  </td>
-                  <td className="px-6 py-4">
-                    <Skeleton className="h-4 w-28" />
-                  </td>
-                  <td className="px-6 py-4">
-                    <Skeleton className="h-4 w-32" />
-                  </td>
-                  <td className="px-6 py-4">
-                    <Skeleton className="h-8 w-20" />
-                  </td>
-                  <td className="px-6 py-4">
-                    <Skeleton className="h-8 w-16" />
-                  </td>
-                  <td className="px-6 py-4">
-                    <Skeleton className="h-6 w-20 rounded-full" />
-                  </td>
-                  <td className="px-6 py-4">
-                    <Skeleton className="h-5 w-5 rounded" />
-                  </td>
-                </tr>
-              ))
-            ) : shareholders.length === 0 ? (
-              <tr>
-                <td colSpan={colCount} className="px-6 py-12 text-center text-sm text-gray-500">
-                  No shareholders yet. Use &quot;Create shareholder&quot; to add one.
-                </td>
-              </tr>
-            ) : (
-              shareholders.map((row, idx) => (
-                <tr key={idx}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.name}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.email}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.phone}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row.date}</td>
-                  <td className="px-6 py-4 text-sm">
-                    {row.kycUrl ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-[#9A813F] hover:text-[#7A6449] h-8 px-2"
-                          onClick={() => void copyKycUrl(row.kycUrl!)}
-                        >
-                          Copy link
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-[#9A813F] hover:text-[#7A6449] h-8 px-2"
-                          onClick={() => emailKycLink(row)}
-                          disabled={!row.email?.trim()}
-                        >
-                          Email link
-                        </Button>
-                      </div>
-                    ) : (
-                      <span className="text-gray-400 text-xs">No link</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <Button variant="ghost" size="sm" className="text-[#9A813F] hover:text-[#7A6449]">
-                      Upload
-                    </Button>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <Badge className={getStatusColor(row.status)}>{row.status}</Badge>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button type="button" className="text-gray-400 hover:text-gray-600">
-                      <CiMenuKebab className="w-5 h-5" />
-                    </button>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        tableId="shareholders"
+        onRefresh={() => setReloadKey((k) => k + 1)}
+        title="Shareholders"
+        description="Add everyone who owns 25% or more of the business. Each shareholder gets a KYC link to verify their identity."
+        columns={columns}
+        data={shareholders}
+        isLoading={loading}
+        clientSearch
+        download
+        empty="No shareholders yet. Use “Create shareholder” to add one."
+        action={
+          <BrandButton onClick={() => setShareholderDrawerOpen(true)} className="h-9 px-4">
+            <UserPlus className="size-4" />
+            Create shareholder
+          </BrandButton>
+        }
+      />
 
       <CreateShareholderDrawer />
     </div>
