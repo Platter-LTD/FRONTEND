@@ -1,11 +1,8 @@
 /**
- * Pulls the latest OpenAPI spec from each microservice into specs/<name>.json.
- * Run via: npm run gen:update            (all services)
- *          npm run gen:update -- wallet-ms product-ms   (only these)
+ * Pulls the latest Plata gateway OpenAPI spec into specs/plata.json.
+ * Run via: npm run gen:update
  *
- * Each `url` must point at the service's own OpenAPI JSON (not the gateway's
- * /api-docs.json, which lists no paths). Services with `url: null` are skipped
- * and keep their committed spec until the URL is filled in.
+ * A spec with `url: null` is skipped and keeps its committed copy.
  */
 
 import { execSync } from "child_process"
@@ -16,19 +13,8 @@ import { fileURLToPath } from "url"
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const specsDir = join(__dirname, "..", "specs")
 
-// TODO: fill in each service's OpenAPI JSON URL.
-const SPECS = [
-  { name: "account-ms", url: null },
-  { name: "billing-ms", url: null },
-  { name: "client-auth-ms", url: null },
-  { name: "compliance-ms", url: null },
-  { name: "create-app-ms", url: null },
-  { name: "notifications-ms", url: null },
-  { name: "payment-ms", url: null },
-  { name: "product-ms", url: null },
-  { name: "service-auth-ms", url: null },
-  { name: "wallet-ms", url: null },
-]
+// "Plata Frontend API" spec published by the gateway (its /api-docs.json lists no paths).
+const SPECS = [{ name: "plata", url: "https://account-ms-plata.fly.dev/frontendplata/openapi.json" }]
 
 const requested = new Set(process.argv.slice(2))
 const unknown = [...requested].filter((name) => !SPECS.some((spec) => spec.name === name))
