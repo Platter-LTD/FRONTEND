@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Loader2, X } from "lucide-react"
+import { X } from "lucide-react"
 import { toast } from "sonner"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { Drawer } from "@/components/drawer"
@@ -15,7 +15,11 @@ import {
   PRODUCT_TYPE_SECTION_HELPER,
   ProductConfigInput,
   ProductConfigSelect,
+  ProductConfigFooter,
+  ProductConfigStepCard,
+  ProductConfigStepErrors,
   ProductConfigTabs,
+  RequirementMark,
   ProductConfigToggle,
 } from "@/components/drawers/product-config-form-fields"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
@@ -33,6 +37,7 @@ import {
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
 } from "@/lib/otherRequirementPayload"
+import { fetchTenureOptionsBody } from "@/lib/productCatalogQueries"
 
 interface ConfigureCommodityDrawerProps {
   isOpen: boolean
@@ -401,13 +406,10 @@ export default function ConfigureCommodityDrawer({
       setContentTypeOptions(prefetchedOptions.requirementContentType ?? [])
       return
     }
-    const url = isInvestment
-      ? "/api/configurations/options/investment-tenure"
-      : "/api/configurations/options/commodity-tenure"
+    const tenureKind = isInvestment ? "investment" : "commodity"
     const fetchTenure = async () => {
       try {
-        const res = await fetch(url, { credentials: "include", cache: "no-store" })
-        const json = await res.json().catch(() => ({}))
+        const json = await fetchTenureOptionsBody(tenureKind)
         const list = (json?.data ?? []) as { value?: string; label?: string }[]
         const opts =
           Array.isArray(list) && list.length
@@ -759,24 +761,22 @@ export default function ConfigureCommodityDrawer({
       onOpenChange={onClose}
       title={title}
       subtitle={subtitle}
-      className="w-full min-w-0 rounded-none sm:w-[92%] md:w-[78%] lg:w-[62%] xl:w-[52%] 2xl:w-[45%] sm:min-w-[400px] sm:rounded-bl-[40px] sm:rounded-tl-[40px]"
+      className="sm:max-w-[48rem]"
+      bodyClassName="bg-gray-50/70 p-4 sm:p-6"
+      subHeader={<ProductConfigTabs steps={steps} activeStep={step} onStepChange={setStep} />}
+      footer={
+        <ProductConfigFooter
+          step={step}
+          total={steps.length}
+          isSubmitting={isSubmitting}
+          onBack={handleBack}
+          onNext={handleNext}
+        />
+      }
     >
-      <div className="mx-auto w-full">
-        <ProductConfigTabs steps={[...steps]} activeStep={step} onStepChange={setStep} />
+      <ProductConfigStepCard steps={steps} activeStep={step}>
 
-        {stepErrors.length > 0 ? (
-          <div
-            className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-            role="alert"
-          >
-            <p className="mb-2 font-medium">Please fix the following before continuing:</p>
-            <ul className="list-inside list-disc space-y-1">
-              {stepErrors.map((msg) => (
-                <li key={msg}>{msg}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <ProductConfigStepErrors errors={stepErrors} />
 
         {step === 1 && (
           <ProductConfigAboutStep
@@ -826,7 +826,7 @@ export default function ConfigureCommodityDrawer({
 
         {step === 2 && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-end">
               <ProductConfigSelect
                 label="Yield Method"
                 placeholder="Select"
@@ -838,14 +838,13 @@ export default function ConfigureCommodityDrawer({
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-3">
                   <label htmlFor="offer-yield" className="text-sm font-medium text-gray-700">
-                    {offerYieldLabel}
-                    <span className="font-normal text-gray-500"> (Optional)</span>
+                    {offerYieldLabel}<RequirementMark requirement="optional" />
                   </label>
                   <Switch
                     id="offer-yield"
                     checked={offerYieldOn}
                     onCheckedChange={setOfferYieldOn}
-                    className="h-5 w-9 shrink-0 data-[state=checked]:bg-[#9A813F] data-[state=unchecked]:bg-slate-200"
+                    className="h-5 w-9 shrink-0 data-[state=checked]:bg-brand data-[state=unchecked]:bg-slate-200"
                   />
                 </div>
                 {offerYieldOn ? (
@@ -884,7 +883,7 @@ export default function ConfigureCommodityDrawer({
             </div>
 
             {isInvestment ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end">
                 <ProductConfigInput
                   label="Minimum investment"
                   placeholder="e.g 50,000"
@@ -962,15 +961,14 @@ export default function ConfigureCommodityDrawer({
             </div>
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
-                {termsLabel}
-                <span className="font-normal text-gray-500"> (Required)</span>
+                {termsLabel}<RequirementMark requirement="required" />
               </label>
               <textarea
                 value={termsAndConditions}
                 onChange={(e) => setTermsAndConditions(e.target.value)}
                 placeholder="Enter Terms"
                 rows={5}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-xs outline-none transition hover:border-gray-400 focus:border-brand focus:ring-[3px] focus:ring-brand/20"
               />
             </div>
 
@@ -1001,7 +999,7 @@ export default function ConfigureCommodityDrawer({
 
         {step === 3 && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
               <ProductConfigInput
                 label="Name of Charge or Fee"
                 placeholder="e.g Processing Fee"
@@ -1026,26 +1024,26 @@ export default function ConfigureCommodityDrawer({
                 formatThousands={!isPercentType(chargeFeeType)}
                 requirement="required"
               />
-              <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+              <Button type="button" onClick={addCharge} className="h-10 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90">
                 Add
               </Button>
             </div>
 
             {charges.length > 0 && (
-              <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-                <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+              <div className="rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
+                <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-200 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
                   <span>Name</span>
                   <span>Type</span>
                   <span>Value</span>
                   <span className="text-right" />
                 </div>
                 {charges.map((c, i) => (
-                  <div key={`${c.name}-${i}`} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0">
+                  <div key={`${c.name}-${i}`} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2.5 text-sm text-gray-800 last:border-0">
                     <span className="pr-2">{c.name}</span>
                     <span>{c.feeType}</span>
                     <span>{c.value}</span>
                     <div className="flex justify-end">
-                      <button type="button" onClick={() => setCharges((p) => p.filter((_, j) => j !== i))} className="text-red-600" aria-label="Remove">
+                      <button type="button" onClick={() => setCharges((p) => p.filter((_, j) => j !== i))} className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600" aria-label="Remove">
                         <X size={18} />
                       </button>
                     </div>
@@ -1064,7 +1062,7 @@ export default function ConfigureCommodityDrawer({
 
             {forcefulWithdrawal && (
               <>
-                <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_0.9fr_0.85fr_1.25fr_auto]">
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.3fr_1fr_0.9fr_1.1fr_auto] xl:items-end">
                   <ProductConfigInput
                     label="Name of Penalty"
                     placeholder="e.g Processing Fee"
@@ -1097,21 +1095,21 @@ export default function ConfigureCommodityDrawer({
                     onChange={setPenaltyTriggerDuration}
                     requirement="optional"
                   />
-                  <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+                  <Button type="button" onClick={addPenalty} className="h-10 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90">
                     Add
                   </Button>
                 </div>
 
                 {penalties.length > 0 && (
-                  <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-                    <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+                  <div className="rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
+                    <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-200 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
                       <span>Name</span>
                       <span>Value</span>
                       <span>Trigger Duration</span>
                       <span className="text-right" />
                     </div>
                     {penalties.map((p, i) => (
-                      <div key={`${p.name}-${i}`} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0">
+                      <div key={`${p.name}-${i}`} className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2.5 text-sm text-gray-800 last:border-0">
                         <span className="pr-2">{p.name}</span>
                         <span>{p.value}</span>
                         <span>{p.triggerDuration}</span>
@@ -1119,7 +1117,7 @@ export default function ConfigureCommodityDrawer({
                           <button
                             type="button"
                             onClick={() => setPenalties((prev) => prev.filter((_, j) => j !== i))}
-                            className="text-red-600"
+                            className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                             aria-label="Remove penalty"
                           >
                             <X size={18} />
@@ -1136,7 +1134,7 @@ export default function ConfigureCommodityDrawer({
 
         {step === 4 && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
               <ProductConfigInput
                 label={isInvestment ? "Enter Unit Price" : "Enter Commodity Price"}
                 placeholder="e.g N12,000.44"
@@ -1148,25 +1146,24 @@ export default function ConfigureCommodityDrawer({
               />
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">
-                  Select Date
-                  <span className="font-normal text-gray-500"> (Required)</span>
+                  Select Date<RequirementMark requirement="required" />
                 </label>
                 <input
                   type="date"
                   value={priceDate}
                   onChange={(e) => setPriceDate(e.target.value)}
-                  className="h-10 w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+                  className="h-10 w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                 />
               </div>
               <ProductConfigInput label="Source" placeholder="Enter Value" value={priceSource} onChange={setPriceSource} requirement="required" />
-              <Button type="button" onClick={addPriceRow} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+              <Button type="button" onClick={addPriceRow} className="h-10 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90">
                 Add
               </Button>
             </div>
 
             {priceRows.length > 0 && (
-              <div className="overflow-x-auto rounded-md border border-dashed border-[#cdbf8b] p-3">
-                <div className="grid min-w-[520px] grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+              <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
+                <div className="grid min-w-[520px] grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-200 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
                   <span>Price</span>
                   <span>Date</span>
                   <span>Source</span>
@@ -1175,7 +1172,7 @@ export default function ConfigureCommodityDrawer({
                 {priceRows.map((row) => (
                   <div
                     key={row.id}
-                    className="grid min-w-[520px] grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                    className="grid min-w-[520px] grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2.5 text-sm text-gray-800 last:border-0"
                   >
                     <span className="pr-2 font-medium">{row.price}</span>
                     <span>{formatPriceTableDate(row.date)}</span>
@@ -1184,7 +1181,7 @@ export default function ConfigureCommodityDrawer({
                       <button
                         type="button"
                         onClick={() => setPriceRows((p) => p.filter((r) => r.id !== row.id))}
-                        className="text-red-600"
+                        className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                         aria-label="Remove"
                       >
                         <X size={18} />
@@ -1196,34 +1193,7 @@ export default function ConfigureCommodityDrawer({
             )}
           </div>
         )}
-
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button
-            onClick={handleBack}
-            variant="outline"
-            disabled={isSubmitting}
-            className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent"
-          >
-            Back
-          </Button>
-          <Button
-            onClick={handleNext}
-            disabled={isSubmitting}
-            className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335] disabled:opacity-70"
-          >
-            {isSubmitting && step === steps.length ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                Saving…
-              </>
-            ) : step === steps.length ? (
-              "Submit"
-            ) : (
-              "Next"
-            )}
-          </Button>
-        </div>
-      </div>
+      </ProductConfigStepCard>
     </Drawer>
   )
 }

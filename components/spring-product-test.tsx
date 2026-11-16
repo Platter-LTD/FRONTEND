@@ -8,8 +8,10 @@ import { springProductService } from "@/lib/services/springProductService"
 import { debugJWT } from "@/lib/debugJWT"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import { useProductActions } from "@/hooks/queries/products"
 
 export default function SpringProductTest() {
+  const productActions = useProductActions()
   const [merchantId, setMerchantId] = useState<string | null>(null)
   const [appId, setAppId] = useState("")
   const [products, setProducts] = useState<any[]>([])
@@ -54,7 +56,7 @@ export default function SpringProductTest() {
       return
     }
     try {
-      await springProductService.toggleProductActivation(aid, product.id, !product.isActive)
+      await productActions.toggleSpringProductActivation(aid, product.id, !product.isActive)
       toast.success(`Product ${!product.isActive ? "activated" : "deactivated"}`)
       handleFetchProducts()
     } catch (error: any) {

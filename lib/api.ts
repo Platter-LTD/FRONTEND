@@ -6,18 +6,20 @@ import axios, {
 } from "axios"
 import { getAccessToken } from "@/lib/cookieAuth"
 import { handleSessionExpired, isInvalidOrExpiredTokenError, refreshOrRedirectToSignIn } from "@/lib/plataAuthFetch"
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 
-// Use relative URL so requests go through our own Next.js API proxy
+// Calls the Plata gateway directly (`${NEXT_PUBLIC_API_URL}/api`); paths are relative to /api, e.g. "/v1/user/profile".
 export interface ApiRequestConfig extends AxiosRequestConfig {
   includeAuth?: boolean
 }
 
 const api = axios.create({
-  baseURL: "/api",
+  baseURL: `${getPlataApiBaseUrl()}/api`,
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true,
+  // Bearer token only; no cookies are sent cross-origin to the gateway.
+  withCredentials: false,
 })
 
 // Request interceptor: use cookie (or localStorage fallback) for token

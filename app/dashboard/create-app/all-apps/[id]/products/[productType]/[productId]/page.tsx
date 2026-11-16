@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus, Search, Package, AlertCircle, Loader2 } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
@@ -28,6 +28,7 @@ import {
   type SavingsConfigurePrefetched,
   type CommodityConfigurePrefetched,
 } from "@/lib/productConfigurePrefetch"
+import { useProductActions, useProductDetailForApp } from "@/hooks/queries/products"
 
 function ProductDetailSkeleton() {
   return (
@@ -64,10 +65,18 @@ export default function ProductDetailsPage() {
   const appId = params.id as string
 
   const [activeTab, setActiveTab] = useState("configuration")
-  const [product, setProduct] = useState<Record<string, unknown> | null>(null)
-  const [configuration, setConfiguration] = useState<Record<string, unknown> | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const productActions = useProductActions()
+  const detailQuery = useProductDetailForApp(appId, productId)
+  const product = (detailQuery.data?.data as Record<string, unknown> | undefined) ?? null
+  const configuration: Record<string, unknown> | null = useMemo(
+    () =>
+      product
+        ? ((detailQuery.data?.configuration as Record<string, unknown> | null) ?? mapProductToConfigurationView(product))
+        : null,
+    [product, detailQuery.data],
+  )
+  const loading = detailQuery.isLoading
+  const loadError = detailQuery.error ? detailQuery.error.message || "Failed to load product" : null
   const [configureBusy, setConfigureBusy] = useState(false)
 
   const [isConfigureLoanOpen, setIsConfigureLoanOpen] = useState(false)
@@ -84,36 +93,8 @@ export default function ProductDetailsPage() {
   const [commodityConfigurePrefetch, setCommodityConfigurePrefetch] = useState<CommodityConfigurePrefetched | null>(null)
 
   const loadProduct = useCallback(async () => {
-    if (!productId || !appId) return
-    setLoading(true)
-    setLoadError(null)
-    try {
-      const result = await productApi.getProductDetailForApp(appId, productId)
-      if (result.success && result.data) {
-        const row = result.data as Record<string, unknown>
-        setProduct(row)
-        setConfiguration(
-          (result.configuration as Record<string, unknown> | null) ??
-            mapProductToConfigurationView(row),
-        )
-      } else {
-        setProduct(null)
-        setConfiguration(null)
-        setLoadError(result.error || "Product not found")
-      }
-    } catch (error) {
-      console.error("Error fetching product:", error)
-      setProduct(null)
-      setConfiguration(null)
-      setLoadError(error instanceof Error ? error.message : "Failed to load product")
-    } finally {
-      setLoading(false)
-    }
-  }, [appId, productId])
-
-  useEffect(() => {
-    void loadProduct()
-  }, [loadProduct])
+    await detailQuery.refetch()
+  }, [detailQuery])
 
   const getTabsForProduct = () => {
     if (productType === "savings") {
@@ -199,7 +180,7 @@ export default function ProductDetailsPage() {
   }
 
   const saveConfiguredProduct = async (typeLabel: string, configData: Record<string, unknown>) => {
-    await productApi.saveProductConfiguration(productId, typeLabel, {
+    await productActions.saveProductConfiguration(productId, typeLabel, {
       ...configData,
       status: "complete",
     })

@@ -69,7 +69,7 @@ function bvnFromProfile(user: AuthUserProfile | null): string {
 async function bvnFromKycStatus(userId: string): Promise<string> {
   try {
     const { data } = await api.get<{ success?: boolean; data?: unknown }>(
-      `/compliance/status/${encodeURIComponent(userId)}`,
+      `/v1/kyc/status/${encodeURIComponent(userId)}`,
       { includeAuth: true, timeout: 20_000 },
     )
     const root = data?.data

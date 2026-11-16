@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import TextInput from "@/components/text-input"
-import { teamApi, type MerchantRole } from "@/lib/services/teamService"
+import type { MerchantRole } from "@/lib/services/teamService"
 import {
   groupPrimaryPermissions,
   permissionLabel,
   type PermissionCatalogItem,
 } from "@/lib/teamPermissions"
 import { toast } from "sonner"
+import { useTeamActions, useTeamPermissions } from "@/hooks/queries/team"
 
 interface CreateRoleDrawerProps {
   open: boolean
@@ -23,6 +24,8 @@ interface CreateRoleDrawerProps {
   catalog?: PermissionCatalogItem[]
 }
 
+const NO_PERMISSIONS: PermissionCatalogItem[] = []
+
 export function CreateRoleDrawer({
   open,
   onOpenChange,
@@ -32,17 +35,23 @@ export function CreateRoleDrawer({
 }: CreateRoleDrawerProps) {
   const [roleName, setRoleName] = React.useState("")
   const [description, setDescription] = React.useState("")
-  const [catalog, setCatalog] = useState<PermissionCatalogItem[]>(catalogProp ?? [])
+  // Use the catalog passed in when it has rows; otherwise load it (cached) while the drawer is open.
+  const hasCatalogProp = Boolean(catalogProp && catalogProp.length > 0)
+  const permissionsQuery = useTeamPermissions(open && !hasCatalogProp)
+  const catalog: PermissionCatalogItem[] = hasCatalogProp
+    ? (catalogProp as PermissionCatalogItem[])
+    : (permissionsQuery.data?.catalog ?? NO_PERMISSIONS)
+  const loadingPerms = open && !hasCatalogProp && permissionsQuery.isPending
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [loadingPerms, setLoadingPerms] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const isEdit = Boolean(editRole?.id)
+  const teamActions = useTeamActions()
 
   const groups = useMemo(() => groupPrimaryPermissions(catalog), [catalog])
 
   useEffect(() => {
-    if (catalogProp) setCatalog(catalogProp)
-  }, [catalogProp])
+    if (permissionsQuery.error) toast.error(permissionsQuery.error.message || "Failed to load permissions")
+  }, [permissionsQuery.error])
 
   useEffect(() => {
     if (!open) return
@@ -56,25 +65,6 @@ export function CreateRoleDrawer({
       setSelected(new Set())
     }
   }, [open, editRole])
-
-  useEffect(() => {
-    if (!open) return
-    if (catalogProp && catalogProp.length > 0) {
-      setCatalog(catalogProp)
-      return
-    }
-    let cancelled = false
-    setLoadingPerms(true)
-    void teamApi.listPermissions().then((res) => {
-      if (cancelled) return
-      setLoadingPerms(false)
-      if (res.success && res.data) setCatalog(res.data.catalog)
-      else toast.error(res.error || "Failed to load permissions")
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [open, catalogProp])
 
   const togglePermission = (value: string) => {
     setSelected((prev) => {
@@ -103,8 +93,8 @@ export function CreateRoleDrawer({
       permissions: perms,
     }
     const res = isEdit && editRole
-      ? await teamApi.updateRole(editRole.id, payload)
-      : await teamApi.createRole(payload)
+      ? await teamActions.updateRole(editRole.id, payload)
+      : await teamActions.createRole(payload)
     setSubmitting(false)
     if (!res.success) {
       toast.error(res.error || (isEdit ? "Failed to update role" : "Failed to create role"))

@@ -2,13 +2,11 @@
 // Uses fetchWithAuth so 401 triggers silent refresh then retry (no logout on first 401).
 
 import { fetchWithAuth, type FetchWithAuthOptions } from '@/lib/fetchWithAuth';
-import { getWalletMsRoleHeaders } from '@/lib/walletMsRoleHeaders';
 import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 import {
   buildWalletQuery,
   legacyBundleKeyFromType,
   normalizePlataMerchantWalletType,
-  walletAppHeaders,
   walletMessageFromBody,
   type PlataMerchantWalletType,
 } from '@/lib/walletApiHelpers';
@@ -28,14 +26,24 @@ function logWalletMsResponse(res: Response, input: string | URL, data: unknown) 
 
 type WalletFetchOptions = FetchWithAuthOptions & { appId?: string };
 
-/** All wallet-ms calls: Bearer + role hints + optional x-app-id + response logging. */
-async function walletFetch(input: string | URL, init: WalletFetchOptions = {}): Promise<Response> {
-  const { appId, additionalHeaders, ...rest } = init;
-  const roleHeaders = typeof window !== 'undefined' ? getWalletMsRoleHeaders() : {};
-  const res = await fetchWithAuth(input, {
-    ...rest,
-    additionalHeaders: { ...roleHeaders, ...walletAppHeaders(appId), ...additionalHeaders },
+/**
+ * Canonical wallet paths: settlement → repayment, and legacy kyc/:id/transactions → repayment/:id/transactions
+ * (kyc/debit and kyc/fee are unrelated fee ops and stay as-is). Previously done by the /api/wallets proxy.
+ */
+function canonicalWalletUrl(input: string | URL): string | URL {
+  if (typeof input !== 'string') return input;
+  return input.replace(/\/api\/v1\/wallets\/([^/?]+)(\/[^/?]+)?(\/[^?]*)?/, (match, first: string, second = '', rest = '') => {
+    const seg = first.toLowerCase();
+    if (seg === 'settlement') return `/api/v1/wallets/repayment${second}${rest}`;
+    if (seg === 'kyc' && rest.toLowerCase().startsWith('/transactions')) return `/api/v1/wallets/repayment${second}${rest}`;
+    return match;
   });
+}
+
+/** All wallet-ms calls: Bearer (via fetchWithAuth) + response logging. appId travels in the query string. */
+async function walletFetch(input: string | URL, init: WalletFetchOptions = {}): Promise<Response> {
+  const { appId: _appId, ...rest } = init;
+  const res = await fetchWithAuth(canonicalWalletUrl(input), rest);
 
   const c = res.clone();
   void (async () => {
@@ -55,13 +63,10 @@ async function walletFetch(input: string | URL, init: WalletFetchOptions = {}): 
   return res;
 }
 
-/** Upstream base for server-side calls only. Browser uses same-origin `/api/wallets/*` proxy (CORS + IPv4). */
+/** Wallet routes on the Plata gateway (called directly from the browser). */
 const WALLET_API_BASE = getPlataApiBaseUrl();
 
 function walletV1WalletsBase(): string {
-  if (typeof window !== 'undefined') {
-    return '/api/wallets';
-  }
   return `${WALLET_API_BASE}/api/v1/wallets`;
 }
 
@@ -764,10 +769,7 @@ export const transactionApi = {
 
   /** GET /api/v1/transactions/:walletId */
   async getByWalletId(walletId: string) {
-    const base =
-      typeof window !== 'undefined'
-        ? '/api/transactions'
-        : `${WALLET_API_BASE}/api/v1/transactions`;
+    const base = `${WALLET_API_BASE}/api/v1/transactions`;
     const response = await walletFetch(`${base}/${encodeURIComponent(walletId)}`);
     const data = await response.json();
     if (!response.ok) {

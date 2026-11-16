@@ -6,7 +6,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { toast } from "react-toastify"
-import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { ProductAuthShell } from "@/components/product-auth-shell"
 import {
@@ -15,8 +14,10 @@ import {
   getPasswordResetOtpPurpose,
   pickPasswordResetToken,
 } from "@/lib/forgotPasswordFlow"
+import { useAuthActions } from "@/hooks/queries/auth"
 
 function ForgotPasswordVerifyContent() {
+  const authActions = useAuthActions()
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [otp, setOtp] = useState<string[]>(["", "", "", "", "", ""])
@@ -68,7 +69,7 @@ function ForgotPasswordVerifyContent() {
     if (!email) return
     try {
       setIsResending(true)
-      await apiClient.post(
+      await authActions.post(
         ENDPOINTS.auth.otp.resendEmail,
         { identifier: email, channel: "email", purpose },
         { includeAuth: false },
@@ -99,7 +100,7 @@ function ForgotPasswordVerifyContent() {
     }
     try {
       setIsVerifying(true)
-      const res = await apiClient.post(
+      const res = await authActions.post(
         ENDPOINTS.auth.verify.emailOtp,
         {
           email,

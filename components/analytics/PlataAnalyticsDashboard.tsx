@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
 import { appApi } from "@/lib/services/appService"
 import {
@@ -82,6 +83,7 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
   const [data, setData] = useState<AppAnalyticsData | null>(null)
   const [loading, setLoading] = useState(Boolean(appId))
   const [error, setError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
     if (!appId) {
@@ -107,7 +109,7 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
         if (!ac.signal.aborted) setLoading(false)
       })
     return () => ac.abort()
-  }, [appId, range, productType])
+  }, [appId, range, productType, reloadKey])
 
   const customers = data?.customers
   const volume = data?.transactionVolume
@@ -168,6 +170,47 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
   const pillars = data?.byProductType ?? []
   const topAccounts = data?.topAccountsByVolume ?? []
   const pendingRows = data?.pendingByProductType ?? []
+
+  type TopAccount = (typeof topAccounts)[number]
+  type PendingRow = (typeof pendingRows)[number]
+  const right = "text-right"
+  const topAccountColumns: ColumnDef<TopAccount, unknown>[] = [
+    { id: "customer", header: "Customer", accessorFn: (r) => r.customerName || "—" },
+    { id: "product", header: "Product", accessorFn: (r) => r.product || r.productType },
+    { accessorKey: "volume", header: () => <span className={right}>Volume</span>, meta: { label: "Volume" }, cell: ({ row }) => <div className={right}>{formatNairaCompact(row.original.volume)}</div> },
+    { accessorKey: "transactionCount", header: () => <span className={right}>Txns</span>, meta: { label: "Txns" }, cell: ({ row }) => <div className={right}>{formatCount(row.original.transactionCount)}</div> },
+    { accessorKey: "averageTicket", header: () => <span className={right}>Avg. ticket</span>, meta: { label: "Avg. ticket" }, cell: ({ row }) => <div className={right}>{formatNairaCompact(row.original.averageTicket)}</div> },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => {
+        const active = String(row.original.status || "").toLowerCase() === "active"
+        return (
+          <span
+            className={`inline-block rounded-full px-2.5 py-[3px] text-[11px] font-medium ${
+              active ? "bg-[rgba(29,158,117,0.12)] text-[#1D9E75]" : "bg-[rgba(192,57,43,0.12)] text-[#C0392B]"
+            }`}
+          >
+            {row.original.status || "—"}
+          </span>
+        )
+      },
+    },
+  ]
+  const pendingColumns: ColumnDef<PendingRow, unknown>[] = [
+    { id: "product", header: "Product", accessorFn: (r) => r.label || r.productType },
+    { accessorKey: "pendingCount", header: () => <span className={right}>Pending</span>, meta: { label: "Pending" }, cell: ({ row }) => <div className={right}>{formatCount(row.original.pendingCount)}</div> },
+    { accessorKey: "value", header: () => <span className={right}>Value</span>, meta: { label: "Value" }, cell: ({ row }) => <div className={right}>{formatNairaCompact(row.original.value)}</div> },
+    {
+      accessorKey: "oldest",
+      header: "Oldest",
+      cell: ({ row }) => (
+        <span className={`inline-block rounded-full px-2.5 py-[3px] text-[11px] font-medium ${BADGE_TONE[oldestTone(row.original.oldest)]}`}>
+          {row.original.oldest || "—"}
+        </span>
+      ),
+    },
+  ]
 
   return (
     <div className="min-h-full w-full bg-[#F7F7F5] text-[#0B1E3B] antialiased [font-variant-numeric:tabular-nums]">
@@ -332,110 +375,28 @@ export default function PlataAnalyticsDashboard({ appId }: { appId?: string }) {
               )}
           </div>
 
-            <div className="mb-8 overflow-x-auto rounded-xl border border-[#E4E6EA] bg-white p-6">
-              <p className="mb-4 text-lg font-medium">Volume per customer, top accounts</p>
-          <table className="w-full min-w-[640px] border-collapse text-sm">
-            <thead>
-              <tr>
-                    {["Customer", "Product", "Volume", "Txns", "Avg. ticket", "Status"].map((h, i) => (
-                      <th
-                        key={h}
-                        className={`border-b border-[#E4E6EA] px-3 pb-2.5 text-left text-xs font-medium uppercase tracking-[0.02em] text-[#5B6472] ${
-                          i >= 2 && i <= 4 ? "text-right" : ""
-                        }`}
-                      >
-                        {h}
-                    </th>
-                    ))}
-              </tr>
-            </thead>
-            <tbody>
-                  {topAccounts.map((row) => {
-                    const active = String(row.status || "").toLowerCase() === "active"
-                    return (
-                      <tr key={`${row.userId}-${row.productType}`}>
-                        <td className="border-b border-[#E4E6EA] px-3 py-3.5">{row.customerName || "—"}</td>
-                        <td className="border-b border-[#E4E6EA] px-3 py-3.5">{row.product || row.productType}</td>
-                        <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
-                          {formatNairaCompact(row.volume)}
-                  </td>
-                        <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
-                          {formatCount(row.transactionCount)}
-                  </td>
-                        <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
-                          {formatNairaCompact(row.averageTicket)}
-                  </td>
-                        <td className="border-b border-[#E4E6EA] px-3 py-3.5">
-                    <span
-                            className={`inline-block rounded-full px-2.5 py-[3px] text-[11px] font-medium ${
-                              active
-                          ? "bg-[rgba(29,158,117,0.12)] text-[#1D9E75]"
-                                : "bg-[rgba(192,57,43,0.12)] text-[#C0392B]"
-                            }`}
-                    >
-                            {row.status || "—"}
-                    </span>
-                  </td>
-                </tr>
-                    )
-                  })}
-                  {topAccounts.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-3 py-10 text-center text-sm text-[#5B6472]">
-                        No customer volume yet.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+            <div className="mb-8">
+              <DataTable
+                tableId="analytics-top-accounts"
+                title="Volume per customer, top accounts"
+                columns={topAccountColumns}
+                data={topAccounts}
+                onRefresh={() => setReloadKey((k) => k + 1)}
+                clientSearch
+                download
+                empty="No customer volume yet."
+              />
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-[#E4E6EA] bg-white p-6">
-              <p className="mb-4 text-lg font-medium">Pending transactions by product</p>
-          <table className="w-full min-w-[480px] border-collapse text-sm">
-            <thead>
-              <tr>
-                    {["Product", "Pending", "Value", "Oldest"].map((h, i) => (
-                      <th
-                        key={h}
-                        className={`border-b border-[#E4E6EA] px-3 pb-2.5 text-left text-xs font-medium uppercase tracking-[0.02em] text-[#5B6472] ${
-                          i === 1 || i === 2 ? "text-right" : ""
-                        }`}
-                      >
-                        {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-                  {pendingRows.map((row) => (
-                    <tr key={`${row.productType}-${row.label}`}>
-                      <td className="border-b border-[#E4E6EA] px-3 py-3.5">{row.label || row.productType}</td>
-                      <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
-                        {formatCount(row.pendingCount)}
-                  </td>
-                      <td className="border-b border-[#E4E6EA] px-3 py-3.5 text-right">
-                        {formatNairaCompact(row.value)}
-                  </td>
-                      <td className="border-b border-[#E4E6EA] px-3 py-3.5">
-                        <span
-                          className={`inline-block rounded-full px-2.5 py-[3px] text-[11px] font-medium ${BADGE_TONE[oldestTone(row.oldest)]}`}
-                        >
-                          {row.oldest || "—"}
-                        </span>
-                  </td>
-                </tr>
-              ))}
-                  {pendingRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-3 py-10 text-center text-sm text-[#5B6472]">
-                        No pending transactions.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-            </div>
+            <DataTable
+              tableId="analytics-pending-by-product"
+              title="Pending transactions by product"
+              columns={pendingColumns}
+              data={pendingRows}
+              onRefresh={() => setReloadKey((k) => k + 1)}
+              download
+              empty="No pending transactions."
+            />
           </>
         )}
       </div>

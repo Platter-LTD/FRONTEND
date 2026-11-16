@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { gatewayFetch } from "@/lib/gatewayFetch"
 
 // Product type matching the backend
 export interface MobileProduct {
@@ -44,56 +46,33 @@ interface UseMobileProductsReturn {
 export function useMobileProducts(options: UseMobileProductsOptions = {}): UseMobileProductsReturn {
   const { type, springAppId, autoFetch = true } = options;
 
-  const [products, setProducts] = useState<MobileProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Use Next.js API proxy instead of hitting product-ms directly
-      const url = new URL(`/api/products/active`, window.location.origin);
-      if (type) {
-        url.searchParams.set('type', type);
-      }
-      if (springAppId) {
-        url.searchParams.set('springAppId', springAppId);
-      }
-
-      const response = await fetch(url.toString(), {
+  // Public catalog straight from the gateway (cached); filtered by type client-side.
+  const query = useQuery({
+    queryKey: ['mobile-products'],
+    queryFn: async () => {
+      const response = await gatewayFetch('/api/v1/products', {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch products: ${response.status}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.success === false) {
+        throw new Error(data.error || data.message || `Failed to fetch products: ${response.status}`);
       }
+      return (Array.isArray(data.data) ? data.data : []) as MobileProduct[];
+    },
+    enabled: autoFetch,
+  });
 
-      const data = await response.json();
-
-      if (data.success) {
-        setProducts(data.data || []);
-      } else {
-        throw new Error(data.error || 'Failed to fetch products');
-      }
-    } catch (err) {
-      console.error('Error fetching mobile products:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch products');
-      setProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [type, springAppId]);
-
-  useEffect(() => {
-    if (autoFetch) {
-      fetchProducts();
-    }
-  }, [autoFetch, fetchProducts]);
+  const products = useMemo(
+    () => (type ? (query.data ?? []).filter((p) => (p as { type?: string }).type === type) : (query.data ?? [])),
+    [query.data, type],
+  );
+  const loading = autoFetch ? query.isLoading : false;
+  const error = query.error ? query.error.message || 'Failed to fetch products' : null;
+  const fetchProducts = useCallback(async () => {
+    await query.refetch();
+  }, [query]);
+  void springAppId; // accepted for API compatibility; the gateway catalog is not app-scoped here
 
   const getProductById = useCallback((id: string): MobileProduct | undefined => {
     return products.find(p => p.id === id);

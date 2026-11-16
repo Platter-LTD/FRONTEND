@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { format } from "date-fns"
 import { Bell, CheckCheck, CreditCard, Headphones, Shield, Sparkles, UserRound } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -8,8 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/useAuth"
-import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchInAppNotificationsThunk, markAllNotificationsRead, markNotificationRead } from "@/store/notificationSlice"
+import { useInAppNotifications } from "@/hooks/queries/notifications"
 
 export type DashboardNotificationItem = {
   id: string
@@ -63,9 +62,17 @@ function NotificationsSkeletonList() {
  */
 export function DashboardNotificationsPopover({ triggerClassName }: DashboardNotificationsPopoverProps) {
   const { user } = useAuth()
-  const dispatch = useAppDispatch()
-  const { items, loading, error } = useAppSelector((state) => state.notifications)
   const [open, setOpen] = useState(false)
+  // Inbox (React Query, fetched while the popover is open) + read marks kept locally.
+  const inbox = useInAppNotifications(user?.id, open)
+  const [readIds, setReadIds] = useState<Set<string> | "all">(() => new Set())
+  const items = useMemo(
+    () =>
+      (inbox.data ?? []).map((n) => (readIds === "all" || readIds.has(n.id) ? { ...n, read: true } : n)),
+    [inbox.data, readIds],
+  )
+  const loading = inbox.isLoading
+  const error = inbox.error ? inbox.error.message || "Failed to load notifications" : null
   const parsedItems = useMemo<DashboardNotificationItem[]>(
     () =>
       items.map((item) => {
@@ -80,12 +87,6 @@ export function DashboardNotificationsPopover({ triggerClassName }: DashboardNot
 
   const unreadCount = useMemo(() => parsedItems.filter((n) => !n.read).length, [parsedItems])
 
-  useEffect(() => {
-    const recipient = user?.id
-    if (!open || !recipient) return
-
-    void dispatch(fetchInAppNotificationsThunk({ recipient, limit: 50, offset: 0 }))
-  }, [dispatch, open, user?.id])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -127,7 +128,7 @@ export function DashboardNotificationsPopover({ triggerClassName }: DashboardNot
                 className="h-8 shrink-0 gap-1 text-xs text-[#8B7355] hover:bg-[#F5EDE0] hover:text-[#6B5A45]"
                 onClick={(e) => {
                   e.preventDefault()
-                  dispatch(markAllNotificationsRead())
+                  setReadIds("all")
                 }}
               >
                 <CheckCheck className="h-3.5 w-3.5" />
@@ -150,7 +151,7 @@ export function DashboardNotificationsPopover({ triggerClassName }: DashboardNot
                 <li key={n.id}>
                   <button
                     type="button"
-                    onClick={() => dispatch(markNotificationRead(n.id))}
+                    onClick={() => setReadIds((prev) => (prev === "all" ? prev : new Set(prev).add(n.id)))}
                     className={cn(
                       "flex w-full gap-3 px-4 py-3 text-left transition hover:bg-[#FFFAF3]",
                       !n.read && "bg-[#FFFCF6]/90",

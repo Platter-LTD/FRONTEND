@@ -1,6 +1,7 @@
 "use client"
 
 import { getAccessToken } from "@/lib/cookieAuth"
+import { gatewayFetch } from "@/lib/gatewayFetch"
 
 export type NotificationChannel = "email" | "sms" | "in_app"
 
@@ -61,7 +62,7 @@ export const notificationService = {
     if (params?.offset != null) search.set("offset", String(params.offset))
     if (params?.channel) search.set("channel", params.channel)
 
-    const response = await fetch(`/api/v1/notifications/user/${encodeURIComponent(recipient)}${search.toString() ? `?${search}` : ""}`, {
+    const response = await gatewayFetch(`/api/v1/notifications/user/${encodeURIComponent(recipient)}${search.toString() ? `?${search}` : ""}`, {
       method: "GET",
       headers: getHeaders(),
       credentials: "include",
@@ -72,7 +73,7 @@ export const notificationService = {
   },
 
   async send(payload: SendNotificationPayload) {
-    const response = await fetch("/api/v1/notifications/send", {
+    const response = await gatewayFetch("/api/v1/notifications/send", {
       method: "POST",
       headers: getHeaders(),
       credentials: "include",
@@ -82,7 +83,7 @@ export const notificationService = {
   },
 
   async sendDual(payload: SendDualNotificationPayload) {
-    const response = await fetch("/api/v1/notifications/send-dual", {
+    const response = await gatewayFetch("/api/v1/notifications/send-dual", {
       method: "POST",
       headers: getHeaders(),
       credentials: "include",
@@ -92,7 +93,7 @@ export const notificationService = {
   },
 
   async getStatus(notificationId: string) {
-    const response = await fetch(`/api/v1/notifications/${encodeURIComponent(notificationId)}/status`, {
+    const response = await gatewayFetch(`/api/v1/notifications/${encodeURIComponent(notificationId)}/status`, {
       method: "GET",
       headers: getHeaders(),
       credentials: "include",

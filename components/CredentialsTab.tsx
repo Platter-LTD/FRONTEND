@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { Eye, EyeOff, Plus } from "lucide-react"
 
 interface Credential {
@@ -86,58 +87,51 @@ export default function CredentialsTab({
     }
   }
 
+  const secretCell = (key: string, shown: string, masked: string) => (
+    <div className="flex items-center gap-2">
+      <span>{currentShowSecrets[key] ? shown : masked}</span>
+      <button
+        type="button"
+        aria-label={currentShowSecrets[key] ? "Hide key" : "Show key"}
+        onClick={() => toggleSecret(key)}
+        className="text-gray-400 hover:text-gray-600"
+        disabled={!setShowSecrets}
+      >
+        {currentShowSecrets[key] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+      </button>
+    </div>
+  )
+
+  const columns: ColumnDef<Credential, unknown>[] = [
+    { accessorKey: "merchantId", header: "Merchant ID", cell: ({ row }) => <span className="font-medium text-gray-900">{row.original.merchantId}</span> },
+    { accessorKey: "secretKey", header: "Secret Key", cell: ({ row }) => secretCell(`secret-${row.original.id}`, secretKeyValue, row.original.secretKey) },
+    { accessorKey: "privateKey", header: "Private Key", cell: ({ row }) => secretCell(`private-${row.original.id}`, privateKeyValue, row.original.privateKey) },
+    { accessorKey: "generatedOn", header: "Generated On" },
+    { accessorKey: "expiresOn", header: "Expires on" },
+    {
+      id: "download",
+      header: "Download",
+      cell: ({ row }) => (
+        <Button variant="outline" size="sm" onClick={() => handleDownload(row.original.id)}>
+          Download
+        </Button>
+      ),
+    },
+  ]
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div></div>
+    <DataTable
+      tableId="api-credentials"
+      title="API credentials"
+      columns={columns}
+      data={credentials}
+      clientSearch
+      action={
         <Button className={buttonClassName} onClick={onGenerateNewKeys}>
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="mr-2 h-4 w-4" />
           Generate New Keys
         </Button>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="grid grid-cols-6 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
-          <div>Merchant ID</div>
-          <div>Secret Key</div>
-          <div>Private Key</div>
-          <div>Generated On</div>
-          <div>Expires on</div>
-          <div>Download</div>
-        </div>
-        {credentials.map((cred) => (
-          <div key={cred.id} className="grid grid-cols-6 gap-4 p-4 border-b border-gray-100 last:border-b-0 text-sm">
-            <div className="font-medium">{cred.merchantId}</div>
-            <div className="flex items-center gap-2">
-              <span>{currentShowSecrets[`secret-${cred.id}`] ? secretKeyValue : cred.secretKey}</span>
-              <button 
-                onClick={() => toggleSecret(`secret-${cred.id}`)} 
-                className="text-gray-400 hover:text-gray-600"
-                disabled={!setShowSecrets}
-              >
-                {currentShowSecrets[`secret-${cred.id}`] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <span>{currentShowSecrets[`private-${cred.id}`] ? privateKeyValue : cred.privateKey}</span>
-              <button 
-                onClick={() => toggleSecret(`private-${cred.id}`)} 
-                className="text-gray-400 hover:text-gray-600"
-                disabled={!setShowSecrets}
-              >
-                {currentShowSecrets[`private-${cred.id}`] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-            <div>{cred.generatedOn}</div>
-            <div>{cred.expiresOn}</div>
-            <div>
-              <Button variant="outline" size="sm" onClick={() => handleDownload(cred.id)}>
-                Download
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+      }
+    />
   )
 }

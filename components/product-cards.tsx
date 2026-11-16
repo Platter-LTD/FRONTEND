@@ -1,14 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useMemo } from "react"
 import Image from "next/image"
 import { Switch } from "@/components/ui/switch"
 import { Clock, Globe, Loader2 } from "lucide-react"
 import { ProductDetailModal } from "@/components/product-detail-modal"
-import { springProductService } from "@/lib/services/springProductService"
 import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
 import { extractProductItems } from "@/lib/productOverview"
+import { useCatalogProducts, useProductActions, useSpringProductsForApp } from "@/hooks/queries/products"
 
 function ProductCardsSkeleton() {
   return (
@@ -115,8 +115,9 @@ interface ProductCardsProps {
 }
 
 export default function ProductCards({ category = "Mortgage", appId }: ProductCardsProps) {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
+  const productActions = useProductActions()
+  // Toggles made on this card grid, shown until the refetched lists catch up.
+  const [toggled, setToggled] = useState<Record<string, boolean>>({})
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -152,47 +153,20 @@ export default function ProductCards({ category = "Mortgage", appId }: ProductCa
         }
       })
 
-  const fetchProducts = useCallback(async () => {
-    setLoading(true)
-    try {
-      if (!appId) {
-        setProducts([])
-        return
-      }
-
-      const catalogRes = await springProductService.getAllProducts({
-        appId,
-        type: category,
-        page: 1,
-        limit: 100,
-      })
-      const catalogRows = extractProductItems(catalogRes)
-
-      if ((catalogRes as { success?: boolean }).success === false) {
-        setProducts([])
-        return
-      }
-
-      let appActivation = new Map<string, boolean>()
-      try {
-        const activeRes = await springProductService.getProductsForApp(appId)
-        appActivation = buildAppProductActivationMap(activeRes)
-      } catch (err) {
-        console.warn("[ProductCards] active products for app failed; toggles may be wrong until retry", err)
-      }
-
-      setProducts(mapRows(catalogRows, appActivation))
-    } catch (error) {
-      console.error("Failed to fetch Spring products:", error)
-      setProducts([])
-    } finally {
-      setLoading(false)
-    }
-  }, [category, appId])
-
-  useEffect(() => {
-    fetchProducts()
-  }, [fetchProducts])
+  // Catalog for the category + which products are switched on for this app (both cached).
+  const catalogQuery = useCatalogProducts(appId ? { appId, type: category, page: 1, limit: 100 } : null)
+  const activeQuery = useSpringProductsForApp(appId)
+  const loading = Boolean(appId) && catalogQuery.isLoading
+  const products: Product[] = useMemo(() => {
+    const catalogRes = catalogQuery.data
+    if (!appId || !catalogRes || (catalogRes as { success?: boolean }).success === false) return []
+    const appActivation = activeQuery.data ? buildAppProductActivationMap(activeQuery.data) : new Map<string, boolean>()
+    return mapRows(extractProductItems(catalogRes), appActivation).map((p) =>
+      p.id in toggled ? { ...p, isActive: toggled[p.id], status: toggled[p.id] ? "Active" : "Inactive" } : p,
+    )
+    // mapRows is a pure mapper defined in this component.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appId, catalogQuery.data, activeQuery.data, toggled])
 
   const toggleProduct = async (id: string) => {
     if (!appId) {
@@ -206,22 +180,12 @@ export default function ProductCards({ category = "Mortgage", appId }: ProductCa
     const newIsActive = !product.isActive
 
     try {
-      const json = (await springProductService.toggleProductActivation(appId, id, newIsActive)) as {
+      const json = (await productActions.toggleSpringProductActivation(appId, id, newIsActive)) as {
         data?: { isActive?: boolean }
       }
       const serverOn =
         typeof json?.data?.isActive === "boolean" ? json.data.isActive : newIsActive
-      setProducts((prev) =>
-        prev.map((p) =>
-          p.id === id
-            ? {
-                ...p,
-                isActive: serverOn,
-                status: serverOn ? "Active" : "Inactive",
-              }
-            : p,
-        ),
-      )
+      setToggled((prev) => ({ ...prev, [id]: serverOn }))
       toast.success(`Product ${serverOn ? "enabled" : "disabled"} successfully`)
     } catch (error) {
       console.error("Failed to toggle product:", error)

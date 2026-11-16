@@ -4,11 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useAppMerchantId } from "@/hooks/useAppMerchantId"
-import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import {
-  fetchAppMerchantWalletsThunk,
-  fetchOperationTransactionsThunk,
-} from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
 import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
@@ -20,12 +15,11 @@ import {
   type MerchantWallet,
 } from "@/lib/services/walletService"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useAppWalletState, useMerchantWallet } from "@/hooks/queries/wallets"
 
 export default function BillingWalletPage() {
   const params = useParams()
   const appId = params.id as string
-  const dispatch = useAppDispatch()
-  const walletState = useAppSelector((s) => s.wallet)
   const { actions } = usePermissions()
   const canViewBalances = actions.viewWalletBalances
 
@@ -34,38 +28,22 @@ export default function BillingWalletPage() {
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [fundOpen, setFundOpen] = useState(false)
-  const [billingWallet, setBillingWallet] = useState<MerchantWallet | null>(null)
-  const [walletDetailLoading, setWalletDetailLoading] = useState(false)
+  const walletState = useAppWalletState(merchantId, appId, { billing: true })
+  const billingWalletQuery = useMerchantWallet(merchantId, "BILLING", appId)
+  const billingWallet: MerchantWallet | null = billingWalletQuery.data ?? null
+  const walletDetailLoading = billingWalletQuery.isFetching
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
   const bundleBilling = inScope ? walletState.billing ?? walletState.operation : null
   const billing = billingWallet ?? bundleBilling
 
-  const refreshBillingWallet = useCallback(async () => {
-    if (!merchantId || !appId) return null
-    setWalletDetailLoading(true)
-    try {
-      const res = await merchantWalletApi.getMerchantWallet(merchantId, "BILLING", appId)
-      const wallet = res.data ?? null
-      setBillingWallet(wallet)
-      return wallet
-    } catch {
-      return null
-    } finally {
-      setWalletDetailLoading(false)
-    }
-  }, [merchantId, appId])
+  /** Refetch the billing wallet detail; resolves to the fresh wallet (or null). */
+  const refreshBillingWallet = useCallback(async () => (await billingWalletQuery.refetch()).data ?? null, [billingWalletQuery])
 
+  /** Refetch wallets, transactions and wallet detail (React Query dedupes and caches). */
   const refresh = useCallback(() => {
-    if (!merchantId || !appId) return
-    void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
-    void dispatch(fetchOperationTransactionsThunk({ merchantId, appId }))
-    void refreshBillingWallet()
-  }, [dispatch, merchantId, appId, refreshBillingWallet])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
+    void walletState.refresh()
+  }, [walletState])
 
   const txs = inScope ? walletState.operationTransactions : []
   const walletsLoading =

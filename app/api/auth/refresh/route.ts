@@ -16,15 +16,8 @@ function clearAuthCookies(response: NextResponse) {
  */
 export async function POST(request: NextRequest) {
   try {
-    let refreshToken = request.cookies.get("refreshToken")?.value
-    if (!refreshToken) {
-      try {
-        const body = await request.json().catch(() => ({}))
-        refreshToken = (body as { refreshToken?: string })?.refreshToken
-      } catch {
-        /* no body */
-      }
-    }
+    // Only the httpOnly cookie: browser JavaScript never holds the refresh token.
+    const refreshToken = request.cookies.get("refreshToken")?.value
     if (!refreshToken) {
       // No refresh cookie at all — safe to clear access remnant.
       return clearAuthCookies(
@@ -44,9 +37,8 @@ export async function POST(request: NextRequest) {
 
     const response = NextResponse.json({
       success: true,
-      data: { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken },
+      data: { accessToken: tokens.accessToken },
       accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
     })
     applyRefreshedTokens(response, tokens)
     return response

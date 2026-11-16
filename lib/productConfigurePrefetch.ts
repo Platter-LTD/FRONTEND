@@ -1,5 +1,6 @@
 import { fetchOptionLabels, fetchProductOptionLabels, fetchProductOptions, DEFAULT_TRIGGER_DURATION_OPTIONS, type ProductOption } from "@/lib/productOptions"
 import { DEFAULT_REPAYMENT_WORKFLOWS } from "@/components/drawers/product-config-form-fields"
+import { fetchTenureOptionsBody } from "@/lib/productCatalogQueries"
 
 export type LoanConfigurePrefetched = {
   tenure: string[]
@@ -198,8 +199,7 @@ export type SavingsConfigurePrefetched = {
 
 async function fetchSavingsTenure(): Promise<string[]> {
   try {
-    const tenureRes = await fetch("/api/configurations/options/savings-tenure", { credentials: "include", cache: "no-store" })
-    const tenureJson = await tenureRes.json().catch(() => ({}))
+    const tenureJson = await fetchTenureOptionsBody("savings")
     const tenureList = (tenureJson?.data ?? []) as { value?: string | number; label?: string }[]
     return Array.isArray(tenureList) && tenureList.length
       ? tenureList.map((x) => x.label || String(x.value ?? "")).filter((v): v is string => typeof v === "string" && v.length > 0)
@@ -255,13 +255,10 @@ export type CommodityConfigurePrefetched = {
 }
 
 export async function prefetchCommodityConfigureOptions(isInvestment: boolean): Promise<CommodityConfigurePrefetched> {
-  const tenureUrl = isInvestment
-    ? "/api/configurations/options/investment-tenure"
-    : "/api/configurations/options/commodity-tenure"
+  const tenureKind = isInvestment ? "investment" : "commodity"
   let tenure: string[] = []
   try {
-    const res = await fetch(tenureUrl, { credentials: "include", cache: "no-store" })
-    const json = await res.json().catch(() => ({}))
+    const json = await fetchTenureOptionsBody(tenureKind)
     const list = (json?.data ?? []) as { value?: string; label?: string }[]
     tenure =
       Array.isArray(list) && list.length

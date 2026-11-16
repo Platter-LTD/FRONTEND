@@ -6,15 +6,7 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { MortgageWorkflowDetailSkeleton } from "@/components/ui/app-loading-skeleton"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
-import { applicationApi } from "@/lib/services/accountService"
-import { pendingApprovedMortgageApi } from "@/lib/pendingApprovedMortgageApi"
+import { DrawerPanel } from "@/components/ui/drawer-panel"
 import { extractPostApprovalFulfillment } from "@/lib/postApprovalMortgage"
 import {
   buildPlataMortgageThread,
@@ -29,6 +21,7 @@ import type { SpringApplicantProfileResponse } from "@/lib/springApplicantProfil
 import { SpringApplicantReviewPanel } from "@/components/workflow/SpringApplicantReviewPanel"
 import { OfferLetterUploadControl } from "@/components/workflow/OfferLetterUploadControl"
 import { cn } from "@/lib/utils"
+import { fetchApplicationWithProfile, useApplicationActions } from "@/hooks/queries/applications"
 
 const PLATA_ACCENT = "#9A813F"
 
@@ -189,6 +182,7 @@ export function MortgageWorkflowDetailSheet({
   onOpenChange,
   onUpdated,
 }: MortgageWorkflowDetailSheetProps) {
+  const applicationActions = useApplicationActions()
   const [loading, setLoading] = useState(false)
   const [busyAction, setBusyAction] = useState<StepActionKind | null>(null)
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
@@ -203,10 +197,7 @@ export function MortgageWorkflowDetailSheet({
       setProfileError(null)
     }
     try {
-      const [appRes, profileRes] = await Promise.all([
-        applicationApi.getWorkflowApplication(applicationId),
-        applicationApi.getSpringApplicantProfile(applicationId),
-      ])
+      const [appRes, profileRes] = await fetchApplicationWithProfile(applicationId)
 
       const workflowApp =
         appRes.success && appRes.data
@@ -356,7 +347,7 @@ export function MortgageWorkflowDetailSheet({
 
   const handleApproveOffer = () =>
     void runAction("approve_offer", async () => {
-      const res = await applicationApi.approve(applicationId!)
+      const res = await applicationActions.approve(applicationId!)
       if (res.success) {
         toast.success("Mortgage approved — prepare offer letter while applicant completes virtual inspection")
       }
@@ -365,14 +356,14 @@ export function MortgageWorkflowDetailSheet({
 
   const handleApproveDisbursement = () =>
     void runAction("approve_disbursement", async () => {
-      const res = await pendingApprovedMortgageApi.disburse(applicationId!)
+      const res = await applicationActions.disburseMortgage(applicationId!)
       if (res.success) toast.success("Loan disbursement triggered")
       return res
     })
 
   const handleConfirmPayment = () =>
     void runAction("confirm_payment", async () => {
-      const res = await pendingApprovedMortgageApi.confirmDownPayment(applicationId!)
+      const res = await applicationActions.confirmMortgageDownPayment(applicationId!)
       if (res.success) toast.success("Down payment confirmed — contract issued")
       return res
     })
@@ -517,14 +508,14 @@ export function MortgageWorkflowDetailSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
-        <SheetHeader className="shrink-0 space-y-1 border-b border-gray-100 px-6 py-5 text-left">
-          <SheetTitle className="text-lg">Mortgage application</SheetTitle>
-          <SheetDescription className="text-sm leading-relaxed">
-            Review applicant details below, then use workflow actions when required.
-          </SheetDescription>
-        </SheetHeader>
+    <DrawerPanel
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Mortgage application"
+      description="Review applicant details below, then use workflow actions when required."
+      className="sm:max-w-2xl"
+      bodyClassName="p-0 gap-0"
+    >
 
         {loading ? (
           <div className="flex-1 overflow-y-auto">
@@ -588,7 +579,6 @@ export function MortgageWorkflowDetailSheet({
         ) : (
           <p className="px-6 py-12 text-center text-sm text-gray-500">Application not found.</p>
         )}
-      </SheetContent>
-    </Sheet>
+      </DrawerPanel>
   )
 }

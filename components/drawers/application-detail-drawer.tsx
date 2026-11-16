@@ -168,7 +168,7 @@ export default function ApplicationDetailDrawer({
             onOpenChange={onClose}
             title="Overview"
             subtitle="Application & Customer Details"
-            className="sm:max-w-[1000px]"
+            className="sm:max-w-[62rem]"
         >
             <div className="space-y-6 px-6">
                 {/* Customer Profile Header */}

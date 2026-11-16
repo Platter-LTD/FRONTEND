@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Bell, User, Plus } from "lucide-react"
 import { IoIosCopy } from "react-icons/io"
-import { productApi } from "@/lib/services/product-api"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { toast } from "sonner"
 import CreateProductDrawer from "@/components/drawers/create-product-drawer"
@@ -23,6 +23,7 @@ import SavingsCreatedSuccessDrawer from "@/components/drawers/savings-created-su
 import CommodityCreatedSuccessDrawer from "@/components/drawers/commodity-created-success-drawer"
 import Link from "next/link"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useProductActions } from "@/hooks/queries/products"
 
 type Product = {
   id: string
@@ -37,6 +38,7 @@ type Product = {
 }
 
 export default function ProductsPage() {
+  const productActions = useProductActions()
   const [activeTab, setActiveTab] = useState("products")
   const [isCreateProductOpen, setIsCreateProductOpen] = useState(false)
   const { actions } = usePermissions()
@@ -154,7 +156,7 @@ export default function ProductsPage() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || "Loan Product",
         description: data?.description || "Loan product",
         type: "Loan",
@@ -183,8 +185,8 @@ export default function ProductsPage() {
       const productId = loanData?.productId
       if (productId) {
         // Save configuration and update status to complete
-        await productApi.saveProductConfiguration(productId, 'Loan', configData)
-        await productApi.updateProduct(productId, { status: 'complete' })
+        await productActions.saveProductConfiguration(productId, 'Loan', configData)
+        await productActions.updateProduct(productId, { status: 'complete' })
       }
 
       setIsConfigureLoanOpen(false)
@@ -207,7 +209,7 @@ export default function ProductsPage() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || "Mortgage Product",
         description: data?.description || "Mortgage product",
         type: "Mortgage",
@@ -236,8 +238,8 @@ export default function ProductsPage() {
       const productId = mortgageData?.productId
       if (productId) {
         // Save configuration and update status to complete
-        await productApi.saveProductConfiguration(productId, 'Mortgage', configData)
-        await productApi.updateProduct(productId, { status: 'complete' })
+        await productActions.saveProductConfiguration(productId, 'Mortgage', configData)
+        await productActions.updateProduct(productId, { status: 'complete' })
       }
 
       setIsConfigureMortgageOpen(false)
@@ -296,6 +298,34 @@ export default function ProductsPage() {
     navigator.clipboard.writeText(ref)
   }
 
+
+  type ProductRow = (typeof products)[number]
+  const copyCell = (value: string) => (
+    <div className="flex items-center gap-2">
+      <span>{value}</span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          handleCopyRef(value)
+        }}
+        className="text-gray-400 hover:text-gray-600"
+        title="Copy reference"
+      >
+        <IoIosCopy size={16} />
+      </button>
+    </div>
+  )
+  const productColumns: ColumnDef<ProductRow, unknown>[] = [
+    { accessorKey: "amount", header: "Amount", cell: ({ row }) => <span className="text-gray-900">{row.original.amount}</span> },
+    { accessorKey: "ref", header: "Ref", cell: ({ row }) => copyCell(row.original.ref) },
+    { accessorKey: "timestamp", header: "Timestamp" },
+    { accessorKey: "fee", header: "Fee" },
+    { accessorKey: "product", header: "Product", cell: ({ row }) => <span className="text-gray-900">{row.original.product}</span> },
+    { accessorKey: "metaRef", header: "Meta_Ref", cell: ({ row }) => copyCell(row.original.metaRef) },
+    { accessorKey: "allUsers", header: "All users" },
+    { accessorKey: "userPhone", header: "User Phone" },
+  ]
   return (
     <div className="flex-1 bg-white">
       {/* Header */}
@@ -359,79 +389,24 @@ export default function ProductsPage() {
 
       {/* Content */}
       <div className="p-8">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">All Product</h2>
-          {canCreateProduct ? (
-          <Button onClick={() => setIsCreateProductOpen(true)} className="bg-black text-white hover:bg-gray-800 gap-2">
-            <Plus size={16} />
-            create product
-          </Button>
-          ) : null}
-        </div>
-
-        {/* Products Table */}
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-[#F5F5F5]">
-              <tr>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Amount</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Ref</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Timestamp</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Fee</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Product</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Meta_Ref</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">All users</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">User Phone</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {products.map((product) => (
-                <tr
-                  key={product.id}
-                  className="hover:bg-gray-50 cursor-pointer"
-                  onClick={() => handleProductClick(product)}
-                >
-                  <td className="px-6 py-4 text-sm text-gray-900">{product.amount}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <span>{product.ref}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleCopyRef(product.ref)
-                        }}
-                        className="text-gray-400 hover:text-gray-600"
-                        title="Copy reference"
-                      >
-                        <IoIosCopy size={16} />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{product.timestamp}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{product.fee}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{product.product}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">
-                    <div className="flex items-center gap-2">
-                      <span>{product.metaRef}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleCopyRef(product.metaRef)
-                        }}
-                        className="text-gray-400 hover:text-gray-600"
-                        title="Copy reference"
-                      >
-                        <IoIosCopy size={16} />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{product.allUsers}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{product.userPhone}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          tableId="products-transactions"
+          title="All Product"
+          columns={productColumns}
+          data={products}
+          clientSearch
+          download
+          rowDetails={{ drawer: true }}
+          onRowClick={(product) => handleProductClick(product)}
+          action={
+            canCreateProduct ? (
+            <Button onClick={() => setIsCreateProductOpen(true)} className="gap-2 bg-black text-white hover:bg-gray-800">
+              <Plus size={16} />
+              create product
+            </Button>
+          ) : undefined
+          }
+        />
       </div>
 
       {/* Drawers */}

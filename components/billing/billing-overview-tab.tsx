@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, TrendingUp, FileText, Download, Loader2 } from "lucide-react"
-import { billingService } from "@/lib/services/billing-service"
 import type { Invoice, BillingStatus } from "@/types/billing"
+import { useBillingInvoices } from "@/hooks/queries/billing"
 
 interface BillingStat {
   title: string
@@ -16,69 +16,39 @@ interface BillingStat {
 }
 
 export function BillingOverviewTab() {
-  const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [billingStats, setBillingStats] = useState<BillingStat[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const query = useBillingInvoices({ limit: 10 })
+  const invoices: Invoice[] = query.data?.data ?? []
+  const loading = query.isLoading
+  const error = query.error ? "Failed to load billing data" : null
 
-  useEffect(() => {
-    loadBillingData()
-  }, [])
-
-  const loadBillingData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      // Load invoices from billing-ms
-      const invoicesResponse = await billingService.getInvoices({ limit: 10 })
-      if (invoicesResponse.data) {
-        setInvoices(invoicesResponse.data)
-      }
-      
-      // Calculate stats from invoices
-      const loadedInvoices = invoicesResponse.data || []
-      const currentBalance = loadedInvoices
-        .filter(inv => inv.status === 'pending')
-        .reduce((sum, inv) => sum + inv.amount, 0)
-      const paidThisMonth = loadedInvoices
-        .filter(inv => inv.status === 'paid')
-        .reduce((sum, inv) => sum + inv.amount, 0)
-      const outstandingCount = loadedInvoices.filter(inv => inv.status === 'pending').length
-      
-      setBillingStats([
-        {
-          title: "Current Balance",
-          value: `NGN ${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
-          change: "+12.5%",
-          icon: DollarSign,
-        },
-        {
-          title: "Monthly Spend",
-          value: `NGN ${paidThisMonth.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
-          change: "+8.2%",
-          icon: TrendingUp,
-        },
-        {
-          title: "Outstanding Invoices",
-          value: outstandingCount.toString(),
-          change: "-2",
-          icon: FileText,
-        },
-      ])
-    } catch (err) {
-      console.error('Failed to load billing data:', err)
-      setError('Failed to load billing data')
-      // Set fallback data
-      setBillingStats([
+  // Stats derived from the cached invoices (fallback values when loading fails).
+  const billingStats: BillingStat[] = useMemo(() => {
+    if (query.error) {
+      return [
         { title: "Current Balance", value: "NGN 0.00", change: "--", icon: DollarSign },
         { title: "Monthly Spend", value: "NGN 0.00", change: "--", icon: TrendingUp },
         { title: "Outstanding Invoices", value: "0", change: "--", icon: FileText },
-      ])
-    } finally {
-      setLoading(false)
+      ]
     }
-  }
+    const currentBalance = invoices.filter(inv => inv.status === 'pending').reduce((sum, inv) => sum + inv.amount, 0)
+    const paidThisMonth = invoices.filter(inv => inv.status === 'paid').reduce((sum, inv) => sum + inv.amount, 0)
+    const outstandingCount = invoices.filter(inv => inv.status === 'pending').length
+    return [
+      {
+        title: "Current Balance",
+        value: `NGN ${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+        change: "+12.5%",
+        icon: DollarSign,
+      },
+      {
+        title: "Monthly Spend",
+        value: `NGN ${paidThisMonth.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+        change: "+8.2%",
+        icon: TrendingUp,
+      },
+      { title: "Outstanding Invoices", value: outstandingCount.toString(), change: "-2", icon: FileText },
+    ]
+  }, [invoices, query.error])
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
@@ -122,7 +92,7 @@ export function BillingOverviewTab() {
         <Card className="bg-red-50 border-red-200">
           <CardContent className="p-4">
             <p className="text-red-600">{error}</p>
-            <Button onClick={loadBillingData} variant="outline" className="mt-2">
+            <Button onClick={() => void query.refetch()} variant="outline" className="mt-2">
               Retry
             </Button>
           </CardContent>

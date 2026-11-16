@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   fetchPlatformFieldCatalog,
   filterFieldsForProductType,
@@ -9,37 +9,25 @@ import {
   type PlatformSelectOption,
 } from '@/lib/platformApplicationFields'
 
+const NO_FIELDS: PlatformFieldDefinition[] = []
+const NO_OPTIONS: Record<string, PlatformSelectOption[]> = {}
+
+/** Platform application fields for a product type, with their select options (cached per type). */
 export function usePlatformApplicationFieldCatalog(productType: 'LOAN' | 'MORTGAGE') {
-  const [fields, setFields] = useState<PlatformFieldDefinition[]>([])
-  const [optionsByPath, setOptionsByPath] = useState<Record<string, PlatformSelectOption[]>>({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const query = useQuery({
+    queryKey: ['platform-application-fields', productType],
+    queryFn: async () => {
+      const fields = filterFieldsForProductType(await fetchPlatformFieldCatalog(), productType)
+      const optionsByPath = await loadPlatformSelectOptionsMap(fields)
+      return { fields, optionsByPath }
+    },
+    staleTime: 30 * 60_000,
+  })
 
-  useEffect(() => {
-    let cancelled = false
-
-    void (async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const catalog = await fetchPlatformFieldCatalog()
-        const filtered = filterFieldsForProductType(catalog, productType)
-        const options = await loadPlatformSelectOptionsMap(filtered)
-        if (cancelled) return
-        setFields(filtered)
-        setOptionsByPath(options)
-      } catch (err) {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : 'Could not load application fields.')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [productType])
-
-  return { fields, optionsByPath, loading, error }
+  return {
+    fields: query.data?.fields ?? NO_FIELDS,
+    optionsByPath: query.data?.optionsByPath ?? NO_OPTIONS,
+    loading: query.isLoading,
+    error: query.error ? query.error.message || 'Could not load application fields.' : null,
+  }
 }

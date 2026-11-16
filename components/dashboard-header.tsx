@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useMemo } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { HiMiniUser } from "react-icons/hi2"
 import { ChevronLeft, ChevronDown } from "lucide-react"
@@ -22,37 +22,18 @@ const routeTitles: Record<string, { title: string; subtitle: string }> = {
   "/dashboard/settings": { title: "Settings", subtitle: "Adjust your preferences" },
 }
 
-import { productApi } from "@/lib/services/product-api"
-import { appApi } from "@/lib/services/appService"
 import { extractProductItems } from "@/lib/productOverview"
 import { resolveProductIdFromAppProducts } from "@/lib/productDetailView"
 import { DashboardNotificationsPopover } from "@/components/dashboard-notifications-popover"
 import { useAuth } from "@/hooks/useAuth"
+import { useApps } from "@/hooks/queries/apps"
+import { useAppProducts } from "@/hooks/queries/products"
 
 export const DashboardHeader: React.FC = () => {
   const pathname = usePathname()
   const router = useRouter()
   const { user } = useAuth()
-  const [dynamicApps, setDynamicApps] = useState<any[]>([])
-  const [products, setProducts] = useState<any[]>([])
-  const [currentProduct, setCurrentProduct] = useState<any>(null)
-
-  // Fetch apps from API (no localStorage)
-  useEffect(() => {
-    const fetchApps = async () => {
-      try {
-        const result = await appApi.getAllApps()
-        if (result.success && result.data) {
-          setDynamicApps(Array.isArray(result.data) ? result.data : [])
-        } else {
-          setDynamicApps([])
-        }
-      } catch {
-        setDynamicApps([])
-      }
-    }
-    fetchApps()
-  }, [user?.id])
+  const { data: dynamicApps = [] } = useApps({ enabled: Boolean(user?.id) })
 
   // Get current app ID and product details from URL
   const currentAppId = pathname?.split("/dashboard/create-app/all-apps/")[1]?.split("/")[0]
@@ -60,42 +41,29 @@ export const DashboardHeader: React.FC = () => {
   const productTypeFromDetails = isProductDetailsPage ? pathname.split("/products/")[1]?.split("/")[0] : null
   const productIdFromDetails = isProductDetailsPage ? pathname.split("/").pop() : null
 
-  useEffect(() => {
-    if (!currentAppId) return
-    void productApi.getProductsByAppId(currentAppId).catch(() => undefined)
-  }, [currentAppId])
+  // Products for the current app (cached; also warms the cache for the products pages).
+  const { data: appProductsData } = useAppProducts(currentAppId)
 
-  // Fetch products when on product details page
-  useEffect(() => {
-    const fetchProducts = async () => {
-      if (currentAppId && isProductDetailsPage) {
-        try {
-          const data = await productApi.getProductsByAppId(currentAppId)
-
-          if (data.success && data.data) {
-            const rows = extractProductItems(data)
-            const pathType = (productTypeFromDetails || "").toUpperCase()
-            const filteredProducts = rows.filter((p: any) => String(p?.type ?? "").toUpperCase() === pathType)
-            setProducts(filteredProducts)
-
-            const resolvedId = resolveProductIdFromAppProducts(rows, String(productIdFromDetails || ""))
-            const current = rows.find((p: any) => {
-              const id = p?.id ?? p?._id
-              if (resolvedId && id != null && String(id) === resolvedId) return true
-              const slug = String(productIdFromDetails || "")
-              if (!slug) return false
-              return [p?.id, p?._id, p?.referenceNumber].some((x) => x != null && String(x) === slug)
-            })
-            setCurrentProduct(current ?? null)
-          }
-        } catch (error) {
-          console.error('Error fetching products:', error)
-        }
-      }
+  // On a product details page: the products of that type, and the one being viewed.
+  const { products, currentProduct } = useMemo(() => {
+    if (!isProductDetailsPage || !appProductsData?.success || !appProductsData.data) {
+      return { products: [] as any[], currentProduct: null as any }
     }
-
-    fetchProducts()
-  }, [currentAppId, isProductDetailsPage, productTypeFromDetails, productIdFromDetails])
+    const rows = extractProductItems(appProductsData)
+    const pathType = (productTypeFromDetails || "").toUpperCase()
+    const resolvedId = resolveProductIdFromAppProducts(rows, String(productIdFromDetails || ""))
+    const current = rows.find((p: any) => {
+      const id = p?.id ?? p?._id
+      if (resolvedId && id != null && String(id) === resolvedId) return true
+      const slug = String(productIdFromDetails || "")
+      if (!slug) return false
+      return [p?.id, p?._id, p?.referenceNumber].some((x) => x != null && String(x) === slug)
+    })
+    return {
+      products: rows.filter((p: any) => String(p?.type ?? "").toUpperCase() === pathType),
+      currentProduct: current ?? null,
+    }
+  }, [appProductsData, isProductDetailsPage, productTypeFromDetails, productIdFromDetails])
 
   const isAppDetailsPage = pathname?.includes("/dashboard/create-app/all-apps/") && pathname.split("/").length > 5
 

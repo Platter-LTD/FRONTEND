@@ -27,6 +27,7 @@ import {
   invalidateDashboardProducts,
   productDetailKey,
 } from '@/lib/dashboardSessionCache';
+import { gatewayFetch } from "@/lib/gatewayFetch"
 
 const decodeTokenMerchantId = (token: string | null): string | null => {
   if (!token) return null;
@@ -955,6 +956,87 @@ const buildConfigurationPayload = (productType: string, configuration: any) => {
   });
 };
 
+/**
+ * Product creation is two gateway calls: POST /products/select-type (creates the draft and returns its id),
+ * then POST /products/create-after-type with name/description. If select-type gives no id, fall back to
+ * the legacy single POST /products. (Previously done by the Next.js /api/products route.)
+ */
+async function createProductOnGateway(
+  body: { appId?: string; type: string; name?: string; description?: string; [key: string]: any },
+  headers: HeadersInit,
+): Promise<{ response: Response; data: any }> {
+  const post = async (path: string, payload: unknown) => {
+    const response = await gatewayFetch(path, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const data = await response.json().catch(() => ({}));
+    return { response, data };
+  };
+
+  const { appId, type, name, description, ...rest } = body;
+  const selected = await post('/api/v1/products/select-type', { appId, type, ...rest });
+  const productId = selected.data?.data?.id as string | undefined;
+  if (selected.response.status !== 200 || !productId) {
+    return post('/api/v1/products', { appId, type, name, description, ...rest });
+  }
+  return post('/api/v1/products/create-after-type', { productId, name, description });
+}
+
+/** Uncached fetch (used by React Query hooks and by the cached service method). */
+export async function fetchProductsByAppId(appId: string, query?: { page?: number; limit?: number }) {
+    const qs = new URLSearchParams();
+    qs.set("page", String(query?.page && query.page > 0 ? query.page : 1));
+    qs.set("limit", String(query?.limit && query.limit > 0 ? Math.min(query.limit, 100) : 100));
+    const response = await gatewayFetch(
+      `/api/v1/products/app/${encodeURIComponent(appId)}?${qs.toString()}`,
+      {
+        headers: getAuthHeaders(),
+        credentials: 'include',
+      },
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || 'Failed to fetch products');
+    }
+
+    return withProductItemsAsData(data as Record<string, unknown>);
+}
+
+/** Uncached fetch (used by React Query hooks and by the cached service method). */
+export async function fetchProductById(productId: string) {
+    const response = await gatewayFetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
+      headers: getAuthHeaders(),
+    });
+
+    const raw = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error((raw as { error?: string }).error || (raw as { message?: string }).message || 'Failed to fetch product');
+    }
+
+    const product = extractProductFromResponse(raw);
+    if (!product) {
+      throw new Error('Invalid product response');
+    }
+
+    return { success: true as const, data: product };
+}
+
+/** Uncached fetch (used by React Query hooks and by the cached service method). */
+export async function fetchProductList(params: ListProductsParams, signal?: AbortSignal) {
+    const qs = buildProductListSearchParams(params).toString();
+    const response = await plataAuthFetch(
+      `/api/v1/products?${qs}`,
+      { headers: getAuthHeaders(), signal },
+    );
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || 'Failed to fetch products');
+    }
+    return data;
+}
+
 export const productApi = {
   async getProductOverview(appId: string, signal?: AbortSignal) {
     const q = new URLSearchParams({ appId });
@@ -1002,19 +1084,7 @@ export const productApi = {
         limit: params.limit,
         search: params.search,
       }),
-      async () => {
-        const qs = buildProductListSearchParams(params).toString();
-        const response = await plataAuthFetch(
-          `/api/v1/products?${qs}`,
-          { headers: getAuthHeaders(), signal },
-        );
-
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error((data as { error?: string }).error || 'Failed to fetch products');
-        }
-        return data;
-      },
+      () => fetchProductList(params, signal),
       DASHBOARD_TTL.products,
     );
   },
@@ -1066,7 +1136,7 @@ export const productApi = {
   ) {
     const reason = extras?.reason?.trim()
     const equityRef = extras?.equityProviderReference?.trim()
-    const response = await fetch(`/api/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow`, {
+    const response = await gatewayFetch(`/api/v1/products/applications/${encodeURIComponent(applicationId)}/loan-workflow`, {
       method: "PATCH",
       headers: getAuthHeaders(),
       body: JSON.stringify({
@@ -1103,19 +1173,13 @@ export const productApi = {
       status: productData.status || 'active',   // default 'active' (some backends use 'incomplete'/'complete')
     };
 
-    const response = await fetch('/api/v1/products', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        ...payload,
-        type: String(payload.type || "").trim().toUpperCase(),
-      }),
-    });
-
-    const data = await response.json();
+    const { response, data } = await createProductOnGateway(
+      { ...payload, type: String(payload.type || "").trim().toUpperCase() },
+      getAuthHeaders(),
+    );
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to create product');
+      throw new Error(data.error || data.message || 'Failed to create product');
     }
 
     invalidateDashboardProducts(payload.appId);
@@ -1128,26 +1192,7 @@ export const productApi = {
   async getProductsByAppId(appId: string, query?: { page?: number; limit?: number }) {
     return queryCache(
       appProductsKey(appId, query),
-      async () => {
-        const qs = new URLSearchParams();
-        qs.set("page", String(query?.page && query.page > 0 ? query.page : 1));
-        qs.set("limit", String(query?.limit && query.limit > 0 ? Math.min(query.limit, 100) : 100));
-        const response = await fetch(
-          `/api/v1/products/app/${encodeURIComponent(appId)}?${qs.toString()}`,
-          {
-            headers: getAuthHeaders(),
-            credentials: 'include',
-          },
-        );
-
-        const data = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          throw new Error((data as { error?: string }).error || 'Failed to fetch products');
-        }
-
-        return withProductItemsAsData(data as Record<string, unknown>);
-      },
+      () => fetchProductsByAppId(appId, query),
       DASHBOARD_TTL.products,
     );
   },
@@ -1156,24 +1201,7 @@ export const productApi = {
   async getProductById(productId: string) {
     return queryCache(
       productDetailKey(productId),
-      async () => {
-        const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
-          headers: getAuthHeaders(),
-        });
-
-        const raw = await response.json().catch(() => ({}));
-
-        if (!response.ok) {
-          throw new Error((raw as { error?: string }).error || (raw as { message?: string }).message || 'Failed to fetch product');
-        }
-
-        const product = extractProductFromResponse(raw);
-        if (!product) {
-          throw new Error('Invalid product response');
-        }
-
-        return { success: true as const, data: product };
-      },
+      () => fetchProductById(productId),
       DASHBOARD_TTL.productDetail,
     );
   },
@@ -1186,7 +1214,7 @@ export const productApi = {
     const headers = getAuthHeaders();
 
     const fetchProduct = async (id: string) => {
-      const res = await fetch(`/api/v1/products/${encodeURIComponent(id)}`, { headers });
+      const res = await gatewayFetch(`/api/v1/products/${encodeURIComponent(id)}`, { headers });
       const json = await res.json().catch(() => ({}));
       return { res, json };
     };
@@ -1196,7 +1224,7 @@ export const productApi = {
 
     if (!res.ok || !product) {
       const qs = new URLSearchParams({ page: "1", limit: "100" });
-      const appRes = await fetch(
+      const appRes = await gatewayFetch(
         `/api/v1/products/app/${encodeURIComponent(appId)}?${qs.toString()}`,
         { headers },
       );
@@ -1239,7 +1267,7 @@ export const productApi = {
 
   // Update product
   async updateProduct(productId: string, updates: any) {
-    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
+    const response = await gatewayFetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       credentials: 'include',
@@ -1258,7 +1286,7 @@ export const productApi = {
 
   // Manage product (status-gated edit path for complete products)
   async manageProduct(productId: string, updates: any) {
-    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}/manage`, {
+    const response = await gatewayFetch(`/api/v1/products/${encodeURIComponent(productId)}/manage`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       credentials: 'include',
@@ -1276,7 +1304,7 @@ export const productApi = {
 
   // Delete / archive product — DELETE /api/v1/products/{id}
   async deleteProduct(productId: string) {
-    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
+    const response = await gatewayFetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -1305,7 +1333,7 @@ export const productApi = {
   // Create or update product configuration
   async saveProductConfiguration(productId: string, productType: string, configuration: any) {
     const payload = buildConfigurationPayload(productType, configuration);
-    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
+    const response = await gatewayFetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       credentials: 'include',
@@ -1324,7 +1352,7 @@ export const productApi = {
   // Save configuration through /manage endpoint (for complete products)
   async saveProductConfigurationWithManage(productId: string, productType: string, configuration: any) {
     const payload = buildConfigurationPayload(productType, configuration);
-    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}/manage`, {
+    const response = await gatewayFetch(`/api/v1/products/${encodeURIComponent(productId)}/manage`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       credentials: 'include',
@@ -1342,7 +1370,7 @@ export const productApi = {
 
   // Toggle product on/off for an app (PUT /api/v1/products/toggle/:appId/:productId, body { activate })
   async toggleProductStatus(appId: string, productId: string, activate: boolean) {
-    const response = await fetch(
+    const response = await gatewayFetch(
       `/api/v1/products/toggle/${encodeURIComponent(appId)}/${encodeURIComponent(productId)}`,
       {
         method: 'PUT',

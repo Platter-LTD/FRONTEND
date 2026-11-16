@@ -1,10 +1,12 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { Plus, Package, ExternalLink, AlertCircle, RefreshCw, Loader2, MoreVertical, Pencil, Power } from "lucide-react"
+import { useState, useCallback, useMemo } from "react"
+import { Plus, Package, ExternalLink, Pencil, Power } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { TableSkeleton } from "@/components/ui/table-skeleton"
+import { TableEmptyState } from "@/components/ui/table-states"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { rowActionsColumn, type RowAction } from "@/components/ui/row-actions"
 import CreateProductDrawer from "@/components/drawers/create-product-drawer"
 import CreateLoanDrawer from "@/components/drawers/create-loan-drawer"
 import CreateMortgageDrawer from "@/components/drawers/create-mortgage-drawer"
@@ -25,12 +27,6 @@ import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage
 import { toast } from "sonner"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   prefetchLoanConfigureOptions,
   prefetchMortgageConfigureOptions,
   prefetchSavingsConfigureOptions,
@@ -41,6 +37,7 @@ import {
   type CommodityConfigurePrefetched,
 } from "@/lib/productConfigurePrefetch"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useAppProducts, useProductActions } from "@/hooks/queries/products"
 
 export default function ProductsPage() {
   const params = useParams()
@@ -52,9 +49,15 @@ export default function ProductsPage() {
   const canPublishProduct = actions.publishProduct
   const canArchiveProduct = actions.archiveProduct
   const [isCreateProductOpen, setIsCreateProductOpen] = useState(false)
-  const [products, setProducts] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // App products (cached); every create / configure / update mutation refreshes this query.
+  const productsQuery = useAppProducts(appId)
+  const products: any[] = useMemo(
+    () => (productsQuery.data ? extractProductItems(productsQuery.data) : []),
+    [productsQuery.data],
+  )
+  const loading = productsQuery.isLoading
+  const error = productsQuery.error ? "Failed to load products. Please try again." : null
+  const productActions = useProductActions()
   const [typeFilter, setTypeFilter] = useState("all")
 
   // Loan states
@@ -94,27 +97,14 @@ export default function ProductsPage() {
   const [isProcessingOpen, setIsProcessingOpen] = useState(false)
 
   const fetchProducts = useCallback(async () => {
-    if (!appId) return
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await productApi.getProductsByAppId(appId)
-      setProducts(extractProductItems(data))
-      setError(null)
-    } catch (err) {
-      console.error("Error fetching products:", err)
-      setProducts([])
-      setError("Failed to load products. Please try again.")
-    } finally {
-      setLoading(false)
-    }
-  }, [appId])
+    await productsQuery.refetch()
+  }, [productsQuery])
 
   const saveConfiguredProduct = useCallback(
     async (productId: string, productType: string, configData: Record<string, unknown>) => {
       // PUT /:id is first save and later edits (complete products included).
       // PUT /:id/manage is only a status-gated alias and is not required.
-      await productApi.saveProductConfiguration(productId, productType, {
+      await productActions.saveProductConfiguration(productId, productType, {
         ...configData,
         status: "complete",
       })
@@ -122,9 +112,6 @@ export default function ProductsPage() {
     [],
   )
 
-  useEffect(() => {
-    if (appId) fetchProducts()
-  }, [appId, fetchProducts])
 
   const typeOptions = Array.from(
     new Set(
@@ -140,8 +127,8 @@ export default function ProductsPage() {
       : products.filter((product) => String(product?.type ?? "").toLowerCase() === typeFilter.toLowerCase())
 
   const handleProductCreated = (product: any) => {
-    // Add the new product to the list (this will be called from the form page)
-    setProducts(prevProducts => [...prevProducts, product])
+    // The create mutation already refreshed the cached list; refetch to be sure it is current.
+    void productsQuery.refetch()
   }
 
   const handleProductSelect = (productType: string) => {
@@ -180,7 +167,7 @@ export default function ProductsPage() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || "Loan Product",
         description: data?.description || "Loan product",
         type: "Loan",
@@ -191,8 +178,7 @@ export default function ProductsPage() {
 
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -216,8 +202,7 @@ export default function ProductsPage() {
         await saveConfiguredProduct(configuringProductId, "Loan", configData)
 
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setIsConfigureLoanOpen(false)
         setLoanConfigurePrefetch(null)
@@ -244,7 +229,7 @@ export default function ProductsPage() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName,
         description: data?.description,
         type: "Mortgage",
@@ -255,8 +240,7 @@ export default function ProductsPage() {
 
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -280,8 +264,7 @@ export default function ProductsPage() {
         await saveConfiguredProduct(configuringProductId, "Mortgage", configData)
 
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setIsConfigureMortgageOpen(false)
         setMortgageConfigurePrefetch(null)
@@ -308,7 +291,7 @@ export default function ProductsPage() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || "Savings Product",
         description: data?.description || "Savings product",
         type: "Savings",
@@ -319,8 +302,7 @@ export default function ProductsPage() {
 
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -344,8 +326,7 @@ export default function ProductsPage() {
         await saveConfiguredProduct(configuringProductId, "Savings", configData)
 
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setIsConfigureSavingsOpen(false)
         setSavingsConfigurePrefetch(null)
@@ -373,7 +354,7 @@ export default function ProductsPage() {
     try {
       // Create product with incomplete status; use Investment type when selected
       const isInvestment = currentCreateType === "investment"
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || (isInvestment ? "Investment Product" : "Commodity Product"),
         description: data?.description || (isInvestment ? "Investment product" : "Commodity product"),
         type: isInvestment ? "Investment" : "Commodity",
@@ -384,8 +365,7 @@ export default function ProductsPage() {
 
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -410,8 +390,7 @@ export default function ProductsPage() {
         await saveConfiguredProduct(configuringProductId, configType, configData)
 
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setIsConfigureCommodityOpen(false)
         setCommodityConfigurePrefetch(null)
@@ -505,7 +484,7 @@ export default function ProductsPage() {
   const handleDeactivateProductFromMenu = async (productId: string) => {
     if (!confirm("Deactivate this product? Customers will no longer be able to use it until reactivated.")) return
     try {
-      await productApi.updateProduct(productId, { isActive: false })
+      await productActions.updateProduct(productId, { isActive: false })
       await fetchProducts()
     } catch (err) {
       console.error(err)
@@ -516,7 +495,7 @@ export default function ProductsPage() {
   const handleActivateProductFromMenu = async (productId: string) => {
     if (!confirm("Activate this product? Customers will be able to use it again.")) return
     try {
-      await productApi.updateProduct(productId, { isActive: true })
+      await productActions.updateProduct(productId, { isActive: true })
       await fetchProducts()
     } catch (err) {
       console.error(err)
@@ -524,6 +503,73 @@ export default function ProductsPage() {
     }
   }
 
+
+  const isProductInactive = (product: any) =>
+    product?.isActive === false || String(product?.status ?? "").toLowerCase() === "inactive"
+
+  const productColumns: ColumnDef<any, unknown>[] = [
+    { accessorKey: "name", header: "Product Name", cell: ({ row }) => <span className="font-medium text-gray-900">{row.original.name}</span> },
+    {
+      accessorKey: "type",
+      header: "Product Type",
+      cell: ({ row }) => (
+        <span className="inline-flex rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800 capitalize">{row.original.type}</span>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      accessorFn: (p) => (isProductInactive(p) ? "inactive" : p.status),
+      cell: ({ row: { original: product } }) => {
+        const isInactive = isProductInactive(product)
+        return (
+          <span
+            className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${
+              String(product.status).toLowerCase() === "complete" && !isInactive
+                ? "bg-green-100 text-green-800"
+                : isInactive
+                  ? "bg-gray-100 text-gray-700"
+                  : "bg-yellow-100 text-yellow-800"
+            }`}
+          >
+            {isInactive ? "inactive" : product.status}
+          </span>
+        )
+      },
+    },
+    { id: "customers", header: "Customers", accessorFn: (p) => p.customers || "0" },
+    {
+      id: "createdAt",
+      header: "Date Created",
+      accessorFn: (p) => (p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "N/A"),
+    },
+    rowActionsColumn<any>((product) => {
+      const isInactive = isProductInactive(product)
+      const actions: RowAction<any>[] = [
+        { label: "Open product", icon: ExternalLink, onClick: (p) => handleProductClick(p.id, p.type) },
+      ]
+      if (canEditProduct) {
+        actions.push({
+          label:
+            prefetchingProductId === product.id
+              ? "Loading..."
+              : !isInactive && String(product.status).toLowerCase() === "incomplete"
+                ? "Configure product"
+                : "Edit product",
+          icon: Pencil,
+          disabled: (p) => prefetchingProductId === p.id,
+          onClick: (p) => handleEditProductFromMenu(p),
+        })
+      }
+      if (isInactive && canPublishProduct) {
+        actions.push({ label: "Activate product", icon: Power, onClick: (p) => void handleActivateProductFromMenu(p.id) })
+      }
+      if (!isInactive && canArchiveProduct) {
+        actions.push({ label: "Deactivate product", icon: Power, destructive: true, onClick: (p) => void handleDeactivateProductFromMenu(p.id) })
+      }
+      return actions
+    }),
+  ]
   return (
     <div className="p-8">
       {/* Header */}
@@ -533,19 +579,6 @@ export default function ProductsPage() {
           <p className="text-gray-600 mt-1">Create and manage your financial products</p>
         </div>
         <div className="flex items-center gap-4">
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[190px]">
-              <SelectValue placeholder="Product Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All types</SelectItem>
-              {typeOptions.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t.charAt(0).toUpperCase() + t.slice(1)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
 
           {canCreateProduct ? (
           <Button
@@ -567,181 +600,64 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Products Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {loading ? (
-          <TableSkeleton columnCount={7} rowCount={5} />
-        ) : error ? (
-          <div className="text-center py-12 px-4">
-            <AlertCircle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Something went wrong</h3>
-            <p className="text-gray-600 mb-6">{error}</p>
-            <Button
-              onClick={() => fetchProducts()}
-              variant="outline"
-              className="gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Try again
-            </Button>
-          </div>
-        ) : products.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-gray-400 mb-4">
-              <Plus className="w-12 h-12 mx-auto" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No products yet</h3>
-            <p className="text-gray-600 mb-6">
-              {canCreateProduct
-                ? "Get started by creating your first financial product"
-                : "No products are available to view yet."}
-            </p>
-            {canCreateProduct ? (
-            <Button
-              onClick={() => setIsCreateProductOpen(true)}
-              className="bg-[#9A813F] text-white hover:bg-[#8a7435]"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create Your First Product
-            </Button>
-            ) : null}
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No products match this type</h3>
-            <p className="text-gray-600 mb-6">Try selecting "All types".</p>
-            <Button
-              onClick={() => setTypeFilter("all")}
-              variant="outline"
-              className="gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Clear filter
-            </Button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Product Name</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Product Type</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Status</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Customers</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Date Created</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Action</th>
-                  <th className="w-12 py-3 px-2 text-right font-medium text-gray-900" aria-label="More actions" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredProducts.map((product) => (
-                  (() => {
-                    const isInactive = product?.isActive === false || String(product?.status ?? "").toLowerCase() === "inactive"
-                    return (
-                  <tr
-                    key={product.id}
-                    onClick={() => handleProductClick(product.id, product.type)}
-                    className="hover:bg-gray-50 cursor-pointer"
-                  >
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-gray-900">{product.name}</div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800 capitalize">
-                        {product.type}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full capitalize ${String(product.status).toLowerCase() === 'complete' && !isInactive
-                        ? 'bg-green-100 text-green-800'
-                        : isInactive
-                          ? 'bg-gray-100 text-gray-700'
-                          : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                        {isInactive ? "inactive" : product.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-gray-600">{product.customers || '0'}</td>
-                    <td className="py-3 px-4 text-gray-600">
-                      {product.createdAt ? new Date(product.createdAt).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex flex-wrap items-center gap-4">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleProductClick(product.id, product.type)
-                          }}
-                          className="text-[#9A813F] hover:underline text-sm font-medium"
-                        >
-                          Open Product
-                        </button>
-                      </div>
-                    </td>
-                    <td className="py-3 px-2 text-right" onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-gray-600 hover:bg-gray-100"
-                            aria-label="Product actions"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          {canEditProduct ? (
-                          <DropdownMenuItem
-                            className="gap-2"
-                            onClick={() => handleEditProductFromMenu(product)}
-                            disabled={prefetchingProductId === product.id}
-                          >
-                            <Pencil className="h-4 w-4" />
-                            {prefetchingProductId === product.id
-                              ? "Loading..."
-                              : isInactive
-                                ? "Edit product"
-                                : String(product.status).toLowerCase() === "incomplete"
-                                ? "Configure product"
-                                : "Edit product"}
-                          </DropdownMenuItem>
-                          ) : null}
-                          {isInactive && canPublishProduct ? (
-                            <DropdownMenuItem
-                              className="gap-2 text-green-700 focus:text-green-700"
-                              onClick={() => void handleActivateProductFromMenu(product.id)}
-                            >
-                              <Power className="h-4 w-4" />
-                              Activate product
-                            </DropdownMenuItem>
-                          ) : null}
-                          {!isInactive && canArchiveProduct ? (
-                            <DropdownMenuItem
-                              className="gap-2 text-red-600 focus:text-red-600"
-                              onClick={() => void handleDeactivateProductFromMenu(product.id)}
-                            >
-                              <Power className="h-4 w-4" />
-                              Deactivate product
-                            </DropdownMenuItem>
-                          ) : null}
-                          {!canEditProduct &&
-                          !((isInactive && canPublishProduct) || (!isInactive && canArchiveProduct)) ? (
-                            <DropdownMenuItem disabled className="text-gray-400">
-                              View only
-                            </DropdownMenuItem>
-                          ) : null}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
-                    )
-                  })()
+      <DataTable
+        tableId="app-products"
+        title="Products"
+        columns={productColumns}
+        data={filteredProducts}
+        isLoading={loading}
+        isError={!!error}
+        error={error}
+        onRefresh={() => fetchProducts()}
+        clientSearch
+        download
+        resetPageSignal={typeFilter}
+        rowDetails={{
+          drawer: true,
+          title: (product) => product.name || "Product details",
+          // The list row is a summary; fetch the full product (configuration, fees, requirements…).
+          load: (product) => productApi.getProductById(String(product.id)),
+        }}
+        onRowClick={(product) => handleProductClick(product.id, product.type)}
+        filters={{
+          content: (
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-[190px]">
+                <SelectValue placeholder="Product Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {typeOptions.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </SelectItem>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+              </SelectContent>
+            </Select>
+          ),
+          activeCount: typeFilter === "all" ? 0 : 1,
+          onClear: typeFilter === "all" ? undefined : () => setTypeFilter("all"),
+        }}
+        empty={
+          products.length > 0 ? (
+            <TableEmptyState title="No products match this type" description="Try selecting “All types”." />
+          ) : (
+            <div className="px-8 py-14 text-center">
+              <Plus className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+              <h3 className="mb-2 text-lg font-medium text-gray-900">No products yet</h3>
+              <p className="mb-6 text-gray-600">
+                {canCreateProduct ? "Get started by creating your first financial product" : "No products are available to view yet."}
+              </p>
+              {canCreateProduct ? (
+                <Button onClick={() => setIsCreateProductOpen(true)} className="bg-[#9A813F] text-white hover:bg-[#8a7435]">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Your First Product
+                </Button>
+              ) : null}
+            </div>
+          )
+        }
+      />
 
       {/* Drawers */}
       <CreateProductDrawer

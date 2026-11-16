@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { DataTable, type ColumnDef } from '@/components/ui/data-table';
 import { TransactionHistoryDrawer } from '@/components/TransactionHistoryDrawer';
 
 interface BillingRecord {
@@ -66,6 +67,38 @@ const mockData: BillingRecord[] = [
   },
 ];
 
+const columns: ColumnDef<BillingRecord, unknown>[] = [
+  { accessorKey: 'date', header: 'Date' },
+  { accessorKey: 'amount', header: 'Amount' },
+  {
+    accessorKey: 'status',
+    header: 'Status',
+    cell: ({ row }) => (
+      <Badge
+        className={cn(
+          row.original.status === 'Successful' && 'bg-green-100 text-green-700',
+          row.original.status === 'Failed' && 'bg-red-100 text-red-700',
+          row.original.status === 'Pending' && 'bg-yellow-100 text-yellow-700'
+        )}
+      >
+        {row.original.status}
+      </Badge>
+    ),
+  },
+  { accessorKey: 'method', header: 'Payment Method' },
+  { accessorKey: 'transactionId', header: 'Transaction ID' },
+  {
+    id: 'paymentLink',
+    header: 'Payment Link',
+    accessorFn: (r) => (r.downloadable ? 'Download' : 'Unavailable'),
+    cell: ({ row }) => (
+      <Button size="sm" variant="outline" disabled={!row.original.downloadable} onClick={(e) => e.stopPropagation()}>
+        {row.original.downloadable ? 'Download' : 'Unavailable'}
+      </Button>
+    ),
+  },
+];
+
 export function BillingHistoryTab() {
   const [open, setOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<BillingRecord | null>(null);
@@ -77,78 +110,15 @@ export function BillingHistoryTab() {
 
   return (
     <div className="space-y-8">
-      {/* Table */}
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left">
-            <tr>
-              <th className="px-4 py-4 font-medium">Date</th>
-              <th className="px-4 py-4 font-medium">Amount</th>
-              <th className="px-4 py-4 font-medium">Status</th>
-              <th className="px-4 py-4 font-medium">Payment Method</th>
-              <th className="px-4 py-4 font-medium">Transaction ID</th>
-              <th className="px-4 py-4 font-medium">Payment Link</th>
-            </tr>
-          </thead>
-          <tbody>
-            {mockData.map((row, idx) => (
-              <tr
-                key={idx}
-                className="border-t cursor-pointer hover:bg-gray-50"
-                onClick={() => handleRowClick(row)}
-              >
-                <td className="px-4 py-8">{row.date}</td>
-                <td className="px-4 py-8">{row.amount}</td>
-                <td className="px-4 py-8">
-                  <Badge
-                    className={cn(
-                      row.status === 'Successful' && 'bg-green-100 text-green-700',
-                      row.status === 'Failed' && 'bg-red-100 text-red-700',
-                      row.status === 'Pending' && 'bg-yellow-100 text-yellow-700'
-                    )}
-                  >
-                    {row.status}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3">{row.method}</td>
-                <td className="px-4 py-3">{row.transactionId}</td>
-                <td className="px-4 py-3">
-                  {row.downloadable ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Download
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled
-                      className="opacity-50 cursor-not-allowed"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      Unavailable
-                    </Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination */}
-      <div className="flex justify-center items-center gap-2">
-        <Button size="sm" variant="outline">{'<'}</Button>
-        <Button size="sm" variant="outline">1</Button>
-        <Button size="sm" variant="outline">2</Button>
-        <Button size="sm" variant="outline" className="bg-black text-white">3</Button>
-        <Button size="sm" variant="outline">4</Button>
-        <Button size="sm" variant="outline">5</Button>
-        <Button size="sm" variant="outline">{'>'}</Button>
-      </div>
+      <DataTable
+        tableId="billing-history"
+        title="Billing history"
+        columns={columns}
+        data={mockData}
+        clientSearch
+        download
+        onRowClick={handleRowClick}
+      />
 
       {/* Transaction Drawer */}
       {selectedRecord && (

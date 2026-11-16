@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit"
 import api from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
-import { setSecureTokens, clearSecureTokens, getUserFromToken } from "@/lib/tokenManager"
+import { clearSecureTokens, getUserFromToken } from "@/lib/tokenManager"
 import { getAccessToken } from "@/lib/cookieAuth"
 import {
   clearSessionPermissions,
@@ -13,9 +13,9 @@ import type {
   AuthUser,
   LoginRequestDto,
   LoginResponseDto,
-  MerchantRegistrationRequestDto,
   RbacSession,
 } from "@/types/auth"
+import { getQueryClient } from "@/lib/query/queryClient"
 
 interface AuthState {
   user: AuthUser | null
@@ -112,25 +112,31 @@ export const loginThunk = createAsyncThunk<
   { rejectValue: string }
 >("auth/login", async (payload, { rejectWithValue }) => {
   try {
-    const response = await api.post<LoginResponseDto>(ENDPOINTS.auth.login, payload)
-    const responseData = response.data as LoginResponseDto & Record<string, unknown>
+    // Our own /api/auth/login sets the auth cookies (refresh token httpOnly) and strips the refresh token.
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    })
+    const responseData = (await res.json().catch(() => ({}))) as LoginResponseDto & Record<string, unknown>
+    if (!res.ok || responseData?.success === false) {
+      const failed = responseData as Record<string, unknown>
+      return rejectWithValue(String(failed.message || failed.error || "Signin failed"))
+    }
 
     let userData: AuthUser | undefined
     let accessToken: string | undefined
-    let refreshToken: string | undefined
 
     if (responseData?.data?.tokens) {
       userData = responseData.data.user
       accessToken = responseData.data.tokens.accessToken
-      refreshToken = responseData.data.tokens.refreshToken
     } else if (responseData?.data?.accessToken) {
       userData = responseData.data.user
       accessToken = responseData.data.accessToken
-      refreshToken = responseData.data.refreshToken
     } else if (responseData?.accessToken) {
       userData = responseData.user
       accessToken = responseData.accessToken
-      refreshToken = responseData.refreshToken
     }
 
     const dataBag =
@@ -153,7 +159,6 @@ export const loginThunk = createAsyncThunk<
       return rejectWithValue("No access token received from server")
     }
 
-    await setSecureTokens(accessToken, refreshToken)
     saveSessionRbac(rbac)
 
     const fallbackUser = getUserFromToken()
@@ -179,8 +184,12 @@ export const fetchAuthMeThunk = createAsyncThunk<
   { rejectValue: string }
 >("auth/fetchMe", async (_, { rejectWithValue }) => {
   try {
-    const response = await api.get<AuthMeResponseDto>(ENDPOINTS.auth.me)
-    const body = response.data as AuthMeResponseDto & Record<string, unknown>
+    // Cached in React Query: the reload hydrate calls this up to three times; one request serves them all.
+    const body = (await getQueryClient().fetchQuery({
+      queryKey: ["auth", "me"],
+      queryFn: async () => (await api.get<AuthMeResponseDto>(ENDPOINTS.auth.me)).data,
+      staleTime: 30_000,
+    })) as AuthMeResponseDto & Record<string, unknown>
     const data =
       body?.data && typeof body.data === "object"
         ? (body.data as Record<string, unknown>)
@@ -209,8 +218,16 @@ export const loadUserFromTokenThunk = createAsyncThunk<
   { user: AuthUser; rbac: RbacSession } | null
 >("auth/loadUserFromToken", async (_, { dispatch }) => {
   try {
-    const res = await fetch("/api/auth/validate", { method: "GET", credentials: "include" })
-    const data = await res.json().catch(() => ({} as any))
+    // Session check via our auth route; React Query dedupes concurrent checks (provider mount + focus).
+    const { res, data } = await getQueryClient().fetchQuery({
+      queryKey: ["auth", "session"],
+      queryFn: async () => {
+        const r = await fetch("/api/auth/validate", { method: "GET", credentials: "include" })
+        return { res: { status: r.status, ok: r.ok }, data: (await r.json().catch(() => ({}))) as any }
+      },
+      staleTime: 0,
+      gcTime: 0,
+    })
     if (process.env.NODE_ENV === "development") {
       console.log("[auth] GET /api/auth/validate → status", res.status, "body", data)
     }
@@ -288,23 +305,6 @@ export const loadUserFromTokenThunk = createAsyncThunk<
 export const logoutThunk = createAsyncThunk("auth/logout", async () => {
   clearSessionPermissions()
   await clearSecureTokens()
-})
-
-export const registerMerchantThunk = createAsyncThunk<
-  void,
-  MerchantRegistrationRequestDto,
-  { rejectValue: string }
->("auth/registerMerchant", async (payload, { rejectWithValue }) => {
-  try {
-    await api.post(ENDPOINTS.auth.signup.merchant, payload)
-  } catch (error: any) {
-    const errorMessage =
-      error?.response?.data?.message ||
-      error?.response?.data?.error ||
-      error?.message ||
-      "Registration failed"
-    return rejectWithValue(errorMessage)
-  }
 })
 
 const authSlice = createSlice({

@@ -1,125 +1,81 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import FileUpload from '../FileUpload';
+import { Building2, ClipboardList, Globe, ArrowRight } from 'lucide-react';
 import { CurrencyVolumeField } from './CurrencyVolumeField';
 import { toast } from 'react-toastify';
 import { WEBSITE_URL_PREFIX } from '@/lib/websiteUrl';
 import { CountrySelect } from '@/components/ui/country-select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ComplianceService } from '@/lib/services/complianceService';
 import { useComplianceForm } from '@/providers/ComplianceFormProvider';
+import {
+  BrandButton,
+  DocumentDropTile,
+  Field,
+  SectionCard,
+  StepFooter,
+  fieldControlClass,
+} from '@/components/compliance/compliance-ui';
+import { cn } from '@/lib/utils';
 
 interface BusinessInfoTabProps {
   onContinue?: () => void;
 }
 
-interface FloatingSelectProps {
-  label: string;
-  placeholderText: string;
-  value: string;
-  onChange: (v: string) => void;
-  options?: string[];
-  optionPairs?: { value: string; label: string }[];
-  accentColor?: string;
-  onSelected?: () => void;
+type Option = { value: string; label: string };
+
+const LOGO_ACCEPT = 'image/png,image/jpeg,image/jpg,.png,.jpg,.jpeg';
+const LOGO_MAX_BYTES = 5 * 1024 * 1024;
+
+function validateLogo(file: File): string | null {
+  const name = file.name.toLowerCase();
+  const okType = /^image\/(png|jpe?g)$/.test(file.type) || /\.(png|jpe?g)$/.test(name);
+  if (!okType) return 'This file type is not allowed for this upload.';
+  if (file.size > LOGO_MAX_BYTES) return 'File must be 5MB or smaller.';
+  return null;
 }
 
-const FloatingSelect: React.FC<FloatingSelectProps> = ({
-  label,
-  placeholderText,
+/** Option list as a styled select; shows "Loading…" until the options arrive. */
+function OptionSelect({
+  id,
   value,
   onChange,
-  options = [],
-  optionPairs,
-  accentColor = '#9A813F',
-  onSelected,
-}) => {
-  const labelClassBase = 'absolute left-4 transition-all pointer-events-none';
-  const labelClassForEmpty = 'top-2.5 text-sm text-gray-400';
-  const labelClassForFilled = 'top-1.5 text-xs text-gray-500';
-
-  const labelClass = `${labelClassBase} ${value ? labelClassForFilled : labelClassForEmpty}`;
-  const pairs = optionPairs ?? options.map((opt) => ({ value: opt, label: opt }));
-
-  return (
-    <div className="relative">
-      <label className={labelClass}>{label}</label>
-
-      <select
-        value={value}
-        onChange={(e) => {
-          onChange(e.target.value);
-          if (onSelected && e.target.value) onSelected();
-        }}
-        className="w-full rounded-lg border border-gray-300 bg-white px-4 pt-9 pb-2.5 text-gray-900 appearance-none focus:outline-none focus:ring-1 focus:ring-[#9A813F]"
-        style={{ outlineColor: accentColor }}
-      >
-        <option value="" disabled>
-          {placeholderText}
-        </option>
-        {pairs.map((p) => (
-          <option key={p.value} value={p.value}>
-            {p.label}
-          </option>
-        ))}
-      </select>
-
-      {/* chevron icon */}
-      <svg
-        className="absolute right-4 top-[28px] h-8 w-8 text-gray-700 pointer-events-none"
-        viewBox="0 0 20 20"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M6 7l4 4 4-4"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
-  );
-};
-
-interface SimpleInputProps {
-  placeholder: string;
-  type?: 'text' | 'url';
-  value: string;
-  onChange: (v: string) => void;
-  accentColor?: string;
-}
-
-const SimpleInput: React.FC<SimpleInputProps> = ({
+  options,
   placeholder,
-  type = 'text',
-  value,
-  onChange,
-  accentColor = '#9A813F',
-}) => {
+  loading,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: Option[];
+  placeholder: string;
+  loading: boolean;
+}) {
   return (
-    <input
-      type={type}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-gray-900"
-      style={{ outlineColor: accentColor }}
-    />
+    <Select value={value || undefined} onValueChange={onChange} disabled={loading}>
+      <SelectTrigger id={id} className={cn(fieldControlClass, 'data-[placeholder]:text-gray-400')}>
+        <SelectValue placeholder={loading ? 'Loading…' : placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o.value} value={o.value}>
+            {o.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
-};
+}
 
 const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
   const { merchantBusinessSurvey: formData, setMerchantBusinessSurvey } = useComplianceForm();
 
-  // control collapsing animation for the businessModel select
-  const [isBusinessModelVisible, setIsBusinessModelVisible] = useState(true);
-
-  const [businessTypeOptions, setBusinessTypeOptions] = useState<{ value: string; label: string }[]>([]);
-  const [industryTypeOptions, setIndustryTypeOptions] = useState<{ value: string; label: string }[]>([]);
-  const [businessModelOptions, setBusinessModelOptions] = useState<{ value: string; label: string }[]>([]);
+  const [businessTypeOptions, setBusinessTypeOptions] = useState<Option[]>([]);
+  const [industryTypeOptions, setIndustryTypeOptions] = useState<Option[]>([]);
+  const [businessModelOptions, setBusinessModelOptions] = useState<Option[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(true);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,135 +108,152 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
     setMerchantBusinessSurvey((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Shown without the scheme; stored with it (the scheme is added as the user types).
+  const websiteDisplay = (formData.website || '').replace(/^https?:\/\//, '');
+
   return (
     <div>
-      <div className="flex lg:flex-row flex-col justify-between gap-6">
-        {/* Business Survey */}
-        <div className="bg-[#EDEDF2] rounded-xl p-6 border border-gray-200 w-full">
-          <h2 className="text-lg font-semibold text-gray-900">Business Survey</h2>
-          <p className="text-sm text-gray-500 mt-1 mb-6">
-            Fill in the required information below to create your business account.
-          </p>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <SectionCard
+          icon={<ClipboardList />}
+          title="Business survey"
+          description="Tell us what you’re building and who you serve."
+        >
+          <div className="space-y-5">
+            <Field label="What do you want to create?" htmlFor="businessType">
+              <OptionSelect
+                id="businessType"
+                value={formData.businessType}
+                onChange={(val) => handleInputChange('businessType', val)}
+                options={businessTypeOptions}
+                placeholder="Select a business type"
+                loading={optionsLoading}
+              />
+            </Field>
 
-          <div className="space-y-8">
-            <FloatingSelect
-              label="What do you want to create?"
-              placeholderText={optionsLoading ? "Loading…" : "Select a Business Type"}
-              optionPairs={businessTypeOptions}
-              value={formData.businessType}
-              onChange={(val) => handleInputChange('businessType', val)}
-              accentColor="#9A813F"
-            />
-
-            <div className="space-y-1.5">
-              <label className="block text-sm text-gray-500">Where is your user base?</label>
+            <Field label="Where is your user base?" hint="Search by country name, code or dial code.">
               <CountrySelect
                 value={formData.userBase}
                 onValueChange={(val) => handleInputChange('userBase', val)}
                 placeholder="Select a country"
-                triggerClassName="w-full rounded-lg border border-gray-300 bg-white h-12 px-4"
+                triggerClassName={fieldControlClass}
               />
-            </div>
+            </Field>
 
-            {/* Animated collapse: hides when user selects a business model */}
-            <div
-              className="overflow-hidden transition-all duration-300"
-              style={{
-                maxHeight: /* keep always visible */ 120,
-                opacity: 1,
-              }}
-              aria-hidden={false}
-            >
-              <FloatingSelect
-                label="What is your business model?"
-                placeholderText={optionsLoading ? "Loading…" : "Select a Business Model"}
-                optionPairs={businessModelOptions}
+            <Field label="What is your business model?" htmlFor="businessModel">
+              <OptionSelect
+                id="businessModel"
                 value={formData.businessModel}
-                onChange={(val) => {
-                  handleInputChange('businessModel', val);
-                  setIsBusinessModelVisible(true);
-                }}
-                accentColor="#9A813F"
+                onChange={(val) => handleInputChange('businessModel', val)}
+                options={businessModelOptions}
+                placeholder="Select a business model"
+                loading={optionsLoading}
               />
-            </div>
+            </Field>
 
-            <CurrencyVolumeField
-              value={formData.monthlyVolume}
-              onChange={(val) => handleInputChange('monthlyVolume', val)}
-              countryCode={formData.country || formData.userBase}
-            />
+            <Field
+              label="Monthly processed volume"
+              htmlFor="monthlyVolume"
+              hint="Shown in the currency of your country of incorporation."
+            >
+              <CurrencyVolumeField
+                id="monthlyVolume"
+                value={formData.monthlyVolume}
+                onChange={(val) => handleInputChange('monthlyVolume', val)}
+                countryCode={formData.country || formData.userBase}
+                className={fieldControlClass}
+              />
+            </Field>
           </div>
-        </div>
+        </SectionCard>
 
-        {/* About the Business */}
-        <div className="bg-[#EDEDF2] rounded-xl p-6 border border-gray-200 w-full">
-          <h2 className="text-lg font-semibold text-gray-900">About the Business</h2>
-          <p className="text-sm text-gray-500 mt-1 mb-6">
-            Fill in the required information below to create your business account.
-          </p>
+        <SectionCard icon={<Building2 />} title="About the business" description="Your registered company details.">
+          <div className="space-y-5">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="Industry" htmlFor="industry">
+                <OptionSelect
+                  id="industry"
+                  value={formData.industry}
+                  onChange={(val) => handleInputChange('industry', val)}
+                  options={industryTypeOptions}
+                  placeholder="Select industry"
+                  loading={optionsLoading}
+                />
+              </Field>
 
-          <div className="space-y-8">
-            <FloatingSelect
-              label="Industry"
-              placeholderText={optionsLoading ? "Loading…" : "Select Industry Type"}
-              optionPairs={industryTypeOptions}
-              value={formData.industry}
-              onChange={(val) => handleInputChange('industry', val)}
-              accentColor="#9A813F"
-            />
-
-            <div className="space-y-1.5">
-              <label className="block text-sm text-gray-500">Country of incorporation</label>
-              <CountrySelect
-                value={formData.country}
-                onValueChange={(val) => handleInputChange('country', val)}
-                placeholder="Select a country"
-                triggerClassName="w-full rounded-lg border border-gray-300 bg-white h-12 px-4"
-              />
+              <Field label="Country of incorporation">
+                <CountrySelect
+                  value={formData.country}
+                  onValueChange={(val) => handleInputChange('country', val)}
+                  placeholder="Select a country"
+                  triggerClassName={fieldControlClass}
+                />
+              </Field>
             </div>
 
-            <SimpleInput
-              placeholder="Business Name"
-              value={formData.businessName}
-              onChange={(val) => handleInputChange('businessName', val)}
-            />
+            <Field label="Business name" htmlFor="businessName">
+              <input
+                id="businessName"
+                value={formData.businessName}
+                onChange={(e) => handleInputChange('businessName', e.target.value)}
+                placeholder="e.g. Acme Payments Ltd"
+                className={fieldControlClass}
+              />
+            </Field>
 
-            <SimpleInput
-              placeholder="example.com"
-              type="url"
-              value={formData.website}
-              onChange={(val) => {
-                const next = val.startsWith('https://') || val.startsWith('http://') ? val : WEBSITE_URL_PREFIX + val;
-                handleInputChange('website', next);
-              }}
-            />
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="Website" htmlFor="website">
+                <div className="flex h-11 overflow-hidden rounded-lg border border-gray-300 bg-white shadow-xs transition-[color,box-shadow] focus-within:border-brand focus-within:ring-[3px] focus-within:ring-brand/20 hover:border-gray-400">
+                  <span className="flex items-center gap-1.5 border-r border-gray-200 bg-gray-50 px-3 text-sm text-gray-500">
+                    <Globe className="size-4" />
+                    https://
+                  </span>
+                  <input
+                    id="website"
+                    type="text"
+                    inputMode="url"
+                    value={websiteDisplay}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const next = val.startsWith('https://') || val.startsWith('http://') ? val : WEBSITE_URL_PREFIX + val;
+                      handleInputChange('website', next);
+                    }}
+                    placeholder="example.com"
+                    className="min-w-0 flex-1 bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                  />
+                </div>
+              </Field>
 
-            <SimpleInput
-              placeholder="Company Reg. ID Number"
-              value={formData.companyRegId}
-              onChange={(val) => handleInputChange('companyRegId', val)}
-            />
+              <Field label="Company registration ID" htmlFor="companyRegId">
+                <input
+                  id="companyRegId"
+                  value={formData.companyRegId}
+                  onChange={(e) => handleInputChange('companyRegId', e.target.value)}
+                  placeholder="e.g. RC1234567"
+                  className={fieldControlClass}
+                />
+              </Field>
+            </div>
 
             {/* BVN field intentionally disabled for current compliance flow */}
 
-            <FileUpload
-              label="Upload Company Logo"
-              description="PNG or JPG • Max. 5MB"
-              accept="image/png,image/jpeg,image/jpg,.png,.jpg,.jpeg"
-              maxSizeBytes={5 * 1024 * 1024}
-              onFileSelect={() => {}}
-              buttonColor="#9A813F"
-            />
+            <Field label="Company logo">
+              <DocumentDropTile
+                id="company-logo"
+                title="Company logo"
+                hint="PNG or JPG · Max. 5MB"
+                accept={LOGO_ACCEPT}
+                file={logoFile}
+                validate={validateLogo}
+                onFile={setLogoFile}
+              />
+            </Field>
           </div>
-        </div>
+        </SectionCard>
       </div>
 
-      {/* Save & Continue button aligned to the right */}
-      <div className="mt-6 flex justify-end">
-        <button
-          type="button"
-          className="px-4 py-2 rounded-md text-sm font-medium shadow-sm cursor-pointer disabled:opacity-60"
-          style={{ backgroundColor: "#9A813F", color: "#fff" }}
+      <StepFooter hint="You can come back and edit these details before submitting your documents.">
+        <BrandButton
           onClick={() => {
             toast.success('✅ Business info saved successfully');
             // Navigate to next tab
@@ -289,9 +262,10 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
             }
           }}
         >
-          Save & Continue
-        </button>
-      </div>
+          Save &amp; continue
+          <ArrowRight className="size-4" />
+        </BrandButton>
+      </StepFooter>
     </div>
   );
 };

@@ -1,19 +1,16 @@
 "use client"
 
 import type React from "react"
-import { useEffect } from "react"
 import DashboardSidebar from "@/components/dashboard-sidebar"
 import { DashboardHeader } from "@/components/dashboard-header"
 import { usePathname } from "next/navigation"
 import { useAuth } from "@/hooks/useAuth"
-import { appApi } from "@/lib/services/appService"
+import { useApps } from "@/hooks/queries/apps"
 
+/** Warm the shared app-list query as soon as the user is known. */
 function DashboardSessionPrefetch() {
   const { user } = useAuth()
-  useEffect(() => {
-    if (!user?.id) return
-    void appApi.getAllApps().catch(() => undefined)
-  }, [user?.id])
+  useApps({ enabled: Boolean(user?.id) })
   return null
 }
 

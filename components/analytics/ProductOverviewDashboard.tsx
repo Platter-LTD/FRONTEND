@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { isValidElement, useEffect, useMemo, useState, type ReactNode } from "react"
 import {
   Banknote,
   Home,
@@ -13,6 +13,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { productApi } from "@/lib/services/product-api"
 import { Skeleton } from "@/components/ui/skeleton"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { TableSkeleton } from "@/components/ui/table-skeleton"
 import {
   countMajor,
@@ -1342,66 +1343,60 @@ function PanelHeader({ title, countLabel }: { title: string; countLabel: string 
   )
 }
 
+/** Plain text inside a cell (string, number, or the text of a rendered element) — for search and export. */
+function nodeText(node: ReactNode): string {
+  if (node == null || typeof node === "boolean") return ""
+  if (typeof node === "string" || typeof node === "number") return String(node)
+  if (Array.isArray(node)) return node.map(nodeText).join(" ")
+  if (isValidElement(node)) {
+    const props = node.props as { children?: ReactNode; label?: unknown; name?: unknown; subtitle?: unknown }
+    const own = [props.label, props.name, props.subtitle].filter((v) => typeof v === "string").join(" ")
+    return [own, nodeText(props.children)].filter(Boolean).join(" ")
+  }
+  return ""
+}
+
+type PortfolioRow = { cells: (string | ReactNode)[] }
+
 function PortfolioTable({
   columns,
   rows,
   numericColumnIndex,
   actionColumn,
   emptyMessage,
+  tableId,
 }: {
   columns: string[]
   rows: (string | ReactNode)[][]
   numericColumnIndex?: number
   actionColumn?: boolean
   emptyMessage: string
+  tableId?: string
 }) {
+  const data = useMemo<PortfolioRow[]>(() => rows.map((cells) => ({ cells })), [rows])
+  const tableColumns = useMemo<ColumnDef<PortfolioRow, unknown>[]>(
+    () =>
+      columns.map((label, i) => {
+        const alignRight = i === numericColumnIndex || (actionColumn && i === columns.length - 1)
+        return {
+          id: `col-${i}-${label}`,
+          meta: { label },
+          header: () => <span className={alignRight ? "block text-right" : undefined}>{label}</span>,
+          accessorFn: (r) => nodeText(r.cells[i]),
+          cell: ({ row }) => <div className={alignRight ? "text-right" : undefined}>{row.original.cells[i]}</div>,
+        }
+      }),
+    [columns, numericColumnIndex, actionColumn],
+  )
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-[13px]">
-        <thead>
-          <tr>
-            {columns.map((label, i) => (
-              <th
-                key={label}
-                className={cn(
-                  "border-b border-[#E7E5E0] pb-2.5 text-[11px] font-bold uppercase tracking-[0.02em] text-[#9A9A94]",
-                  i === numericColumnIndex || (actionColumn && i === columns.length - 1)
-                    ? "px-3 text-right"
-                    : "px-3 text-left",
-                )}
-              >
-                {label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((cells, rowIndex) => (
-            <tr key={rowIndex}>
-              {cells.map((cell, colIndex) => (
-                <td
-                  key={colIndex}
-          className={cn(
-                    "border-b border-[#E7E5E0] px-3 py-[13px] text-[#14171F]",
-                    colIndex === numericColumnIndex || (actionColumn && colIndex === cells.length - 1)
-                      ? "text-right"
-                      : undefined,
-                  )}
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-          {rows.length === 0 ? (
-            <tr>
-              <td colSpan={columns.length} className="px-3 py-6 text-center text-sm text-[#9A9A94]">
-                {emptyMessage}
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      bordered={false}
+      tableId={tableId ?? `portfolio-${columns.join("-").toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+      columns={tableColumns}
+      data={data}
+      clientSearch
+      download
+      empty={emptyMessage}
+    />
   )
 }

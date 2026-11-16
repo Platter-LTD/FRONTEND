@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState, useRef, ChangeEvent } from "react"
-import { Loader2, Upload, X } from "lucide-react"
+import { Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { getImageFileValidationError, getPdfFileValidationError } from "@/lib/fileValidation"
@@ -27,7 +27,11 @@ import {
   ProductConfigInput,
   ProductConfigRepaymentWorkflowPanel,
   ProductConfigSelect,
+  ProductConfigFooter,
+  ProductConfigStepCard,
+  ProductConfigStepErrors,
   ProductConfigTabs,
+  RequirementMark,
   ProductConfigToggle,
   withRepaymentStructureOptions,
 } from "@/components/drawers/product-config-form-fields"
@@ -1448,10 +1452,10 @@ export default function ConfigureMortgageDrawer({
       return selected.includes(value) || selected.includes(label)
     }
     return (
-    <div className="space-y-3 rounded-md border border-[#E8DFC3] bg-[#FBF8EF]/60 p-3">
+    <div className="space-y-3 rounded-lg border border-brand/25 bg-brand/5 p-3">
       <div>
         <p className="text-sm font-medium text-gray-700">
-          Property documentation <span className="font-normal text-gray-500">(Optional)</span>
+          Property documentation<RequirementMark requirement="optional" />
         </p>
         <p className="text-xs text-gray-500">
           Select the title document types that apply. Do not upload files here.
@@ -1940,24 +1944,22 @@ export default function ConfigureMortgageDrawer({
       onOpenChange={onClose}
       title="Configure Mortgage Product"
       subtitle="Select the mortgage option you want to create with us"
-      className="w-full min-w-0 rounded-none sm:w-[92%] md:w-[78%] lg:w-[62%] xl:w-[52%] 2xl:w-[45%] sm:min-w-[400px] sm:rounded-bl-[40px] sm:rounded-tl-[40px]"
+      className="sm:max-w-[48rem]"
+      bodyClassName="bg-gray-50/70 p-4 sm:p-6"
+      subHeader={<ProductConfigTabs steps={STEPS} activeStep={step} onStepChange={setStep} />}
+      footer={
+        <ProductConfigFooter
+          step={step}
+          total={STEPS.length}
+          isSubmitting={isSubmitting}
+          onBack={handleBack}
+          onNext={handleNext}
+        />
+      }
     >
-      <div className="mx-auto w-full">
-        <ProductConfigTabs steps={STEPS} activeStep={step} onStepChange={setStep} />
+      <ProductConfigStepCard steps={STEPS} activeStep={step}>
 
-      {stepErrors.length > 0 ? (
-        <div
-          className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-          role="alert"
-        >
-          <p className="mb-2 font-medium">Please fix the following before continuing:</p>
-          <ul className="list-inside list-disc space-y-1">
-            {stepErrors.map((msg) => (
-              <li key={msg}>{msg}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <ProductConfigStepErrors errors={stepErrors} />
 
       {step === 1 && (
           <ProductConfigAboutStep
@@ -2011,7 +2013,7 @@ export default function ConfigureMortgageDrawer({
 
         {step === 2 && (
         <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end">
               <ProductConfigInput
                 label="Interest Rate"
                 placeholder="e.g 10%"
@@ -2038,7 +2040,7 @@ export default function ConfigureMortgageDrawer({
                 onChange={setAllowMoratorium}
                 requirement="optional"
               />
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
                 <ProductConfigSelect
                   label="Select Duration"
                   placeholder="Select Section"
@@ -2085,7 +2087,7 @@ export default function ConfigureMortgageDrawer({
               singleAmountPlaceholder="Enter mortgage amount"
             />
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end">
               <ProductConfigSelect
                 label="Repayment Structure"
                 placeholder="Select Section"
@@ -2162,7 +2164,7 @@ export default function ConfigureMortgageDrawer({
           <div className="space-y-4">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
-                Security Requirements <span className="font-normal text-gray-500">(Required)</span>
+                Security Requirements<RequirementMark requirement="required" />
               </label>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {mergedSecurityOptions.map((option) => (
@@ -2227,7 +2229,7 @@ export default function ConfigureMortgageDrawer({
               requirement="optional"
             />
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
               <ProductConfigInput
                 label="Contract ID"
                 placeholder="Enter Contract ID"
@@ -2281,13 +2283,13 @@ export default function ConfigureMortgageDrawer({
                 formatThousands={!isPercentType(chargeFeeType)}
                 requirement="required"
               />
-              <Button type="button" onClick={addCharge} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+              <Button type="button" onClick={addCharge} className="h-10 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90">
                 Add
               </Button>
             </div>
 
-            <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+            <div className="rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
+              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2 border-b border-gray-200 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
                 <span>Name</span>
                 <span>Type</span>
                 <span>Value</span>
@@ -2298,7 +2300,7 @@ export default function ConfigureMortgageDrawer({
                 return (
                   <div
                     key={pinned ? MANAGEMENT_FEE_NAME : `${charge.name}-${index}`}
-                    className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                    className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2 border-b border-gray-100 py-2.5 text-sm text-gray-800 last:border-0"
                   >
                     <span className="pr-2 font-medium text-gray-900">
                       {pinned ? MANAGEMENT_FEE_NAME : charge.name}
@@ -2311,7 +2313,7 @@ export default function ConfigureMortgageDrawer({
                         <select
                           value={charge.feeType}
                           onChange={(e) => updateManagementFee({ feeType: e.target.value })}
-                          className="h-9 w-full rounded-md border border-gray-200 bg-white px-2 text-sm outline-none focus:border-[#9A813F]"
+                          className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2.5 text-sm shadow-xs outline-none transition hover:border-gray-400 focus:border-brand focus:ring-[3px] focus:ring-brand/20"
                           aria-label="Management Fee type"
                         >
                           {(
@@ -2335,7 +2337,7 @@ export default function ConfigureMortgageDrawer({
                           inputMode="decimal"
                           value={charge.value}
                           onChange={(e) => updateManagementFee({ value: e.target.value })}
-                          className="h-9 w-full rounded-md border border-gray-200 bg-white px-2 text-sm outline-none focus:border-[#9A813F]"
+                          className="h-10 w-full rounded-lg border border-gray-300 bg-white px-2.5 text-sm shadow-xs outline-none transition hover:border-gray-400 focus:border-brand focus:ring-[3px] focus:ring-brand/20"
                           aria-label="Management Fee value"
                         />
                         <div className="flex justify-end">
@@ -2350,7 +2352,7 @@ export default function ConfigureMortgageDrawer({
                           <button
                             type="button"
                             onClick={() => removeCharge(index)}
-                            className="text-red-600 hover:text-red-700"
+                            className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                             aria-label="Remove"
                           >
                             <X size={18} />
@@ -2388,7 +2390,7 @@ export default function ConfigureMortgageDrawer({
             {enableLateRepaymentCharges && (
               <>
                 <div>
-                <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr_0.9fr_0.85fr_1.25fr_auto]">
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.3fr_1fr_0.9fr_1.1fr_auto] xl:items-end">
                   <ProductConfigInput
                     label="Name of Penalty"
                     placeholder="e.g Processing Fee"
@@ -2424,15 +2426,15 @@ export default function ConfigureMortgageDrawer({
                     requirement="required"
                     requirementMark="asterisk"
                   />
-                  <Button type="button" onClick={addPenalty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+                  <Button type="button" onClick={addPenalty} className="h-10 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90">
                     Add
                   </Button>
             </div>
           </div>
 
                 {penalties.length > 0 && (
-                  <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-                    <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500">
+                  <div className="rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
+                    <div className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-200 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase">
                       <span>Name</span>
                       <span>Type</span>
                       <span>Value</span>
@@ -2442,7 +2444,7 @@ export default function ConfigureMortgageDrawer({
                     {penalties.map((penalty, index) => (
                       <div
                         key={`${penalty.name}-${index}`}
-                        className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2 text-sm last:border-0"
+                        className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 border-b border-gray-100 py-2.5 text-sm text-gray-800 last:border-0"
                       >
                         <span className="pr-2">{penalty.name}</span>
                         <span>{penalty.type}</span>
@@ -2452,7 +2454,7 @@ export default function ConfigureMortgageDrawer({
                           <button
                             type="button"
                             onClick={() => removePenalty(index)}
-                            className="text-red-600 hover:text-red-700"
+                            className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                             aria-label="Remove penalty"
                           >
                             <X size={18} />
@@ -2469,7 +2471,7 @@ export default function ConfigureMortgageDrawer({
 
         {step === 5 && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
               <ProductConfigInput
                 label="Name of Properties"
                 placeholder="e.g 3 bedroom flat"
@@ -2505,7 +2507,7 @@ export default function ConfigureMortgageDrawer({
 
             <div className="min-w-0 w-full space-y-2">
               <label className="block text-sm font-medium text-gray-700" htmlFor="mortgage-property-description">
-                Property description <span className="font-normal text-gray-500">(Required)</span>
+                Property description<RequirementMark requirement="required" />
               </label>
               <textarea
                 id="mortgage-property-description"
@@ -2513,24 +2515,24 @@ export default function ConfigureMortgageDrawer({
                 onChange={(e) => setPropertyDescription(e.target.value)}
                 placeholder="Describe the property, condition, and any notable features…"
                 rows={4}
-                className="min-h-[88px] w-full rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+                className="min-h-[88px] w-full rounded-md border border-[#e5e7eb] bg-white px-3 py-2 text-sm outline-none transition placeholder:text-gray-400 focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
             </div>
 
             <div className="space-y-2">
               <p className="text-sm font-medium text-gray-700">
-                Property facilities <span className="font-normal text-gray-500">(Required)</span>
+                Property facilities<RequirementMark requirement="required" />
               </p>
               <p className="text-xs text-gray-500">Select all that apply for this listing.</p>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                 <input
                   type="text"
                   value={customPropertyFacility}
                   onChange={(e) => setCustomPropertyFacility(e.target.value)}
                   placeholder="Add custom facility"
-                  className="h-10 w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+                  className="h-10 w-full rounded-md border border-[#e5e7eb] bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-brand focus:ring-2 focus:ring-brand/20"
                 />
-                <Button type="button" onClick={addCustomPropertyFacility} className="h-10 bg-[#9A813F] text-white hover:bg-[#8A7335]">
+                <Button type="button" onClick={addCustomPropertyFacility} className="h-10 rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90">
                   Add
                 </Button>
               </div>
@@ -2561,12 +2563,12 @@ export default function ConfigureMortgageDrawer({
               </p>
             ) : null}
 
-            <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
+            <div className="rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Upload className="shrink-0 text-gray-500" size={18} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-gray-700">
-                    Property images <span className="font-normal text-gray-500">(Required)</span>
+                    Property images<RequirementMark requirement="required" />
                   </p>
                   <p className="text-xs text-gray-500">Photos of the listing. PNG, JPEG, JPG, SVG, WebP • Max. 5MB</p>
                 </div>
@@ -2581,7 +2583,7 @@ export default function ConfigureMortgageDrawer({
                 <Button
                   type="button"
                   onClick={() => propertyPreviewInputRef.current?.click()}
-                  className="h-10 shrink-0 bg-[#9A813F] text-white hover:bg-[#8A7335]"
+                  className="h-10 shrink-0 rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90"
                 >
                   Upload
                 </Button>
@@ -2601,7 +2603,7 @@ export default function ConfigureMortgageDrawer({
                       <p className="min-w-0 flex-1 truncate text-xs text-gray-600">{file.name}</p>
                       <button
                         type="button"
-                        className="text-red-600 hover:text-red-700"
+                        className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                         onClick={() => removeSelectedPropertyPreview(index)}
                         aria-label="Remove selected file"
                       >
@@ -2615,14 +2617,14 @@ export default function ConfigureMortgageDrawer({
 
             {renderPropertyDocumentationEditor(documentationEditorRows, documentationEditorPropertyId)}
 
-            <Button type="button" onClick={addProperty} className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]">
+            <Button type="button" onClick={addProperty} className="h-10 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90">
               Add
             </Button>
             {propertyFormError ? <p className="text-xs text-red-600">{propertyFormError}</p> : null}
 
             {properties.length > 0 && (
-              <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-                <div className="hidden gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,0.75fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <div className="rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
+                <div className="hidden gap-2 border-b border-gray-200 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.85fr)_minmax(0,0.75fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
                   <span>Name</span>
                   <span>Type</span>
                   <span>Value</span>
@@ -2681,7 +2683,7 @@ export default function ConfigureMortgageDrawer({
                           href={p.videoUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-block max-w-full truncate text-[#9A813F] underline hover:text-[#8A7335]"
+                          className="inline-block max-w-full truncate text-brand underline hover:text-brand/80"
                         >
                           Video link
                         </a>
@@ -2691,7 +2693,7 @@ export default function ConfigureMortgageDrawer({
                           href={p.previewObjectUrls[0]}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[#9A813F] underline hover:text-[#8A7335]"
+                          className="text-brand underline hover:text-brand/80"
                         >
                           Files ({p.previewObjectUrls.length})
                         </a>
@@ -2705,14 +2707,14 @@ export default function ConfigureMortgageDrawer({
                       )}
                     </div>
                     <div className="flex justify-end pt-1 md:pt-0">
-                      <button type="button" onClick={() => removeProperty(p.id)} className="text-red-600 hover:text-red-700" aria-label="Remove">
+                      <button type="button" onClick={() => removeProperty(p.id)} className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600" aria-label="Remove">
                         <X size={18} />
                       </button>
                     </div>
                     </div>
                     <div className="space-y-1">
                       <label className="block text-xs font-medium text-gray-600" htmlFor={`mortgage-prop-video-${p.id}`}>
-                        Property video URL <span className="text-red-600">*</span>
+                        Property video URL<RequirementMark requirement="required" />
                       </label>
                       <input
                         id={`mortgage-prop-video-${p.id}`}
@@ -2720,7 +2722,7 @@ export default function ConfigureMortgageDrawer({
                         value={p.videoUrl}
                         onChange={(e) => updatePropertyVideoUrl(p.id, e.target.value)}
                         placeholder="https://youtube.com/…"
-                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20 ${
+                        className={`h-10 w-full rounded-md border bg-white px-3 text-sm outline-none transition placeholder:text-gray-400 focus:border-brand focus:ring-2 focus:ring-brand/20 ${
                           p.videoUrl.trim() ? "border-gray-200" : "border-red-300"
                         }`}
                       />
@@ -2736,22 +2738,22 @@ export default function ConfigureMortgageDrawer({
         )}
 
         {step === 6 && (
-          <div className="mt-4 space-y-4">
-            <div className="rounded-md border border-[#E8DFC3] bg-[#FBF8EF] px-4 py-3 text-sm text-gray-700">
+          <div className="space-y-4">
+            <div className="rounded-lg border border-brand/25 bg-brand/5 px-4 py-3 text-sm text-gray-700">
               Set the bookable inspection slots for this mortgage product. Borrowers pick one of these
               dates after they accept the offer. Saving replaces the full list.
             </div>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:items-end">
               <label className="flex flex-col gap-1.5 text-sm text-gray-700">
                 <span className="font-medium">
-                  Date &amp; time <span className="text-red-600">*</span>
+                  Date &amp; time<RequirementMark requirement="required" />
                 </span>
                 <input
                   type="datetime-local"
                   value={inspectionScheduledForLocal}
                   onChange={(e) => setInspectionScheduledForLocal(e.target.value)}
-                  className="h-10 rounded-md border border-gray-200 bg-white px-3 text-sm outline-none focus:border-[#9A813F]"
+                  className="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm shadow-xs outline-none transition hover:border-gray-400 focus:border-brand focus:ring-[3px] focus:ring-brand/20"
                 />
               </label>
               <ProductConfigInput
@@ -2780,15 +2782,15 @@ export default function ConfigureMortgageDrawer({
             <Button
               type="button"
               onClick={addInspectionDate}
-              className="h-10 self-end bg-[#9A813F] text-white hover:bg-[#8A7335]"
+              className="h-10 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90"
             >
               Add slot
             </Button>
             {inspectionFormError ? <p className="text-xs text-red-600">{inspectionFormError}</p> : null}
 
             {inspectionDates.length > 0 ? (
-              <div className="rounded-md border border-dashed border-[#cdbf8b] p-3">
-                <div className="hidden gap-2 border-b border-gray-100 pb-2 text-xs font-semibold text-gray-500 md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]">
+              <div className="rounded-lg border border-gray-200 bg-white px-3 py-1 shadow-xs">
+                <div className="hidden gap-2 border-b border-gray-200 py-2 text-[11px] font-semibold tracking-wide text-gray-500 uppercase md:grid md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto]">
                   <span>When</span>
                   <span>Label</span>
                   <span>Location</span>
@@ -2812,7 +2814,7 @@ export default function ConfigureMortgageDrawer({
                       <button
                         type="button"
                         onClick={() => removeInspectionDate(slot.id)}
-                        className="text-red-600 hover:text-red-700"
+                        className="rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                         aria-label="Remove inspection slot"
                       >
                         <X size={18} />
@@ -2826,34 +2828,7 @@ export default function ConfigureMortgageDrawer({
             )}
           </div>
         )}
-
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <Button
-            onClick={handleBack}
-            variant="outline"
-            disabled={isSubmitting}
-            className="h-11 flex-1 border-[#c9b271] text-[#77642f] bg-transparent"
-          >
-            Back
-          </Button>
-          <Button
-            onClick={handleNext}
-            disabled={isSubmitting}
-            className="h-11 flex-1 bg-[#9A813F] text-white hover:bg-[#8A7335] disabled:opacity-70"
-          >
-            {isSubmitting && step === STEPS.length ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                Saving…
-              </>
-            ) : step === STEPS.length ? (
-              "Submit"
-            ) : (
-              "Next"
-            )}
-          </Button>
-        </div>
-      </div>
+      </ProductConfigStepCard>
     </Drawer>
   )
 }

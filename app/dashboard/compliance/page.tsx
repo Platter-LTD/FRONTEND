@@ -1,14 +1,19 @@
 "use client"
 
-import Tabs from "@/components/Tabs"
+import { ComplianceHeader, ComplianceLayout, ComplianceStepper, type ComplianceStep } from "@/components/compliance/compliance-ui"
 import { useEffect, useMemo, useState } from "react"
 import { ComplianceFormProvider } from "@/providers/ComplianceFormProvider"
-import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchKycStatusThunk } from "@/store/complianceSlice"
 
 import BusinessInfoTab from "@/components/forms/BusinessInfoTab"
 import BusinessDocumentWrapper from "@/components/forms/BusinessDocumentWrapper"
 import ShareholderInfo from "@/components/forms/ShareholderInfo"
+import { useKycStatus } from "@/hooks/queries/compliance"
+
+const STEP_DESCRIPTIONS: Record<string, string> = {
+    "business-info": "Company profile & survey",
+    "business-document": "Upload company documents",
+    "shareholder-info": "Owners & KYC links",
+}
 
 interface TabCompletion {
     "business-info": boolean
@@ -18,9 +23,8 @@ interface TabCompletion {
 }
 
 export default function ComplianceDashboard() {
-    const dispatch = useAppDispatch()
-    /** Same KYC status as the sidebar (`fetchKycStatusThunk` → approved unlocks merchant nav). */
-    const kycApproved = useAppSelector((s) => s.compliance.isApproved)
+    /** Same cached KYC status as the sidebar (approved unlocks merchant nav). */
+    const kycApproved = useKycStatus().isApproved
 
     const [activeTab, setActiveTab] = useState("business-info")
     const [completion, setCompletion] = useState<TabCompletion>({
@@ -28,10 +32,6 @@ export default function ComplianceDashboard() {
         "business-document": false,
         "shareholder-info": false,
     })
-
-    useEffect(() => {
-        void dispatch(fetchKycStatusThunk())
-    }, [dispatch])
 
     const markComplete = (tabId: keyof TabCompletion) => {
         setCompletion((prev) => ({ ...prev, [tabId]: true }))
@@ -86,20 +86,16 @@ export default function ComplianceDashboard() {
         }
     }
 
+    const steps: ComplianceStep[] = tabs.map((t) => ({ ...t, description: STEP_DESCRIPTIONS[t.id] ?? "" }))
+    const completedCount = tabs.filter((t) => t.completed).length
+
     return (
         <ComplianceFormProvider>
-            <div className="flex flex-col h-full">
-                <div className="px-8 py-4">
-                    <Tabs
-                        tabs={tabs}
-                        activeTab={activeTab}
-                        onTabChange={setActiveTab}
-                        activeTabClassName="border-[#9A813F] text-[#9A813F]"
-                    />
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-8 py-6">{renderTabContent()}</div>
-            </div>
+            <ComplianceLayout>
+              <ComplianceHeader approved={kycApproved} completedCount={completedCount} totalCount={tabs.length} />
+              <ComplianceStepper steps={steps} activeId={activeTab} onChange={setActiveTab} />
+              <div>{renderTabContent()}</div>
+            </ComplianceLayout>
         </ComplianceFormProvider>
     )
 }

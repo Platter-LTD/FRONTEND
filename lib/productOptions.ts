@@ -1,3 +1,5 @@
+import { getQueryClient } from "@/lib/query/queryClient"
+import { gatewayFetch } from "@/lib/gatewayFetch"
 type OptionItem = {
   value?: string | number
   label?: string
@@ -14,29 +16,17 @@ export type ProductOption = {
 
 type QueryParams = Record<string, string | number | boolean | undefined | null>
 
-/**
- * Shared in-memory cache so Loan, Mortgage, and other configure flows reuse the same
- * backend option lists (e.g. loan-tenure) without duplicate fetches or diverging values.
- */
-const resolvedOptionCache = new Map<string, string[]>()
-const resolvedProductOptionCache = new Map<string, ProductOption[]>()
-const inflightOptionFetches = new Map<string, Promise<string[]>>()
-const inflightProductOptionFetches = new Map<string, Promise<ProductOption[]>>()
+/** Option lists are effectively static: keep them for the whole session (React Query cache). */
+const OPTIONS_STALE_MS = 30 * 60_000
 
-function cacheGet(key: string): string[] | undefined {
-  return resolvedOptionCache.get(key)
-}
-
-function cacheSet(key: string, value: string[]) {
-  resolvedOptionCache.set(key, value)
+/** React Query key for one option list (+ optional query params). */
+export function productOptionsQueryKey(optionName: string, query?: QueryParams) {
+  return ["product-options", optionName, query ?? {}] as const
 }
 
 /** For tests or forced refresh (optional). */
 export function clearProductOptionsCache() {
-  resolvedOptionCache.clear()
-  resolvedProductOptionCache.clear()
-  inflightOptionFetches.clear()
-  inflightProductOptionFetches.clear()
+  getQueryClient().removeQueries({ queryKey: ["product-options"] })
 }
 
 const buildUrl = (basePath: string, query?: QueryParams) => {
@@ -71,42 +61,60 @@ function mapOptionItems(list: OptionItem[]): ProductOption[] {
 }
 
 /**
- * Fetches an option list from:
- * /api/v1/products/options/:optionName
+ * GET an option list from the gateway: /api/v1/products/options/:name, falling back to
+ * /api/v1/configurations/options/:name when product-ms does not expose that option (404 / route not found).
+ * Mirrors the logic of the old Next.js proxy route.
  */
-export async function fetchOptionLabels(optionName: string, fallback: string[] = []): Promise<string[]> {
-  const key = `cfg:${optionName}`
-  const hit = cacheGet(key)
-  if (hit !== undefined) return hit
+async function fetchOptionsJson(optionName: string, query?: QueryParams): Promise<OptionResponse> {
+  const slug = encodeURIComponent(optionName)
+  const primary = await gatewayFetch(buildUrl(`/api/v1/products/options/${slug}`, query), { cache: "no-store" })
+  const primaryJson = (await primary.json().catch(() => ({}))) as OptionResponse & { success?: boolean; error?: unknown; message?: unknown }
+  if (primary.ok && primaryJson?.success !== false && Array.isArray(primaryJson?.data)) return primaryJson
 
-  let p = inflightOptionFetches.get(key)
-  if (!p) {
-    p = (async () => {
-      try {
-        const res = await fetch(`/api/v1/products/options/${encodeURIComponent(optionName)}`, {
-          credentials: "include",
-          cache: "no-store",
-        })
-        const json = (await res.json().catch(() => ({}))) as OptionResponse
-        const mapped = mapOptionItems((json?.data ?? []) as OptionItem[]).map((o) => o.label)
-        const result = mapped.length ? mapped : fallback
-        cacheSet(key, result)
-        return result
-      } catch {
-        cacheSet(key, fallback)
-        return fallback
-      } finally {
-        inflightOptionFetches.delete(key)
-      }
-    })()
-    inflightOptionFetches.set(key, p)
+  const msg = String(primaryJson?.error ?? primaryJson?.message ?? "").toLowerCase()
+  const notOnProducts =
+    primary.status === 404 ||
+    msg.includes("route not found") ||
+    msg.includes("endpoint not found") ||
+    msg.includes("path not found") ||
+    msg === "not found"
+  if (!notOnProducts) return primaryJson
+
+  const fallback = await gatewayFetch(buildUrl(`/api/v1/configurations/options/${slug}`, query), { cache: "no-store" })
+  const fallbackJson = (await fallback.json().catch(() => ({}))) as OptionResponse
+  return fallback.ok && Array.isArray(fallbackJson?.data) ? fallbackJson : ({ data: [] } as unknown as OptionResponse)
+}
+
+/** Uncached: mapped `{ value, label }` rows for an option list (throws on network failure). */
+export async function loadProductOptions(optionName: string, query?: QueryParams): Promise<ProductOption[]> {
+  const json = await fetchOptionsJson(optionName, query)
+  return mapOptionItems((json?.data ?? []) as OptionItem[])
+}
+
+/** Cached (React Query) option rows; [] on failure so callers can apply their own fallback. */
+async function cachedProductOptions(optionName: string, query?: QueryParams): Promise<ProductOption[]> {
+  try {
+    return await getQueryClient().fetchQuery({
+      queryKey: productOptionsQueryKey(optionName, query),
+      queryFn: () => loadProductOptions(optionName, query),
+      staleTime: OPTIONS_STALE_MS,
+    })
+  } catch {
+    return []
   }
-  return p
 }
 
 /**
- * Fetches value+label options from:
- * /api/v1/products/options/:optionName
+ * Option labels from /api/v1/products/options/:optionName (falls back to
+ * /configurations/options/:optionName). Returns `fallback` when the list is empty or fails.
+ */
+export async function fetchOptionLabels(optionName: string, fallback: string[] = []): Promise<string[]> {
+  const labels = (await cachedProductOptions(optionName)).map((o) => o.label)
+  return labels.length ? labels : fallback
+}
+
+/**
+ * `{ value, label }` options from /api/v1/products/options/:optionName.
  * Use for fields that must submit `value` and display `label` (e.g. trigger-duration).
  */
 export async function fetchProductOptions(
@@ -114,68 +122,18 @@ export async function fetchProductOptions(
   fallback: ProductOption[] = [],
   query?: QueryParams,
 ): Promise<ProductOption[]> {
-  const key = `prod-opts:${optionName}:${JSON.stringify(query ?? {})}`
-  const hit = resolvedProductOptionCache.get(key)
-  if (hit !== undefined) return hit
-
-  let p = inflightProductOptionFetches.get(key)
-  if (!p) {
-    p = (async () => {
-      try {
-        const url = buildUrl(`/api/v1/products/options/${encodeURIComponent(optionName)}`, query)
-        const res = await fetch(url, { credentials: "include", cache: "no-store" })
-        const json = (await res.json().catch(() => ({}))) as OptionResponse
-        const mapped = mapOptionItems((json?.data ?? []) as OptionItem[])
-        const result = mapped.length ? mapped : fallback
-        resolvedProductOptionCache.set(key, result)
-        return result
-      } catch {
-        resolvedProductOptionCache.set(key, fallback)
-        return fallback
-      } finally {
-        inflightProductOptionFetches.delete(key)
-      }
-    })()
-    inflightProductOptionFetches.set(key, p)
-  }
-  return p
+  const options = await cachedProductOptions(optionName, query)
+  return options.length ? options : fallback
 }
 
-/**
- * Fetches an option list from frontend proxy route:
- * /api/v1/products/options/:optionName
- */
+/** Labels for /api/v1/products/options/:optionName with optional query params. */
 export async function fetchProductOptionLabels(
   optionName: string,
   fallback: string[] = [],
   query?: QueryParams,
 ): Promise<string[]> {
-  const key = `prod:${optionName}:${JSON.stringify(query ?? {})}`
-  const hit = cacheGet(key)
-  if (hit !== undefined) return hit
-
-  let p = inflightOptionFetches.get(key)
-  if (!p) {
-    p = (async () => {
-      try {
-        const opts = await fetchProductOptions(
-          optionName,
-          fallback.map((label) => ({ value: label, label })),
-          query,
-        )
-        const result = opts.map((o) => o.label)
-        cacheSet(key, result.length ? result : fallback)
-        return result.length ? result : fallback
-      } catch {
-        cacheSet(key, fallback)
-        return fallback
-      } finally {
-        inflightOptionFetches.delete(key)
-      }
-    })()
-    inflightOptionFetches.set(key, p)
-  }
-  return p
+  const labels = (await cachedProductOptions(optionName, query)).map((o) => o.label)
+  return labels.length ? labels : fallback
 }
 
 export const DEFAULT_TRIGGER_DURATION_OPTIONS: ProductOption[] = [

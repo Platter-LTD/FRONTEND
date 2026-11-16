@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
-import { billingService } from "@/lib/services/billing-service"
 import type { Transaction } from "@/types/billing"
+import { useBillingTransactions } from "@/hooks/queries/billing"
 
 interface UsageItem {
   name: string
@@ -15,52 +15,23 @@ interface UsageItem {
 }
 
 export function BillingUsageTab() {
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [usageData, setUsageData] = useState<UsageItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const query = useBillingTransactions({ limit: 50 })
+  const transactions: Transaction[] = query.data?.data ?? []
+  const loading = query.isLoading
+  const error = query.error ? "Failed to load usage data" : null
 
-  useEffect(() => {
-    loadUsageData()
-  }, [])
-
-  const loadUsageData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      // Load transactions from billing-ms
-      const transactionsResponse = await billingService.getTransactions({ limit: 50 })
-      if (transactionsResponse.data) {
-        setTransactions(transactionsResponse.data)
-      }
-      
-      // Calculate usage metrics from transactions
-      const loadedTransactions = transactionsResponse.data || []
-      const totalPayments = loadedTransactions.filter(t => t.type === 'payment').length
-      const totalTransfers = loadedTransactions.filter(t => t.type === 'transfer').length
-      const totalAmount = loadedTransactions.reduce((sum, t) => sum + t.amount, 0)
-      
-      setUsageData([
-        { name: 'API Calls', usage: totalPayments * 10, limit: 10000, unit: 'calls' },
-        { name: 'Transactions', usage: loadedTransactions.length, limit: 1000, unit: 'txns' },
-        { name: 'Data Transfer', usage: Math.round(totalTransfers * 2.5), limit: 100, unit: 'GB' },
-        { name: 'Volume Processed', usage: Math.round(totalAmount / 100), limit: 100000, unit: 'NGN' },
-      ])
-    } catch (err) {
-      console.error('Failed to load usage data:', err)
-      setError('Failed to load usage data')
-      // Set fallback empty data
-      setUsageData([
-        { name: 'API Calls', usage: 0, limit: 10000, unit: 'calls' },
-        { name: 'Transactions', usage: 0, limit: 1000, unit: 'txns' },
-        { name: 'Data Transfer', usage: 0, limit: 100, unit: 'GB' },
-        { name: 'Volume Processed', usage: 0, limit: 100000, unit: 'NGN' },
-      ])
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Usage metrics derived from the cached transactions (all zeros when loading fails).
+  const usageData: UsageItem[] = useMemo(() => {
+    const totalPayments = transactions.filter(t => t.type === 'payment').length
+    const totalTransfers = transactions.filter(t => t.type === 'transfer').length
+    const totalAmount = transactions.reduce((sum, t) => sum + t.amount, 0)
+    return [
+      { name: 'API Calls', usage: totalPayments * 10, limit: 10000, unit: 'calls' },
+      { name: 'Transactions', usage: transactions.length, limit: 1000, unit: 'txns' },
+      { name: 'Data Transfer', usage: Math.round(totalTransfers * 2.5), limit: 100, unit: 'GB' },
+      { name: 'Volume Processed', usage: Math.round(totalAmount / 100), limit: 100000, unit: 'NGN' },
+    ]
+  }, [transactions])
 
   const getUsagePercentage = (usage: number, limit: number) => {
     return Math.min((usage / limit) * 100, 100)
@@ -89,7 +60,7 @@ export function BillingUsageTab() {
         {error && !loading && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-red-600">{error}</p>
-            <Button onClick={loadUsageData} variant="outline" className="mt-2">
+            <Button onClick={() => void query.refetch()} variant="outline" className="mt-2">
               Retry
             </Button>
           </div>

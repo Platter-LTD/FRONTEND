@@ -4,13 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet"
+import { DrawerPanel } from "@/components/ui/drawer-panel"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -24,7 +18,7 @@ import {
 import { NIGERIAN_BANKS } from "@/lib/ngBanks"
 import { WALLET_BRAND } from "@/lib/walletBrand"
 import { formatPlataWalletAmount, plataWalletDisplayCurrency } from "@/lib/walletDisplay"
-import { billingApi } from "@/lib/services/walletService"
+import { useRepaymentPayout } from "@/hooks/queries/wallets"
 
 export type WithdrawWalletMode = "user" | "merchant-settlement"
 
@@ -63,6 +57,7 @@ export function WithdrawWalletDialog({
   const [amount, setAmount] = useState("")
   const [narration, setNarration] = useState("Wallet withdrawal")
   const [submitting, setSubmitting] = useState(false)
+  const payout = useRepaymentPayout()
   const payoutReferenceRef = useRef(newPayoutReference())
 
   useEffect(() => {
@@ -137,7 +132,7 @@ export function WithdrawWalletDialog({
         return
       }
 
-      const res = await billingApi.repaymentPayout(payload, appId)
+      const res = await payout.mutateAsync({ payload, appId })
       const duplicate = Boolean(res.duplicate)
       if (duplicate) toast.message("Duplicate payout — already processed")
       else toast.success(res.message || "Repayment payout initiated")
@@ -155,17 +150,16 @@ export function WithdrawWalletDialog({
   const canSubmit = nubanActive && maxAmount > 0 && !submitting
 
   return (
-    <Sheet open={open} onOpenChange={handleClose}>
-      <SheetContent side="right" className="flex flex-col gap-0 p-0 sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>Withdraw to bank</SheetTitle>
-          <SheetDescription>
-            Available: {formatPlataWalletAmount(maxAmount)}
+    <DrawerPanel
+      open={open}
+      onOpenChange={handleClose}
+      title="Withdraw to bank"
+      description={<>Available: {formatPlataWalletAmount(maxAmount)}
             {!nubanActive
               ? " · Virtual account must be active before payout"
-              : null}
-          </SheetDescription>
-        </SheetHeader>
+              : null}</>}
+      bodyClassName="p-0 gap-0"
+    >
 
         <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
           {!nubanActive ? (
@@ -265,7 +259,6 @@ export function WithdrawWalletDialog({
             Withdraw
           </Button>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DrawerPanel>
   )
 }

@@ -1,67 +1,37 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getAccessToken } from "@/lib/cookieAuth"
 import { getMerchantIdFromAccessToken } from "@/lib/merchantIdFromToken"
 import { merchantWalletMainBalance } from "@/lib/services/walletService"
 import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
-import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchAppMerchantWalletsThunk, fetchKycTransactionsThunk } from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
 import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { WithdrawWalletDialog } from "@/components/wallets/withdraw-wallet-dialog"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useApps } from "@/hooks/queries/apps"
+import { useAppWalletState } from "@/hooks/queries/wallets"
 
 type AppRow = { id: string; name?: string; alias?: string; merchantId?: string }
 
 export function WalletTab() {
-  const dispatch = useAppDispatch()
-  const walletState = useAppSelector((s) => s.wallet)
   const { actions } = usePermissions()
   const canViewBalances = actions.viewWalletBalances
   const canFundOrWithdraw = actions.viewWalletBalances
 
-  const [apps, setApps] = useState<AppRow[]>([])
-  const [appsLoading, setAppsLoading] = useState(true)
-  const [selectedAppId, setSelectedAppId] = useState<string | null>(null)
+  const { data: appsData, isLoading: appsLoading } = useApps()
+  const apps = (appsData ?? []) as AppRow[]
+  const [pickedAppId, setSelectedAppId] = useState<string | null>(null)
+  // Keep the user's pick while it still exists; otherwise default to the first app.
+  const selectedAppId =
+    pickedAppId && apps.some((a) => a.id === pickedAppId) ? pickedAppId : (apps[0]?.id ?? null)
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [fundOpen, setFundOpen] = useState(false)
   const [withdrawOpen, setWithdrawOpen] = useState(false)
-
-  const loadApps = useCallback(async () => {
-    setAppsLoading(true)
-    try {
-      const token = typeof window !== "undefined" ? getAccessToken() : null
-      const response = await fetch("/api/apps", {
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      })
-      const result = await response.json()
-      const list: AppRow[] = result.success && Array.isArray(result.data) ? result.data : []
-      setApps(list)
-      setSelectedAppId((prev) => {
-        if (prev && list.some((a) => a.id === prev)) return prev
-        return list[0]?.id ?? null
-      })
-    } catch {
-      setApps([])
-      setSelectedAppId(null)
-    } finally {
-      setAppsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadApps()
-  }, [loadApps])
 
   const appId = selectedAppId
   const selectedApp = apps.find((a) => a.id === appId)
@@ -71,11 +41,7 @@ export function WalletTab() {
       ? selectedApp.name
       : selectedApp?.alias || appId || ""
 
-  useEffect(() => {
-    if (!merchantId || !appId) return
-    void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
-    void dispatch(fetchKycTransactionsThunk({ merchantId, appId }))
-  }, [dispatch, merchantId, appId])
+  const walletState = useAppWalletState(merchantId, appId, { settlement: true })
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
   const settlement = inScope ? walletState.settlement ?? walletState.kyc : null
@@ -218,8 +184,7 @@ export function WalletTab() {
         }}
         onRefreshBalance={() => {
           if (!merchantId || !appId) return
-          void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
-          void dispatch(fetchKycTransactionsThunk({ merchantId, appId }))
+          void walletState.refresh()
         }}
       />
       <WithdrawWalletDialog
@@ -231,7 +196,7 @@ export function WalletTab() {
         appId={appId ?? undefined}
         onSuccess={() => {
           if (!merchantId || !appId) return
-          void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
+          void walletState.refresh()
         }}
       />
         </>

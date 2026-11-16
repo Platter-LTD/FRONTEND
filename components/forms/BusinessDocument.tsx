@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import UploadCard from "./UploadCard";
+import { ArrowRight, FolderUp } from "lucide-react";
+import { BrandButton, DocumentDropTile, SectionCard, StepFooter } from "@/components/compliance/compliance-ui";
 import { toast } from "react-toastify";
 import { fileToBase64 } from "@/lib/fileUtils";
 import { getAccessToken } from "@/lib/cookieAuth";
@@ -300,61 +301,58 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
     }
   };
 
+  const docs = [...leftList, ...rightList];
+  const requiredDocIds = allIds.filter((id) => id !== "license");
+  const uploadedRequired = requiredDocIds.filter((id) => !!businessFiles[id]).length;
+  const progressPct = Math.round((uploadedRequired / requiredDocIds.length) * 100);
+  const validateDoc = (file: File) => (!isPdfFile(file) ? "Only PDF files are allowed." : file.size > MAX_DOC_BYTES ? "File must be 5MB or smaller." : null);
+
   return (
-    <div className="">
-      {/* Header inside big rounded pale card */}
-      <div className="bg-gray-100 rounded-2xl p-6 border border-gray-200">
-        <div className="text-center mb-4">
-          <h2 className="text-[24px] font-semibold text-gray-900">Business Document Upload</h2>
-          <p className="text-xs text-gray-500 mt-3">Upload company documents</p>
-        </div>
-
-        {/* Content area with two columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left card: stacked upload rows */}
-          <div className="space-y-8">
-            {leftList.map((item) => (
-              <UploadCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                hint={item.hint}
-                buttonColor="#9A813F"
-                onFileSelected={(file) => handleFile(item.id, file)}
-                initialFile={businessFiles[item.id] || null}
-              />
-            ))}
+    <div>
+      <SectionCard
+        icon={<FolderUp />}
+        title="Business document upload"
+        description="Upload your company documents as PDF files, up to 5MB each."
+        action={
+          <div className="hidden min-w-44 text-right sm:block">
+            <p className="text-sm font-semibold text-gray-900 tabular-nums">
+              {uploadedRequired} / {requiredDocIds.length} required
+            </p>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-gray-100">
+              <div className="h-full rounded-full bg-brand transition-[width] duration-500" style={{ width: `${progressPct}%` }} />
+            </div>
           </div>
-
-          {/* Right card: stacked upload rows */}
-          <div className="space-y-8">
-            {rightList.map((item) => (
-              <UploadCard
-                key={item.id}
-                id={item.id}
-                title={item.title}
-                hint={item.hint}
-                buttonColor="#9A813F"
-                onFileSelected={(file) => handleFile(item.id, file)}
-                initialFile={businessFiles[item.id] || null}
-              />
-            ))}
-          </div>
+        }
+      >
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {docs.map((item) => (
+            <DocumentDropTile
+              key={item.id}
+              id={item.id}
+              title={item.title}
+              hint={item.hint}
+              accept=".pdf,application/pdf"
+              required={item.id !== "license"}
+              file={businessFiles[item.id] || null}
+              validate={validateDoc}
+              onFile={(file) => handleFile(item.id, file)}
+            />
+          ))}
         </div>
-      </div>
+      </SectionCard>
 
-      {/* Save button aligned to the right (same gold) */}
-      <div className="mt-6 flex justify-end">
-        <button
-          type="button"
-          className="px-4 py-2 rounded-md text-sm font-medium shadow-sm cursor-pointer disabled:opacity-60"
-          style={{ backgroundColor: "#9A813F", color: "#fff" }}
-          onClick={submit}
-          disabled={submitting}
-        >
-          {submitting ? 'Submitting...' : 'Save & Continue'}
-        </button>
-      </div>
+      <StepFooter
+        hint={
+          uploadedRequired < requiredDocIds.length
+            ? `${requiredDocIds.length - uploadedRequired} required document${requiredDocIds.length - uploadedRequired === 1 ? "" : "s"} left to upload.`
+            : "All required documents are ready to submit."
+        }
+      >
+        <BrandButton onClick={submit} loading={submitting}>
+          {submitting ? "Submitting…" : "Submit & continue"}
+          {!submitting && <ArrowRight className="size-4" />}
+        </BrandButton>
+      </StepFooter>
     </div>
   );
 };

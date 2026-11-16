@@ -114,28 +114,6 @@ export async function validateTokenServerSide(): Promise<{
 }
 
 /**
- * Full validation against auth service
- */
-export async function validateTokenFull(): Promise<{
-  valid: boolean
-  user?: { id: string; email: string; firstName: string; lastName: string; role?: string }
-}> {
-  try {
-    const response = await fetch('/api/auth/validate', {
-      method: 'POST',
-      credentials: 'include',
-    })
-    const data = await response.json()
-    if (data.success && data.valid) {
-      return { valid: true, user: data.user }
-    }
-    return { valid: false }
-  } catch {
-    return { valid: false }
-  }
-}
-
-/**
  * Get user from token (cookie or localStorage) for display only
  */
 export function getUserFromToken(): { id: string; email: string; firstName: string; lastName: string; role?: string } | null {

@@ -4,6 +4,9 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* App accent (splata gold / spring purple) used by the compliance flow and other branded surfaces. */
+  --brand: #9A813F;
+  --brand-foreground: #ffffff;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -75,6 +78,8 @@
 }
 
 @theme inline {
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --color-background: var(--background);
@@ -151,4 +156,25 @@
 }
 .tippy-box[data-theme="sidebar-light"] .tippy-arrow {
   color: #fff;
+}
+
+/* ── DataTable ─────────────────────────────────────────────────────────────
+   Indeterminate refetch bar under the table header, and the "small" table
+   size stepping cell renderers that hardcode `text-sm` down to 12px. */
+@keyframes table-refetch {
+  0% {
+    transform: translateX(-150%);
+  }
+  100% {
+    transform: translateX(450%);
+  }
+}
+@layer utilities {
+  .animate-table-refetch {
+    animation: table-refetch 1.4s ease-in-out infinite;
+  }
+}
+[data-table-size="small"] :is(td, th) .text-sm {
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
 }

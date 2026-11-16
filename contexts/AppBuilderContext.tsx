@@ -18,6 +18,10 @@ import {
     pwaConfigToAppBuilderSlices,
     sectionToPwaConfigPatch,
 } from "@/lib/pwaTemplateBridge"
+import { useQueryClient } from "@tanstack/react-query"
+import { getQueryClient } from "@/lib/query/queryClient"
+import { queryKeys } from "@/lib/query/keys"
+import { useServiceMutations } from "@/lib/query/useServiceMutations"
 
 // ============================================
 // TYPES
@@ -152,6 +156,21 @@ interface AppBuilderProviderProps {
 }
 
 export function AppBuilderProvider({ children, initialAppId }: AppBuilderProviderProps) {
+    // Builder saves as React Query mutations; a successful save refreshes the app's builder queries.
+    const queryClient = useQueryClient()
+    const builderActions = useServiceMutations(
+        {
+            updateTemplate: appTemplateApi.updateTemplate.bind(appTemplateApi),
+            applyTemplate: appTemplateApi.applyTemplate.bind(appTemplateApi),
+            updateConfiguration: appConfigurationApi.updateConfiguration.bind(appConfigurationApi),
+            createConfiguration: appConfigurationApi.createConfiguration.bind(appConfigurationApi),
+            updatePublishingStatus: appConfigurationApi.updatePublishingStatus.bind(appConfigurationApi),
+            activateConfiguration: appConfigurationApi.activateConfiguration.bind(appConfigurationApi),
+        },
+        () => {
+            void queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "app" })
+        },
+    )
     const [state, setState] = useState<AppBuilderState>({
         ...initialState,
         appId: initialAppId || null,
@@ -250,7 +269,11 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
         }
 
         try {
-            const listRes = await appTemplateApi.getAllTemplates(appId)
+            // Cached read (shared with any other template consumers).
+            const listRes = await getQueryClient().fetchQuery({
+                queryKey: queryKeys.apps.templates(appId),
+                queryFn: () => appTemplateApi.getAllTemplates(appId),
+            })
             const raw = listRes.data as unknown
             let templates: Array<Record<string, unknown>> = []
             if (Array.isArray(raw)) {
@@ -296,7 +319,10 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
         }
 
         try {
-            const response = await appConfigurationApi.getActiveConfiguration(appId)
+            const response = await getQueryClient().fetchQuery({
+                queryKey: queryKeys.apps.activeConfiguration(appId),
+                queryFn: () => appConfigurationApi.getActiveConfiguration(appId),
+            })
             const config = response.data
 
             if (config) {
@@ -425,7 +451,7 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
             const fullPwaConfig = appBuilderSlicesToPwaConfig(slices)
 
             if (state.pwaTemplateId) {
-                await appTemplateApi.updateTemplate(state.appId, state.pwaTemplateId, {
+                await builderActions.updateTemplate(state.appId, state.pwaTemplateId, {
                     config: fullPwaConfig,
                 })
             } else {
@@ -437,7 +463,7 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
                     support: state.support,
                     dns: state.dns,
                 }
-                await appConfigurationApi.updateConfiguration(state.appId, configUpdate)
+                await builderActions.updateConfiguration(state.appId, configUpdate)
             }
 
             setState(prev => ({
@@ -486,14 +512,14 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
 
                 if (state.pwaTemplateId) {
                     const patch = sectionToPwaConfigPatch(section, slices)
-                    await appTemplateApi.updateTemplate(state.appId, state.pwaTemplateId, {
+                    await builderActions.updateTemplate(state.appId, state.pwaTemplateId, {
                         config: patch,
                     })
                 } else {
                     const configUpdate: Partial<AppConfiguration> = {
                         [section]: state[section],
                     }
-                    await appConfigurationApi.updateConfiguration(state.appId, configUpdate)
+                    await builderActions.updateConfiguration(state.appId, configUpdate)
                 }
 
                 setState(prev => ({
@@ -537,10 +563,10 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
             const fullPwaConfig = appBuilderSlicesToPwaConfig(slices)
 
             if (state.pwaTemplateId) {
-                await appTemplateApi.updateTemplate(state.appId, state.pwaTemplateId, {
+                await builderActions.updateTemplate(state.appId, state.pwaTemplateId, {
                     config: fullPwaConfig,
                 })
-                await appTemplateApi.applyTemplate(state.appId, state.pwaTemplateId)
+                await builderActions.applyTemplate(state.appId, state.pwaTemplateId)
                 setState(prev => ({
                     ...prev,
                     isSaving: false,
@@ -559,14 +585,14 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
                 dns: state.dns,
             }
 
-            const createResponse = await appConfigurationApi.createConfiguration(
+            const createResponse = await builderActions.createConfiguration(
                 state.appId,
                 configUpdate,
                 { isActive: true },
             )
 
             if (createResponse.data) {
-                await appConfigurationApi.updatePublishingStatus(state.appId, true)
+                await builderActions.updatePublishingStatus(state.appId, true)
 
                 setState(prev => ({
                     ...prev,
@@ -610,7 +636,7 @@ export function AppBuilderProvider({ children, initialAppId }: AppBuilderProvide
 
         try {
             // Activate the specified configuration version
-            const response = await appConfigurationApi.activateConfiguration(state.appId, configurationId)
+            const response = await builderActions.activateConfiguration(state.appId, configurationId)
             
             if (response.data) {
                 const config = response.data

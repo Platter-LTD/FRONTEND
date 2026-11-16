@@ -7,16 +7,13 @@ import {
   Users,
   UserCheck,
   UserX,
-  Search,
   Loader2,
-  MoreHorizontal,
+  UserCog,
+  Trash2,
 } from "lucide-react"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { rowActionsColumn, type RowAction } from "@/components/ui/row-actions"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -38,12 +35,12 @@ import type { MerchantTeamState } from "@/hooks/useMerchantTeam"
 import {
   activityActionLabel,
   formatLastLogin,
-  teamApi,
   type StaffTableRow,
 } from "@/lib/services/teamService"
 import { TEAM_PERMISSIONS } from "@/lib/teamPermissions"
 import { usePermissions } from "@/hooks/usePermissions"
 import { toast } from "sonner"
+import { useTeamActions } from "@/hooks/queries/team"
 
 export interface AddStaffTabProps {
   onAddStaff?: () => void
@@ -66,6 +63,7 @@ function statusColor(status: string) {
 }
 
 export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
+  const teamActions = useTeamActions()
   const {
     staffRows,
     formerStaffRows,
@@ -113,8 +111,8 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
     setActionBusy(true)
     const res =
       action === "suspend"
-        ? await teamApi.suspendMember(row.id)
-        : await teamApi.activateMember(row.id)
+        ? await teamActions.suspendMember(row.id)
+        : await teamActions.activateMember(row.id)
     setActionBusy(false)
     if (!res.success) {
       toast.error(res.error || `Failed to ${action} member`)
@@ -127,7 +125,7 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
   const confirmDeactivate = async () => {
     if (!deactivateRow || deactivateRow.kind !== "member") return
     setActionBusy(true)
-    const res = await teamApi.deactivateMember(deactivateRow.id)
+    const res = await teamActions.deactivateMember(deactivateRow.id)
     setActionBusy(false)
     if (!res.success) {
       toast.error(res.error || "Failed to deactivate member")
@@ -141,7 +139,7 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
   const submitRoleChange = async () => {
     if (!roleDialogRow || roleDialogRow.kind !== "member" || !nextRoleId) return
     setActionBusy(true)
-    const res = await teamApi.changeMemberRole(roleDialogRow.id, nextRoleId)
+    const res = await teamActions.changeMemberRole(roleDialogRow.id, nextRoleId)
     setActionBusy(false)
     if (!res.success) {
       toast.error(res.error || "Failed to update role")
@@ -205,6 +203,7 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
       ) : null}
 
       <StaffTable
+        onRefresh={() => void team.refetch()}
         title="Staff Accounts"
         rows={filtered}
         loading={loading}
@@ -228,6 +227,7 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
       />
 
       <StaffTable
+        onRefresh={() => void team.refetch()}
         title="Former staff"
         rows={formerStaffRows}
         loading={loading}
@@ -359,6 +359,7 @@ function StaffTable({
   onSuspend,
   onActivate,
   onDeactivate,
+  onRefresh,
 }: {
   title: string
   rows: StaffTableRow[]
@@ -378,126 +379,58 @@ function StaffTable({
   onSuspend?: (row: StaffTableRow) => void
   onActivate?: (row: StaffTableRow) => void
   onDeactivate?: (row: StaffTableRow) => void
+  onRefresh?: () => void
 }) {
-  const cols = showActions ? 6 : 5
   const showMenu = (row: StaffTableRow) =>
     row.kind === "member" && (canChangeRole || canSuspend || canDeactivate)
 
-  return (
-    <div className="bg-white rounded-lg border border-gray-200">
-      <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-        <h3 className="text-lg font-medium">{title}</h3>
-        {onSearch && onStatusFilter ? (
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search staff"
-                value={search}
-                onChange={(e) => onSearch(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm"
-              />
-            </div>
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-              value={statusFilter}
-              onChange={(e) =>
-                onStatusFilter(e.target.value as "all" | "Active" | "Pending" | "Suspended")
-              }
-            >
-              <option value="all">Status</option>
-              <option value="Active">Active</option>
-              <option value="Pending">Pending</option>
-              <option value="Suspended">Suspended</option>
-            </select>
-          </div>
-        ) : (
-          <span className="text-xs text-gray-400">{rows.length}</span>
-        )}
-      </div>
+  const columns: ColumnDef<StaffTableRow, unknown>[] = [
+    { accessorKey: "name", header: "Name", cell: ({ row }) => <span className="font-medium text-gray-900">{row.original.name}</span> },
+    { accessorKey: "role", header: "Role" },
+    { accessorKey: "email", header: "Email" },
+    { accessorKey: "lastLogin", header: lastLoginHeader, meta: { label: lastLoginHeader } },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge className={statusColor(row.original.status)}>{row.original.status}</Badge> },
+    rowActionsColumn<StaffTableRow>((staff) => {
+      if (!showActions || !showMenu(staff)) return []
+      const busy = () => actionBusy
+      const actions: RowAction<StaffTableRow>[] = []
+      if (canChangeRole) actions.push({ label: "Change role", icon: UserCog, disabled: busy, onClick: (r) => onChangeRole?.(r) })
+      if (canSuspend && staff.status === "Suspended") actions.push({ label: "Activate", icon: UserCheck, disabled: busy, onClick: (r) => onActivate?.(r) })
+      if (canSuspend && staff.status !== "Suspended") actions.push({ label: "Suspend", icon: UserX, disabled: busy, onClick: (r) => onSuspend?.(r) })
+      if (canDeactivate) actions.push({ label: "Deactivate", icon: Trash2, destructive: true, disabled: busy, onClick: (r) => onDeactivate?.(r) })
+      return actions
+    }),
+  ]
 
-      <div className="overflow-hidden">
-        <div
-          className={`grid gap-4 p-4 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700 ${
-            cols === 6 ? "grid-cols-6" : "grid-cols-5"
-          }`}
-        >
-          <div>Name</div>
-          <div>Role</div>
-          <div>Email</div>
-          <div>{lastLoginHeader}</div>
-          <div>Status</div>
-          {showActions ? <div>Actions</div> : null}
-        </div>
-        {loading && rows.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 p-10 text-sm text-gray-500">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading staff…
-          </div>
-        ) : rows.length === 0 ? (
-          <p className="p-8 text-center text-sm text-gray-500">{emptyMessage}</p>
-        ) : (
-          rows.map((staff) => (
-            <div
-              key={staff.id}
-              className={`grid gap-4 p-4 border-b border-gray-100 last:border-b-0 text-sm items-center ${
-                cols === 6 ? "grid-cols-6" : "grid-cols-5"
-              }`}
-            >
-              <div className="font-medium">{staff.name}</div>
-              <div>{staff.role}</div>
-              <div className="truncate">{staff.email}</div>
-              <div>{staff.lastLogin}</div>
-              <div>
-                <Badge className={statusColor(staff.status)}>{staff.status}</Badge>
-              </div>
-              {showActions ? (
-                <div>
-                  {showMenu(staff) ? (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm" disabled={actionBusy}>
-                          <MoreHorizontal className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {canChangeRole ? (
-                          <DropdownMenuItem onClick={() => onChangeRole?.(staff)}>
-                            Change role
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canSuspend && staff.status === "Suspended" ? (
-                          <DropdownMenuItem onClick={() => onActivate?.(staff)}>
-                            Activate
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canSuspend && staff.status !== "Suspended" ? (
-                          <DropdownMenuItem onClick={() => onSuspend?.(staff)}>
-                            Suspend
-                          </DropdownMenuItem>
-                        ) : null}
-                        {canDeactivate ? (
-                          <DropdownMenuItem
-                            className="text-red-600"
-                            onClick={() => onDeactivate?.(staff)}
-                          >
-                            Deactivate
-                          </DropdownMenuItem>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  ) : staff.kind === "invitation" ? (
-                    <span className="text-xs text-gray-400">Invite pending</span>
-                  ) : (
-                    <span className="text-xs text-gray-400">—</span>
-                  )}
-                </div>
-              ) : null}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
+  return (
+    <DataTable
+      tableId={`staff-${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}
+      title={title}
+      columns={columns}
+      data={rows}
+      isLoading={loading && rows.length === 0}
+      onRefresh={onRefresh}
+      onSearch={onSearch}
+      initialSearch={search}
+      searchPlaceholder="Search staff"
+      clientSearch={!onSearch}
+      download
+      empty={emptyMessage}
+      action={
+        onStatusFilter ? (
+          <Select value={statusFilter ?? "all"} onValueChange={(v) => onStatusFilter(v as "all" | "Active" | "Pending" | "Suspended")}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="Active">Active</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Suspended">Suspended</SelectItem>
+            </SelectContent>
+          </Select>
+        ) : undefined
+      }
+    />
   )
 }

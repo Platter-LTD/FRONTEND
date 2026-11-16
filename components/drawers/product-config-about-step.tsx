@@ -1,17 +1,18 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
-import { Upload, X } from "lucide-react"
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react"
+import { ImageIcon, Plus, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
-import { ProductConfigInput, ProductConfigSelect } from "@/components/drawers/product-config-form-fields"
+import {
+  ProductConfigInput,
+  ProductConfigLabel,
+  ProductConfigSelect,
+  ProductConfigSubsection,
+  productConfigTextareaClass,
+} from "@/components/drawers/product-config-form-fields"
+import { cn } from "@/lib/utils"
 import { getImageFileValidationError } from "@/lib/fileValidation"
-
-function requirementSuffix(requirement?: "required" | "optional") {
-  if (requirement === "required") return " (Required)"
-  if (requirement === "optional") return " (Optional)"
-  return ""
-}
 
 /** Align with ProductConfigSelect preset matching so “6 months” vs “6 Months” still counts as preset. */
 function normalizeOptionToken(input: string) {
@@ -103,9 +104,6 @@ export interface ProductConfigAboutStepProps {
   /** Shown under the type section when optional (e.g. product type already captured at creation). */
   typeSectionHelperText?: string
 }
-
-const TEXTAREA_CLASS =
-  "w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
 
 /**
  * Shared **About Product** step for all product configure drawers.
@@ -216,27 +214,36 @@ export function ProductConfigAboutStep({
     return () => URL.revokeObjectURL(url)
   }, [previewFile])
 
-  const handlePreviewInput = (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null
+  const [dragging, setDragging] = useState(false)
+
+  const acceptPreviewFile = (f: File | null) => {
     if (f) {
       const err = getImageFileValidationError(f)
       if (err) {
         toast.error(err)
-        e.target.value = ""
         return
       }
     }
     onPreviewFileChange(f)
+  }
+
+  const handlePreviewInput = (e: ChangeEvent<HTMLInputElement>) => {
+    acceptPreviewFile(e.target.files?.[0] ?? null)
     e.target.value = ""
   }
 
-  const outerPreviewClass =
-    previewOuterStyle === "solid"
-      ? "rounded-md border border-[#e5e7eb] p-3"
-      : "rounded-md border border-dashed border-[#cdbf8b] p-3"
+  const handlePreviewDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setDragging(false)
+    const f = e.dataTransfer.files?.[0]
+    if (f) acceptPreviewFile(f)
+  }
+
+  const previewName = previewFile?.name || previewLabel
+  const previewSrc = thumbUrl && previewFile?.type.startsWith("image/") ? thumbUrl : previewImageUrl
 
   return (
-    <div className={`space-y-4 ${className}`.trim()}>
+    <div className={cn("space-y-5", className)}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <ProductConfigInput
           label={nameLabel}
@@ -245,7 +252,7 @@ export function ProductConfigAboutStep({
           onChange={onNameChange}
           requirement={fieldRequirement}
         />
-        <div className="min-w-0 space-y-2">
+        <div className="min-w-0 space-y-3">
           <ProductConfigSelect
             label={durationLabel}
             placeholder={durationPlaceholder}
@@ -266,28 +273,26 @@ export function ProductConfigAboutStep({
         </div>
       </div>
 
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
+      <div className="space-y-1.5">
+        <ProductConfigLabel htmlFor={`${idPrefix}-description`} requirement={fieldRequirement}>
           {descriptionLabel}
-          <span className="font-normal text-gray-500">{requirementSuffix(fieldRequirement)}</span>
-        </label>
+        </ProductConfigLabel>
         <textarea
+          id={`${idPrefix}-description`}
           value={description}
           onChange={(ev) => onDescriptionChange(ev.target.value)}
           placeholder={descriptionPlaceholder}
           rows={descriptionRows}
-          className={TEXTAREA_CLASS}
+          className={cn(productConfigTextareaClass, "resize-y")}
         />
+        <p className="text-right text-xs text-gray-400">{description.length} characters</p>
       </div>
 
-      <div className="space-y-3">
-        <label className="block text-sm font-medium text-gray-700">
-          {typeSectionLabel}
-          <span className="font-normal text-gray-500">{requirementSuffix(typeRequirement)}</span>
-        </label>
-        {typeRequirement === "optional" && typeSectionHelperText ? (
-          <p className="text-xs text-gray-500">{typeSectionHelperText}</p>
-        ) : null}
+      <ProductConfigSubsection
+        title={typeSectionLabel}
+        requirement={typeRequirement}
+        description={typeRequirement === "optional" && typeSectionHelperText ? typeSectionHelperText : undefined}
+      >
         {typeInputMode === "select" ? (
           <ProductConfigSelect
             label=""
@@ -304,115 +309,128 @@ export function ProductConfigAboutStep({
               placeholder="Enter Name"
               value={typeNameDraft}
               onChange={onTypeNameDraftChange}
-              requirement={typeRequirement}
             />
             <ProductConfigInput
               label="Type description"
               placeholder="Enter Description"
               value={typeDescDraft}
               onChange={onTypeDescDraftChange}
-              requirement={typeRequirement}
             />
             <Button
               type="button"
               onClick={onAddType}
-              className="h-10 self-end text-white hover:opacity-95"
-              style={{ backgroundColor: accentColor }}
+              disabled={!typeNameDraft.trim() || !typeDescDraft.trim()}
+              className="h-10 gap-1.5 self-end rounded-lg bg-brand px-4 text-brand-foreground hover:bg-brand/90"
+              style={accentColor !== "#9A813F" ? { backgroundColor: accentColor } : undefined}
             >
+              <Plus className="size-4" />
               Add
             </Button>
           </div>
         )}
 
         {typeInputMode !== "select" && typeRows.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-600">{addMoreLabel}</p>
-            <div className="space-y-2">
-              {typeRows.map((row, index) =>
-                typeListVariant === "stacked" ? (
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-gray-500">
+              {addMoreLabel} · {typeRows.length}
+            </p>
+            <ul className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200 bg-white">
+              {typeRows.map((row, index) => (
+                <li
+                  key={`${idPrefix}-type-${row.name}-${index}`}
+                  className={cn(
+                    "flex items-start gap-3 px-3 py-2.5 text-sm",
+                    typeListVariant === "split" && "sm:items-center",
+                  )}
+                >
                   <div
-                    key={`${idPrefix}-type-${row.name}-${index}`}
-                    className="group relative rounded-md bg-gray-100 px-3 py-2 pr-10 text-sm"
+                    className={cn(
+                      "min-w-0 flex-1",
+                      typeListVariant === "split" && "sm:grid sm:grid-cols-2 sm:gap-3",
+                    )}
                   >
-                    <p className="font-medium text-gray-800">{row.name}</p>
-                    <p className="text-xs text-gray-600">{row.description}</p>
-                    {onRemoveTypeRow ? (
-                      <button
-                        type="button"
-                        onClick={() => onRemoveTypeRow(index)}
-                        className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-md text-gray-500 opacity-0 transition-opacity hover:bg-gray-200 hover:text-gray-900 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#9A813F]/50"
-                        aria-label={`Remove ${row.name?.trim() || "type"}`}
-                      >
-                        <X className="h-4 w-4 shrink-0" aria-hidden />
-                      </button>
-                    ) : null}
+                    <p className="font-medium text-gray-900">{row.name}</p>
+                    <p className="text-gray-500">{row.description || "—"}</p>
                   </div>
-                ) : (
-                  <div
-                    key={`${idPrefix}-type-${row.name}-${index}`}
-                    className="group relative grid w-full grid-cols-1 gap-2 sm:grid-cols-2 sm:pr-10"
-                  >
-                    <div className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-800">{row.name}</div>
-                    <div className="rounded-md bg-gray-100 px-3 py-2 text-xs text-gray-600 sm:text-sm">{row.description}</div>
-                    {onRemoveTypeRow ? (
-                      <button
-                        type="button"
-                        onClick={() => onRemoveTypeRow(index)}
-                        className="absolute right-0 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-gray-500 opacity-0 transition-opacity hover:bg-gray-200 hover:text-gray-900 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[#9A813F]/50"
-                        aria-label={`Remove ${row.name?.trim() || "type"}`}
-                      >
-                        <X className="h-4 w-4 shrink-0" aria-hidden />
-                      </button>
-                    ) : null}
-                  </div>
-                ),
-              )}
-            </div>
+                  {onRemoveTypeRow ? (
+                    <button
+                      type="button"
+                      onClick={() => onRemoveTypeRow(index)}
+                      className="shrink-0 rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none"
+                      aria-label={`Remove ${row.name?.trim() || "type"}`}
+                    >
+                      <X className="size-4" aria-hidden />
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
-      </div>
+      </ProductConfigSubsection>
 
-      <div className="space-y-2">
-        <label className="block text-sm font-medium text-gray-700">
-          Preview Image
-          <span className="font-normal text-gray-500">{requirementSuffix(fieldRequirement)}</span>
-        </label>
-        <div className={`flex flex-col gap-3 sm:flex-row sm:items-stretch ${outerPreviewClass}`}>
-          <div className="flex flex-1 flex-col justify-center gap-2 rounded-md border border-gray-200 p-3 sm:flex-row sm:items-center">
-            <Upload className="shrink-0 text-gray-500" size={18} />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-700">{previewFile?.name || previewLabel || "Add image"}</p>
-              <p className="text-xs text-gray-500">PNG, JPEG, JPG, SVG, WebP • Max. 5MB</p>
-            </div>
-            <input
-              ref={previewInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
-              className="hidden"
-              onChange={handlePreviewInput}
-            />
-            <Button
-              type="button"
-              onClick={() => previewInputRef.current?.click()}
-              className="h-10 shrink-0 text-white hover:opacity-95"
-              style={{ backgroundColor: accentColor }}
-            >
-              Upload
-            </Button>
-          </div>
+      <div className="space-y-1.5">
+        <ProductConfigLabel requirement={fieldRequirement}>Preview image</ProductConfigLabel>
+        <div
+          onDragOver={(e) => {
+            e.preventDefault()
+            setDragging(true)
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handlePreviewDrop}
+          className={cn(
+            "flex flex-col items-center gap-4 rounded-xl border-2 border-dashed p-4 transition-colors sm:flex-row",
+            dragging
+              ? "border-brand bg-brand/5"
+              : previewOuterStyle === "solid"
+                ? "border-gray-200 bg-white"
+                : "border-gray-300 bg-gray-50/60 hover:border-brand/50",
+          )}
+        >
           {showPreviewThumbnail ? (
-            <div className="mx-auto flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50 sm:mx-0">
-              {thumbUrl && previewFile?.type.startsWith("image/") ? (
+            <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+              {previewSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={thumbUrl} alt="" className="h-full w-full object-cover" />
-              ) : previewImageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={previewImageUrl} alt="" className="h-full w-full object-cover" />
+                <img src={previewSrc} alt="Preview" className="size-full object-cover" />
               ) : (
-                <span className="px-1 text-center text-[10px] text-gray-400">Preview</span>
+                <ImageIcon className="size-7 text-gray-300" aria-hidden />
               )}
             </div>
           ) : null}
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <p className="truncate text-sm font-medium text-gray-900">
+              {previewName || "Drag an image here, or upload one"}
+            </p>
+            <p className="mt-0.5 text-xs text-gray-500">PNG, JPEG, JPG, SVG or WebP · Max. 5MB</p>
+          </div>
+          <input
+            ref={previewInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+            className="hidden"
+            onChange={handlePreviewInput}
+          />
+          <div className="flex shrink-0 gap-2">
+            {previewFile ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onPreviewFileChange(null)}
+                className="h-9 rounded-lg px-3 text-gray-600"
+              >
+                Remove
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => previewInputRef.current?.click()}
+              className="h-9 gap-1.5 rounded-lg border-brand/40 px-3 text-brand hover:bg-brand/5 hover:text-brand"
+            >
+              <Upload className="size-4" />
+              {previewName ? "Replace" : "Upload"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+
+import { fetchPublicMobileConfig } from "@/lib/gateway/mobileConfig"
 
 export interface MobileSplashConfig {
   logo?: string;
@@ -112,47 +114,25 @@ const DEFAULT_CONFIG: MobileAppConfig = {
  * If no appId is provided, it will try to get it from URL params or use defaults
  */
 export function useMobileConfig(options: UseMobileConfigOptions = {}): UseMobileConfigReturn {
-  const [config, setConfig] = useState<MobileAppConfig | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Cached per app; the config endpoint already falls back to defaults on 404 / network errors.
+  const query = useQuery({
+    queryKey: ['mobile-config', options.appId ?? ''],
+    queryFn: async (): Promise<MobileAppConfig> => {
+      const data = await (await fetchPublicMobileConfig(options.appId as string)).json();
+      if (data.success && data.data) return data.data as MobileAppConfig;
+      if (data.error) console.warn('Failed to fetch config, using defaults:', data.error);
+      return DEFAULT_CONFIG;
+    },
+    enabled: Boolean(options.appId),
+  });
 
+  // No appId → defaults immediately; on error → defaults plus the error message.
+  const config: MobileAppConfig | null = !options.appId ? DEFAULT_CONFIG : query.error ? DEFAULT_CONFIG : (query.data ?? null);
+  const loading = Boolean(options.appId) && query.isLoading;
+  const error = query.error ? query.error.message || 'Failed to fetch configuration' : null;
   const fetchConfig = async () => {
-    // If no appId, use defaults immediately
-    if (!options.appId) {
-      setConfig(DEFAULT_CONFIG);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await fetch(`/api/apps/${options.appId}/configuration/public`);
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        setConfig(data.data);
-      } else {
-        // Use defaults if fetch fails
-        setConfig(DEFAULT_CONFIG);
-        if (data.error) {
-          console.warn('Failed to fetch config, using defaults:', data.error);
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching mobile config:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch configuration');
-      // Use defaults on error
-      setConfig(DEFAULT_CONFIG);
-    } finally {
-      setLoading(false);
-    }
+    await query.refetch();
   };
-
-  useEffect(() => {
-    fetchConfig();
-  }, [options.appId]);
 
   return {
     config,

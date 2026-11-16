@@ -1,15 +1,18 @@
 "use client"
 
 import type { RefObject } from "react"
-import { Upload, X } from "lucide-react"
+import { ListChecks, Plus, Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import {
   ProductConfigInput,
   ProductConfigSelect,
+  ProductConfigSubsection,
+  productConfigControlClass,
 } from "@/components/drawers/product-config-form-fields"
 import { shouldUseOtherRequirementFileUpload, type OtherRequirementDraft } from "@/lib/otherRequirementPayload"
 import { getPdfFileValidationError } from "@/lib/fileValidation"
+import { cn } from "@/lib/utils"
 
 export type ProductConfigOtherRequirementsPanelProps = {
   otherRequirementOptions: string[]
@@ -48,7 +51,7 @@ export function ProductConfigOtherRequirementsPanel({
   otherRequirements,
   uploadInputRef,
   filePickerId,
-  addButtonClassName = "h-10 w-full bg-[#9A813F] text-white hover:bg-[#8A7335]",
+  addButtonClassName = "h-10 w-full gap-1.5 rounded-lg bg-brand text-brand-foreground hover:bg-brand/90",
   onTypeChange,
   onContentTypeChange,
   onDescriptionChange,
@@ -60,11 +63,12 @@ export function ProductConfigOtherRequirementsPanel({
   const useFile = shouldUseOtherRequirementFileUpload(otherRequirementType, otherRequirementContentType)
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm font-medium text-gray-700">
-        Other Requirements <span className="font-normal text-gray-500">(Optional)</span>
-      </p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:items-start">
+    <ProductConfigSubsection
+      title="Other requirements"
+      requirement="optional"
+      description="Extra items applicants must provide, as text or a document."
+    >
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-start">
         <ProductConfigSelect
           label="Requirement type"
           placeholder="Requirement type"
@@ -83,7 +87,7 @@ export function ProductConfigOtherRequirementsPanel({
         />
         {useFile ? (
           <div className="min-w-0 w-full">
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <label className="block text-sm font-medium text-gray-700" htmlFor={filePickerId}>
                 Document
               </label>
@@ -93,14 +97,14 @@ export function ProductConfigOtherRequirementsPanel({
                 onClick={() => uploadInputRef.current?.click()}
                 title={otherRequirementFile?.name || undefined}
                 aria-label="Choose document file"
-                className="flex h-10 w-full min-w-0 max-w-full items-center gap-2 rounded-md border border-[#e5e7eb] bg-white px-3 text-left text-sm outline-none transition hover:bg-gray-50/80 focus:border-[#9A813F] focus:ring-2 focus:ring-[#9A813F]/20"
+                className={cn(productConfigControlClass, "flex items-center gap-2 text-left")}
               >
                 <span
                   className={`min-w-0 flex-1 truncate ${otherRequirementFile ? "font-medium text-gray-900" : "text-gray-400"}`}
                 >
                   {otherRequirementFile ? otherRequirementFile.name : "No file selected"}
                 </span>
-                <Upload className="h-4 w-4 shrink-0 text-[#9A813F]" aria-hidden />
+                <Upload className="size-4 shrink-0 text-brand" aria-hidden />
               </button>
             </div>
             <input
@@ -135,38 +139,42 @@ export function ProductConfigOtherRequirementsPanel({
             requirement="optional"
           />
         )}
-        <div className="w-full space-y-2">
-          <span className="invisible block text-sm font-medium text-gray-700 select-none" aria-hidden>
-            Requirement type
+        <div className="w-full space-y-1.5">
+          <span className="invisible hidden text-sm font-medium text-gray-700 select-none lg:block" aria-hidden>
+            Add
           </span>
           <Button type="button" onClick={onAdd} className={addButtonClassName}>
+            <Plus className="size-4" />
             Add
           </Button>
         </div>
       </div>
 
       {otherRequirements.length > 0 ? (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {otherRequirements.map((item, index) => (
-            <div
+            <li
               key={`${item.type}-${index}`}
-              className={`flex items-start gap-2 rounded-md bg-[#9A813F] px-3 py-3 text-sm text-white ${onRemoveItem ? "justify-between" : ""}`}
+              className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5"
             >
-              <span className="min-w-0 flex-1 leading-snug">{summarizeItem(item)}</span>
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-brand/10 text-brand">
+                <ListChecks className="size-4" />
+              </span>
+              <span className="min-w-0 flex-1 text-sm leading-snug text-gray-800">{summarizeItem(item)}</span>
               {onRemoveItem ? (
                 <button
                   type="button"
                   onClick={() => onRemoveItem(index)}
-                  className="shrink-0 text-white/90 hover:text-white"
+                  className="shrink-0 rounded-md p-1 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   aria-label="Remove requirement"
                 >
-                  <X size={18} />
+                  <X className="size-4" />
                 </button>
               ) : null}
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
       ) : null}
-    </div>
+    </ProductConfigSubsection>
   )
 }

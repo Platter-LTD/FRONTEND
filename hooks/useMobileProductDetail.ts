@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { fetchMobileProductById } from '@/lib/fetchMobileProductById';
 import type { MobileProduct } from '@/lib/storefrontProducts';
 
@@ -13,40 +14,23 @@ export function useMobileProductDetail({
   productId,
   enabled = true,
 }: UseMobileProductDetailOptions) {
-  const [product, setProduct] = useState<MobileProduct | null>(null);
-  const [loading, setLoading] = useState(Boolean(enabled && productId));
-  const [error, setError] = useState<string | null>(null);
+  const id = productId?.trim() ?? '';
+  const query = useQuery({
+    queryKey: ['mobile-product', id],
+    queryFn: async () => {
+      const mapped = await fetchMobileProductById(id);
+      if (!mapped) throw new Error('Invalid product detail response');
+      return mapped;
+    },
+    enabled: enabled && Boolean(id),
+  });
 
+  const product: MobileProduct | null = query.data ?? null;
+  const loading = enabled && Boolean(id) && query.isLoading;
+  const error = query.error ? query.error.message || 'Failed to fetch product detail' : null;
   const fetchProduct = useCallback(async () => {
-    if (!enabled || !productId?.trim()) {
-      setProduct(null);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const mapped = await fetchMobileProductById(productId.trim());
-      if (!mapped) {
-        throw new Error('Invalid product detail response');
-      }
-
-      setProduct(mapped);
-    } catch (err) {
-      console.error('Error fetching product detail:', err);
-      setProduct(null);
-      setError(err instanceof Error ? err.message : 'Failed to fetch product detail');
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled, productId]);
-
-  useEffect(() => {
-    void fetchProduct();
-  }, [fetchProduct]);
+    await query.refetch();
+  }, [query]);
 
   return {
     product,

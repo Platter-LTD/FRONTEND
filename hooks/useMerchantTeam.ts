@@ -1,11 +1,11 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   formerMemberRows,
   mergeStaffTableRows,
   staffCountsFromMembers,
-  teamApi,
   type MerchantRole,
   type StaffTableRow,
   type TeamActivityLog,
@@ -13,6 +13,14 @@ import {
   type TeamMember,
 } from "@/lib/services/teamService"
 import type { PermissionCatalogItem } from "@/lib/teamPermissions"
+import {
+  teamKeys,
+  useTeamActivityLogs,
+  useTeamInvitations,
+  useTeamMembers,
+  useTeamPermissions,
+  useTeamRoles,
+} from "@/hooks/queries/team"
 
 export type MerchantTeamState = {
   members: TeamMember[]
@@ -30,65 +38,32 @@ export type MerchantTeamState = {
   refetch: () => Promise<void>
 }
 
+/** Stable empty fallback so memoized derivations don't recompute every render while loading. */
+const EMPTY: never[] = []
+
 export function useMerchantTeam(): MerchantTeamState {
-  const [members, setMembers] = useState<TeamMember[]>([])
-  const [formerMembers, setFormerMembers] = useState<TeamMember[]>([])
-  const [invitations, setInvitations] = useState<TeamInvitation[]>([])
-  const [roles, setRoles] = useState<MerchantRole[]>([])
-  const [catalog, setCatalog] = useState<PermissionCatalogItem[]>([])
-  const [permissions, setPermissions] = useState<string[]>([])
-  const [activityLogs, setActivityLogs] = useState<TeamActivityLog[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const rolesQ = useTeamRoles()
+  const permissionsQ = useTeamPermissions()
+  const membersQ = useTeamMembers()
+  const formerQ = useTeamMembers("deactivated")
+  const invitationsQ = useTeamInvitations()
+  const logsQ = useTeamActivityLogs({ limit: 50, skip: 0 })
+
+  const roles: MerchantRole[] = rolesQ.data ?? EMPTY
+  const members: TeamMember[] = membersQ.data ?? EMPTY
+  const formerMembers: TeamMember[] = formerQ.data ?? EMPTY
+  const invitations: TeamInvitation[] = invitationsQ.data ?? EMPTY
+  const activityLogs: TeamActivityLog[] = logsQ.data?.logs ?? EMPTY
+  const catalog: PermissionCatalogItem[] = permissionsQ.data?.catalog ?? EMPTY
+  const permissions: string[] = permissionsQ.data?.permissions ?? EMPTY
+
+  const loading = [rolesQ, permissionsQ, membersQ, formerQ, invitationsQ, logsQ].some((q) => q.isPending)
+  const error = rolesQ.error?.message || membersQ.error?.message || null
 
   const refetch = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const rolesRes = await teamApi.listRoles()
-      if (!rolesRes.success) {
-        setError(rolesRes.error || "Failed to load roles")
-        setRoles([])
-      } else {
-        setRoles(rolesRes.data || [])
-      }
-
-      const [permRes, membersRes, formerRes, invitesRes, logsRes] = await Promise.all([
-        teamApi.listPermissions(),
-        teamApi.listMembers(),
-        teamApi.listMembers("deactivated"),
-        teamApi.listInvitations(),
-        teamApi.listActivityLogs({ limit: 50, skip: 0 }),
-      ])
-
-      if (permRes.success && permRes.data) {
-        setCatalog(permRes.data.catalog)
-        setPermissions(permRes.data.permissions)
-      } else {
-        setCatalog([])
-        setPermissions([])
-      }
-
-      setMembers(membersRes.success ? membersRes.data || [] : [])
-      setFormerMembers(formerRes.success ? formerRes.data || [] : [])
-      setInvitations(invitesRes.success ? invitesRes.data || [] : [])
-      setActivityLogs(logsRes.success ? logsRes.data?.logs || [] : [])
-
-      const firstError =
-        (!rolesRes.success && rolesRes.error) ||
-        (!membersRes.success && membersRes.error) ||
-        null
-      if (firstError) setError(firstError)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load team data")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void refetch()
-  }, [refetch])
+    await queryClient.invalidateQueries({ queryKey: teamKeys.all })
+  }, [queryClient])
 
   const staffRows = useMemo(
     () => mergeStaffTableRows(members, invitations, roles),

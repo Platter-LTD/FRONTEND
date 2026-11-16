@@ -1,37 +1,37 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server"
+import { BACKEND } from "@/lib/endpoints"
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
+import { plataCookieOpts } from "@/lib/server/plataSessionRefresh"
+
+export const dynamic = "force-dynamic"
 
 /**
- * API Route to clear JWT tokens from httpOnly cookies
- * Used during logout
+ * POST /api/auth/clear-tokens — logout.
+ * Best-effort revokes the session on the backend, then always clears both auth cookies.
  */
 export async function POST(request: NextRequest) {
-  try {
-    const response = NextResponse.json({ success: true });
+  const accessToken = request.cookies.get("accessToken")?.value
+  const refreshToken = request.cookies.get("refreshToken")?.value
 
-    // Clear access token
-    response.cookies.set('accessToken', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 0, // Expire immediately
-    });
-
-    // Clear refresh token
-    response.cookies.set('refreshToken', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 0, // Expire immediately
-    });
-
-    return response;
-  } catch (error: any) {
-    console.error('Clear tokens error:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to clear tokens' },
-      { status: 500 }
-    );
+  if (accessToken || refreshToken) {
+    try {
+      await fetch(`${getPlataApiBaseUrl()}${BACKEND.auth.logout}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000),
+      })
+    } catch (err) {
+      console.warn("[auth/clear-tokens] backend logout failed; clearing cookies anyway", err)
+    }
   }
+
+  const response = NextResponse.json({ success: true })
+  response.cookies.set("accessToken", "", plataCookieOpts(0, false))
+  response.cookies.set("refreshToken", "", plataCookieOpts(0, true))
+  return response
 }

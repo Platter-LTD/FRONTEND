@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Users, Search, Loader2 } from "lucide-react"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Users, Loader2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -52,6 +54,15 @@ export function ManageRoleTab({ team }: ManageRoleTabProps) {
     }
   }
 
+  type StaffRow = (typeof staffRows)[number]
+  const staffColumns: ColumnDef<StaffRow, unknown>[] = [
+    { accessorKey: "name", header: "Name", cell: ({ row }) => <span className="font-medium text-gray-900">{row.original.name}</span> },
+    { accessorKey: "role", header: "Role" },
+    { accessorKey: "email", header: "Email" },
+    { accessorKey: "lastLogin", header: "Last Login" },
+    { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge className={getStatusColor(row.original.status)}>{row.original.status}</Badge> },
+  ]
+
   return (
     <div className="space-y-6">
       {error ? (
@@ -60,68 +71,33 @@ export function ManageRoleTab({ team }: ManageRoleTabProps) {
         </p>
       ) : null}
 
-      <div className="bg-white rounded-lg border border-gray-200">
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="text-lg font-medium">Staff Accounts</h3>
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search staff"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm"
-              />
-            </div>
-            <select
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-              value={statusFilter}
-              onChange={(e) =>
-                setStatusFilter(e.target.value as typeof statusFilter)
-              }
-            >
-              <option value="all">Status</option>
-              <option value="Active">Active</option>
-              <option value="Pending">Pending</option>
-              <option value="Suspended">Suspended</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="overflow-hidden">
-          <div className="grid grid-cols-5 gap-4 p-4 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-700">
-            <div>Name</div>
-            <div>Role</div>
-            <div>Email</div>
-            <div>Last Login</div>
-            <div>Status</div>
-          </div>
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 p-10 text-sm text-gray-500">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading staff…
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="p-8 text-center text-sm text-gray-500">No staff accounts found.</p>
-          ) : (
-            filtered.map((staff) => (
-              <div
-                key={staff.id}
-                className="grid grid-cols-5 gap-4 p-4 border-b border-gray-100 last:border-b-0 text-sm"
-              >
-                <div className="font-medium">{staff.name}</div>
-                <div>{staff.role}</div>
-                <div>{staff.email}</div>
-                <div>{staff.lastLogin}</div>
-                <div>
-                  <Badge className={getStatusColor(staff.status)}>{staff.status}</Badge>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+            <DataTable
+        tableId="manage-role-staff"
+        onRefresh={() => void team.refetch()}
+        title="Staff Accounts"
+        columns={staffColumns}
+        data={filtered}
+        isLoading={loading}
+        onSearch={setSearch}
+        initialSearch={search}
+        searchPlaceholder="Search staff"
+        download
+        resetPageSignal={`${search}|${statusFilter}`}
+        empty="No staff accounts found."
+        action={
+          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="Active">Active</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Suspended">Suspended</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+      />
 
       <div className="bg-white rounded-lg border border-gray-200 p-6">
         <h3 className="text-lg font-medium mb-6">Roles</h3>

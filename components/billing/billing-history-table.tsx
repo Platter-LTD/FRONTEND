@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight, Download, Loader2 } from 'lucide-react'
-import { billingService } from '@/lib/services/billing-service'
 import { formatCurrency, formatDate, getStatusColor } from '@/lib/utils/billing-utils'
 import type { Transaction } from '@/types/billing'
+import { useBillingTransactions } from '@/hooks/queries/billing'
 
 interface BillingHistoryTableProps {
   onTransactionClick: (transaction: any) => void
@@ -15,41 +15,13 @@ interface BillingHistoryTableProps {
 
 export function BillingHistoryTable({ onTransactionClick }: BillingHistoryTableProps) {
   const [currentPage, setCurrentPage] = useState(1)
-  const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [totalPages, setTotalPages] = useState(1)
-
   const itemsPerPage = 6
+  const query = useBillingTransactions({ page: currentPage, limit: itemsPerPage })
+  const transactions: Transaction[] = (query.data?.success && query.data.data) || []
+  const loading = query.isLoading
+  const error = query.error ? query.error.message || "Failed to load transactions" : null
+  const totalPages = Math.max(1, Math.ceil(transactions.length / itemsPerPage))
 
-  useEffect(() => {
-    fetchTransactions()
-  }, [currentPage])
-
-  const fetchTransactions = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      const response = await billingService.getTransactions({
-        page: currentPage,
-        limit: itemsPerPage,
-      })
-
-      if (response.success && response.data) {
-        setTransactions(response.data)
-        // Calculate total pages if pagination info is available
-        setTotalPages(Math.max(1, Math.ceil(response.data.length / itemsPerPage)))
-      } else {
-        setTransactions([])
-      }
-    } catch (err: any) {
-      console.error('Error fetching transactions:', err)
-      setError(err.message || 'Failed to load transactions')
-      setTransactions([])
-    } finally {
-      setLoading(false)
-    }
-  }
 
   if (loading) {
     return (
@@ -63,7 +35,7 @@ export function BillingHistoryTable({ onTransactionClick }: BillingHistoryTableP
     return (
       <div className="text-center py-12">
         <p className="text-red-600 mb-4">{error}</p>
-        <Button onClick={fetchTransactions} variant="outline">
+        <Button onClick={() => void query.refetch()} variant="outline">
           Try Again
         </Button>
       </div>

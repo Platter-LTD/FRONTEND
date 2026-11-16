@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { X } from "lucide-react"
 import { useRouter } from "next/navigation"
 import SuspendProductDrawer from "@/components/drawers/suspend-product-drawer"
@@ -64,6 +66,41 @@ export default function SuspendAppsPage() {
     setSelectedApps((prev) => (prev.includes(appId) ? prev.filter((id) => id !== appId) : [...prev, appId]))
   }
 
+  type App = (typeof apps)[number]
+  const columns: ColumnDef<App, unknown>[] = [
+    {
+      id: "select",
+      size: 48,
+      meta: { label: "Select" },
+      header: () => <span className="sr-only">Select</span>,
+      cell: ({ row }) => (
+        <Checkbox
+          checked={selectedApps.includes(row.original.id)}
+          onCheckedChange={() => handleSelectApp(row.original.id)}
+          aria-label={`Select ${row.original.name}`}
+        />
+      ),
+    },
+    { accessorKey: "name", header: "App Name", cell: ({ row }) => <span className="text-gray-900">{row.original.name}</span> },
+    { accessorKey: "appId", header: "App ID" },
+    { accessorKey: "dateCreated", header: "Date Created" },
+    { accessorKey: "product", header: "Product" },
+    { accessorKey: "productKey", header: "Product Key" },
+    {
+      accessorKey: "status",
+      header: "Status",
+      cell: ({ row }) => (
+        <span
+          className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
+            row.original.status === "Active" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
+          }`}
+        >
+          {row.original.status}
+        </span>
+      ),
+    },
+  ]
+
   const handleDeactivateClick = () => {
     setIsSuspendDrawerOpen(false)
     setIsConfirmationDrawerOpen(true)
@@ -116,52 +153,15 @@ export default function SuspendAppsPage() {
       </div>
 
       <div className="p-8">
-        <h2 className="text-xl font-semibold text-gray-900 mb-6">Suspended Apps</h2>
-
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-[#F5F5F5]">
-              <tr>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700 w-12"></th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">App Name</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">App ID</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Date Created</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Product</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Product Key</th>
-                <th className="text-left px-6 py-3 text-sm font-medium text-gray-700">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {apps.map((app) => (
-                <tr key={app.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <input
-                      type="radio"
-                      name="selectedApp"
-                      checked={selectedApps.includes(app.id)}
-                      onChange={() => handleSelectApp(app.id)}
-                      className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                    />
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{app.name}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.appId}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.dateCreated}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.product}</td>
-                  <td className="px-6 py-4 text-sm text-gray-600">{app.productKey}</td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                        app.status === "Active" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
-                      }`}
-                    >
-                      {app.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          tableId="admin-suspended-apps"
+          title="Suspended Apps"
+          columns={columns}
+          data={apps}
+          clientSearch
+          searchPlaceholder="Search apps"
+          download
+        />
       </div>
 
       <SuspendProductDrawer
