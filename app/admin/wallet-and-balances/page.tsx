@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { RefreshCw, Copy } from "lucide-react"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
-import { adminWalletApi, AdminWalletTransaction } from "@/lib/services/adminService"
+import { type AdminWalletTransaction } from "@/lib/services/adminService"
 import WalletHistoryDrawer from "@/components/drawers/wallet-history-drawer"
 import { toast } from "sonner"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useAdminWalletSummary, useAdminWalletTransactions } from "@/hooks/queries/admin"
 
 const copyToClipboard = (text: string) => {
   navigator.clipboard.writeText(text).then(() => toast.success("Copied!"))
@@ -15,35 +16,15 @@ const copyToClipboard = (text: string) => {
 export default function AdminWalletPage() {
   const [activeTab, setActiveTab] = useState("summary")
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
-  const [transactions, setTransactions] = useState<AdminWalletTransaction[]>([])
-  const [loading, setLoading] = useState(true)
-  const [summary, setSummary] = useState<{
-    totalWallets?: number
-    totalBalance?: number
-    activeWallets?: number
-  }>({})
-
-  const fetchData = async () => {
-    setLoading(true)
-
-    // Fetch summary
-    const summaryRes = await adminWalletApi.getSummary()
-    if (summaryRes.success && summaryRes.data) {
-      setSummary(summaryRes.data)
-    }
-
-    // Fetch transactions
-    const txRes = await adminWalletApi.getAllTransactions({ limit: 50 })
-    if (txRes.success && txRes.data) {
-      setTransactions(txRes.data)
-    } else {
-      setTransactions([])
-    }
-
-    setLoading(false)
+  const summaryQuery = useAdminWalletSummary()
+  const transactionsQuery = useAdminWalletTransactions(50)
+  const summary: { totalWallets?: number; totalBalance?: number; activeWallets?: number } = summaryQuery.data ?? {}
+  const transactions: AdminWalletTransaction[] = transactionsQuery.data ?? []
+  const loading = summaryQuery.isLoading || transactionsQuery.isLoading
+  const fetchData = () => {
+    void summaryQuery.refetch()
+    void transactionsQuery.refetch()
   }
-
-  useEffect(() => { fetchData() }, [])
 
 
   const formatCurrency = (n: number) =>

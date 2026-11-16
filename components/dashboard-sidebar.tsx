@@ -12,18 +12,15 @@ import { BarChart3, GitBranch, ChevronDown, ChevronUp, FileText, ShieldCheck, Pa
 import { useEffect, useMemo, useState } from "react"
 import Tippy from "@tippyjs/react"
 import "tippy.js/dist/tippy.css"
-import { toast } from "sonner"
 import { useAuth } from "@/hooks/useAuth"
 import { usePermissions } from "@/hooks/usePermissions"
-import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchKycStatusThunk } from "@/store/complianceSlice"
-import { fetchMerchantProfileThunk } from "@/store/merchantSettingsSlice"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserFromToken } from "@/lib/tokenManager"
 import { displayNameFromEmail, looksLikeEmailLocalOnly } from "@/lib/userNameFromClaims"
-import { ComplianceService } from "@/lib/services/complianceService"
 import { CompanyLogoMark } from "@/components/company-logo-mark"
-import { buildSigninUrl, getCurrentReturnTo } from "@/lib/authReturnTo"
+import { logoutWithFeedback } from "@/lib/logoutWithFeedback"
+import { useBusinessInfo, useKycStatus } from "@/hooks/queries/compliance"
+import { useMerchantProfile } from "@/hooks/queries/merchantSettings"
 
 interface GlobalNavItem {
   icon: React.ReactNode
@@ -82,9 +79,8 @@ export interface DashboardSidebarProps {
 const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", appId: appIdProp }) => {
   const pathname = usePathname()
   const router = useRouter()
-  const dispatch = useAppDispatch()
-  const complianceComplete = useAppSelector((s) => s.compliance.isApproved)
-  const merchantFullName = useAppSelector((s) => s.merchantSettings.fullName?.trim() ?? "")
+  const kycStatus = useKycStatus()
+  const complianceComplete = kycStatus.isApproved
   const { user, logout } = useAuth()
   const { nav, roleLabel } = usePermissions()
 
@@ -96,8 +92,6 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   const [isProductsOpen, setIsProductsOpen] = useState(false)
   const [isApplicationsOpen, setIsApplicationsOpen] = useState(false)
   const [isWorkflowOpen, setIsWorkflowOpen] = useState(false)
-  const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null)
-  const [companyName, setCompanyName] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
@@ -139,6 +133,12 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
     return [first, last].filter(Boolean).join(" ").trim()
   }, [effectiveUser])
 
+  // Merchant profile name, only fetched when the token carries no name (cached; shared with settings).
+  const merchantProfile = useMerchantProfile(
+    !nameFromUser && Boolean(effectiveUser?.email) && Boolean(pathname?.startsWith("/dashboard")),
+  )
+  const merchantFullName = merchantProfile.data?.fullName?.trim() ?? ""
+
   const displayName = useMemo(() => {
     if (nameFromUser) return nameFromUser
     const m = merchantFullName.trim()
@@ -162,46 +162,20 @@ const DashboardSidebar: React.FC<DashboardSidebarProps> = ({ className = "", app
   }, [displayName, displayEmail])
 
   const handleLogout = async () => {
-    const id = toast.loading("Logging out...")
-    try {
-      await logout()
-      toast.success("Logged out successfully", { id })
-      router.replace(buildSigninUrl(getCurrentReturnTo()))
-    } catch {
-      toast.error("Could not log out. Please try again.", { id })
-    }
+    await logoutWithFeedback(logout, () => router.replace("/signin"))
   }
 
+  // Re-check KYC on navigation so the nav unlocks as soon as compliance is approved.
   useEffect(() => {
-    void dispatch(fetchKycStatusThunk())
-  }, [pathname, dispatch])
-
-  useEffect(() => {
-    if (!pathname?.startsWith("/dashboard")) return
-    let cancelled = false
-    void ComplianceService.getBusinessInfo()
-      .then((res) => {
-        if (cancelled) return
-        setCompanyLogoUrl(pickCompanyLogoUrl(res))
-        setCompanyName(pickCompanyName(res))
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCompanyLogoUrl(null)
-          setCompanyName(null)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
+    void kycStatus.refetch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname])
 
-  useEffect(() => {
-    if (nameFromUser) return
-    if (!effectiveUser?.email) return
-    if (!pathname?.startsWith("/dashboard")) return
-    void dispatch(fetchMerchantProfileThunk()).catch(() => {})
-  }, [nameFromUser, effectiveUser?.email, pathname, dispatch])
+  // Company logo + name from the KYC business profile (cached).
+  const businessInfo = useBusinessInfo(Boolean(pathname?.startsWith("/dashboard")))
+  const companyLogoUrl = businessInfo.data ? pickCompanyLogoUrl(businessInfo.data) : null
+  const companyName = businessInfo.data ? pickCompanyName(businessInfo.data) : null
+
 
   useEffect(() => {
     if (!appId) {

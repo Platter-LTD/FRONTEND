@@ -4,11 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { useAppMerchantId } from "@/hooks/useAppMerchantId"
-import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import {
-  fetchAppMerchantWalletsThunk,
-  fetchTreasuryTransactionsThunk,
-} from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
 import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
@@ -20,12 +15,11 @@ import {
   type MerchantWallet,
 } from "@/lib/services/walletService"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useAppWalletState, useMerchantWallet } from "@/hooks/queries/wallets"
 
 export default function TreasuryWalletPage() {
   const params = useParams()
   const appId = params.id as string
-  const dispatch = useAppDispatch()
-  const walletState = useAppSelector((s) => s.wallet)
   const { actions } = usePermissions()
   const canViewBalances = actions.viewWalletBalances
 
@@ -34,38 +28,22 @@ export default function TreasuryWalletPage() {
   const [showBalance, setShowBalance] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [fundOpen, setFundOpen] = useState(false)
-  const [treasuryWallet, setTreasuryWallet] = useState<MerchantWallet | null>(null)
-  const [walletDetailLoading, setWalletDetailLoading] = useState(false)
+  const walletState = useAppWalletState(merchantId, appId, { treasury: true })
+  const treasuryWalletQuery = useMerchantWallet(merchantId, "TREASURY", appId)
+  const treasuryWallet: MerchantWallet | null = treasuryWalletQuery.data ?? null
+  const walletDetailLoading = treasuryWalletQuery.isFetching
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
   const bundleTreasury = inScope ? walletState.treasury : null
   const treasury = treasuryWallet ?? bundleTreasury
 
-  const refreshTreasuryWallet = useCallback(async () => {
-    if (!merchantId || !appId) return null
-    setWalletDetailLoading(true)
-    try {
-      const res = await merchantWalletApi.getMerchantWallet(merchantId, "TREASURY", appId)
-      const wallet = res.data ?? null
-      setTreasuryWallet(wallet)
-      return wallet
-    } catch {
-      return null
-    } finally {
-      setWalletDetailLoading(false)
-    }
-  }, [merchantId, appId])
+  /** Refetch the treasury wallet detail; resolves to the fresh wallet (or null). */
+  const refreshTreasuryWallet = useCallback(async () => (await treasuryWalletQuery.refetch()).data ?? null, [treasuryWalletQuery])
 
+  /** Refetch wallets, transactions and wallet detail (React Query dedupes and caches). */
   const refresh = useCallback(() => {
-    if (!merchantId || !appId) return
-    void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
-    void dispatch(fetchTreasuryTransactionsThunk({ merchantId, appId }))
-    void refreshTreasuryWallet()
-  }, [dispatch, merchantId, appId, refreshTreasuryWallet])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
+    void walletState.refresh()
+  }, [walletState])
 
   const txs = inScope ? walletState.treasuryTransactions : []
   const walletsLoading =

@@ -35,12 +35,12 @@ import type { MerchantTeamState } from "@/hooks/useMerchantTeam"
 import {
   activityActionLabel,
   formatLastLogin,
-  teamApi,
   type StaffTableRow,
 } from "@/lib/services/teamService"
 import { TEAM_PERMISSIONS } from "@/lib/teamPermissions"
 import { usePermissions } from "@/hooks/usePermissions"
 import { toast } from "sonner"
+import { useTeamActions } from "@/hooks/queries/team"
 
 export interface AddStaffTabProps {
   onAddStaff?: () => void
@@ -63,6 +63,7 @@ function statusColor(status: string) {
 }
 
 export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
+  const teamActions = useTeamActions()
   const {
     staffRows,
     formerStaffRows,
@@ -110,8 +111,8 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
     setActionBusy(true)
     const res =
       action === "suspend"
-        ? await teamApi.suspendMember(row.id)
-        : await teamApi.activateMember(row.id)
+        ? await teamActions.suspendMember(row.id)
+        : await teamActions.activateMember(row.id)
     setActionBusy(false)
     if (!res.success) {
       toast.error(res.error || `Failed to ${action} member`)
@@ -124,7 +125,7 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
   const confirmDeactivate = async () => {
     if (!deactivateRow || deactivateRow.kind !== "member") return
     setActionBusy(true)
-    const res = await teamApi.deactivateMember(deactivateRow.id)
+    const res = await teamActions.deactivateMember(deactivateRow.id)
     setActionBusy(false)
     if (!res.success) {
       toast.error(res.error || "Failed to deactivate member")
@@ -138,7 +139,7 @@ export function AddStaffTab({ onAddStaff, team }: AddStaffTabProps) {
   const submitRoleChange = async () => {
     if (!roleDialogRow || roleDialogRow.kind !== "member" || !nextRoleId) return
     setActionBusy(true)
-    const res = await teamApi.changeMemberRole(roleDialogRow.id, nextRoleId)
+    const res = await teamActions.changeMemberRole(roleDialogRow.id, nextRoleId)
     setActionBusy(false)
     if (!res.success) {
       toast.error(res.error || "Failed to update role")

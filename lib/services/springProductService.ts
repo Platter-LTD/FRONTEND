@@ -18,6 +18,7 @@ import {
   catalogProductsKey,
   invalidateDashboardProducts,
 } from "@/lib/dashboardSessionCache"
+import { gatewayFetch } from "@/lib/gatewayFetch"
 
 const getAuthHeaders = () => {
   const token = typeof window !== "undefined" ? getAccessToken() : null
@@ -49,29 +50,51 @@ const getMerchantIdFromToken = (): string | null => {
   }
 }
 
+/** Uncached fetch (used by React Query hooks and by the cached service method). */
+export async function fetchCatalogProducts(params: { appId: string; type?: string; page?: number; limit?: number }) {
+    const qs = new URLSearchParams()
+    qs.set("appId", params.appId)
+    qs.set("page", String(params.page && params.page > 0 ? params.page : 1))
+    qs.set("limit", String(params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 100))
+    if (params.type) qs.set("type", params.type.toUpperCase())
+    const response = await gatewayFetch(`/api/v1/products?${qs.toString()}`, {
+      headers: getAuthHeaders(),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: "Failed to fetch products" }))
+      throw new Error((error as { error?: string }).error || "Failed to fetch products")
+    }
+
+    const data = await response.json().catch(() => ({}))
+    return withProductItemsAsData(data as Record<string, unknown>)
+}
+
+/** Uncached fetch (used by React Query hooks and by the cached service method). */
+export async function fetchSpringProductsForApp(appId: string) {
+    const qs = new URLSearchParams({ page: "1", limit: "100" })
+    const response = await gatewayFetch(
+      `/api/v1/products/app/${encodeURIComponent(appId)}?${qs.toString()}`,
+      {
+        headers: getAuthHeaders(),
+      },
+    )
+
+    const data = await response.json().catch(() => ({}))
+
+    if (!response.ok) {
+      throw new Error((data as { error?: string }).error || "Failed to fetch products")
+    }
+
+    return withProductItemsAsData(data as Record<string, unknown>)
+}
+
 export const springProductService = {
   /** Plata catalog — GET /api/v1/products?appId= (required) */
   async getAllProducts(params: { appId: string; type?: string; page?: number; limit?: number }) {
     return queryCache(
       catalogProductsKey(params),
-      async () => {
-        const qs = new URLSearchParams()
-        qs.set("appId", params.appId)
-        qs.set("page", String(params.page && params.page > 0 ? params.page : 1))
-        qs.set("limit", String(params.limit && params.limit > 0 ? Math.min(params.limit, 100) : 100))
-        if (params.type) qs.set("type", params.type.toUpperCase())
-        const response = await fetch(`/api/v1/products?${qs.toString()}`, {
-          headers: getAuthHeaders(),
-        })
-
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({ error: "Failed to fetch products" }))
-          throw new Error((error as { error?: string }).error || "Failed to fetch products")
-        }
-
-        const data = await response.json().catch(() => ({}))
-        return withProductItemsAsData(data as Record<string, unknown>)
-      },
+      () => fetchCatalogProducts(params),
       DASHBOARD_TTL.products,
     )
   },
@@ -80,29 +103,13 @@ export const springProductService = {
   async getProductsForApp(appId: string) {
     return queryCache(
       appProductsKey(appId),
-      async () => {
-        const qs = new URLSearchParams({ page: "1", limit: "100" })
-        const response = await fetch(
-          `/api/v1/products/app/${encodeURIComponent(appId)}?${qs.toString()}`,
-          {
-            headers: getAuthHeaders(),
-          },
-        )
-
-        const data = await response.json().catch(() => ({}))
-
-        if (!response.ok) {
-          throw new Error((data as { error?: string }).error || "Failed to fetch products")
-        }
-
-        return withProductItemsAsData(data as Record<string, unknown>)
-      },
+      () => fetchSpringProductsForApp(appId),
       DASHBOARD_TTL.products,
     )
   },
 
   async getProductById(productId: string) {
-    const response = await fetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
+    const response = await gatewayFetch(`/api/v1/products/${encodeURIComponent(productId)}`, {
       headers: getAuthHeaders(),
     })
 
@@ -115,7 +122,7 @@ export const springProductService = {
   },
 
   async toggleProductActivation(appId: string, productId: string, activate: boolean) {
-    const response = await fetch(
+    const response = await gatewayFetch(
       `/api/v1/products/toggle/${encodeURIComponent(appId)}/${encodeURIComponent(productId)}`,
       {
         method: "PUT",

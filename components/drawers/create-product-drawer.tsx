@@ -1,7 +1,7 @@
 "use client"
-import { useEffect, useLayoutEffect, useState } from "react"
 import { Drawer } from "@/components/drawer"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useProductTypes } from "@/hooks/queries/productCatalog"
 
 type ProductTypeOption = {
   value: string
@@ -25,17 +25,9 @@ export default function CreateProductDrawer({
   cardBgColor = "#F5F1E8",
   cardHoverColor = "#EBE5D6"
 }: CreateProductDrawerProps) {
-  const [productTypes, setProductTypes] = useState<ProductTypeOption[]>([])
-  const [isLoadingTypes, setIsLoadingTypes] = useState(false)
-
-  useLayoutEffect(() => {
-    if (isOpen) {
-      setIsLoadingTypes(true)
-      setProductTypes([])
-    } else {
-      setIsLoadingTypes(false)
-    }
-  }, [isOpen])
+  // Cached across opens; the skeleton only shows on the very first load.
+  const { data: fetchedTypes, isPending: isLoadingTypes } = useProductTypes(isOpen)
+  const productTypes: ProductTypeOption[] = fetchedTypes ?? []
 
   // Static descriptions keyed by backend type value
   const descriptions: Record<string, string> = {
@@ -50,35 +42,6 @@ export default function CreateProductDrawer({
     Investment:
       "Create investment products and portfolios that enable customers to grow wealth with structured returns.",
   }
-
-  useEffect(() => {
-    if (!isOpen) return
-    const ac = new AbortController()
-
-    const fetchTypes = async () => {
-      try {
-        const res = await fetch("/api/v1/products/types", {
-          credentials: "include",
-          signal: ac.signal,
-        })
-        const json = await res.json()
-        if (ac.signal.aborted) return
-        const list = (json?.data ?? []) as ProductTypeOption[]
-        if (Array.isArray(list) && list.length) {
-          setProductTypes(list)
-        }
-      } catch (e) {
-        if ((e as Error).name !== "AbortError") {
-          console.error("Failed to fetch product types", e)
-        }
-      } finally {
-        if (!ac.signal.aborted) setIsLoadingTypes(false)
-      }
-    }
-
-    fetchTypes()
-    return () => ac.abort()
-  }, [isOpen])
 
   return (
     <Drawer

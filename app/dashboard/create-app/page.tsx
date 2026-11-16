@@ -1,56 +1,23 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Plus, ExternalLink } from "lucide-react"
 import CreateAppDrawer from "@/components/drawers/create-app-drawer"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { useAuth } from "@/hooks/useAuth"
-import { getAccessToken } from "@/lib/cookieAuth"
+import { useApps } from "@/hooks/queries/apps"
 
 export default function CreateAppPage() {
   const router = useRouter()
   const { user } = useAuth()
   const [isCreateAppOpen, setIsCreateAppOpen] = useState(false)
-  const [apps, setApps] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const fetchApps = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const token = getAccessToken()
-      const response = await fetch("/api/apps", {
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { "Authorization": `Bearer ${token}` })
-        }
-      })
-      const result = await response.json()
-      if (result.success && result.data) {
-        setApps(Array.isArray(result.data) ? result.data : [])
-      } else {
-        setApps([])
-        setError(result.error || "Failed to load applications")
-      }
-    } catch (err) {
-      console.error("Error fetching apps:", err)
-      setApps([])
-      setError("Failed to load applications. Please try again.")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchApps()
-  }, [fetchApps])
+  const { data: apps = [], isLoading: loading, error: appsError, refetch: refetchApps } = useApps()
+  const error = appsError ? "Failed to load applications. Please try again." : null
 
   const handleAppCreated = (app: any) => {
-    setIsCreateAppOpen(false)
-    setApps(prevApps => [...prevApps, app])
+    setIsCreateAppOpen(false) // the create-app mutation refreshes the cached list
   }
 
   const handleAppClick = (appId: string) => {
@@ -118,7 +85,7 @@ export default function CreateAppPage() {
           isLoading={loading}
           isError={!!error}
           error={error}
-          onRefresh={fetchApps}
+          onRefresh={() => void refetchApps()}
           clientSearch
           download
           rowDetails={{ drawer: true }}

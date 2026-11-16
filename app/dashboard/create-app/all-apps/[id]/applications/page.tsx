@@ -552,7 +552,12 @@ export default function PlataApplicationsPage() {
       cell: ({ getValue }) => <span className="font-bold text-gray-900">{String(getValue() ?? "")}</span>,
     },
     { id: "status", header: "Status", accessorFn: (a) => workflowStatus(a), cell: ({ row }) => getStatusBadge(workflowStatus(row.original)) },
-    { id: "submitted", header: "Submitted", accessorFn: (a) => formatSubmittedDate(a) },
+    {
+      id: "submitted",
+      header: "Submitted",
+      accessorFn: (a) => new Date(a.submittedAt || a.createdAt).getTime() || 0,
+      cell: ({ row }) => formatSubmittedDate(row.original),
+    },
     rowActionsColumn<LoanWorkflowApplication>((application) => {
       const status = workflowStatus(application)
       const isActionable = status === "requested" || status === "under_review"

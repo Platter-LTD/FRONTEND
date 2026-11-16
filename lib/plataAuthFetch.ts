@@ -1,4 +1,5 @@
 import { getAccessToken } from "@/lib/cookieAuth"
+import { resolveApiInput } from "@/lib/plataApiBaseUrl"
 import { refreshAccessTokenClient } from "@/lib/refreshAccessTokenClient"
 import { clearSecureTokens } from "@/lib/tokenManager"
 import { buildSigninUrl, getCurrentReturnTo } from "@/lib/authReturnTo"
@@ -109,7 +110,6 @@ function buildInit(token: string | null, init?: RequestInit): RequestInit {
   }
   return {
     ...init,
-    credentials: "include",
     headers,
   }
 }
@@ -118,14 +118,17 @@ function buildInit(token: string | null, init?: RequestInit): RequestInit {
  * Browser fetch for Plata BFF routes with cookie session + one refresh retry on 401.
  * If refresh fails, clears session and redirects to /signin.
  */
-export async function plataAuthFetch(input: string, init?: RequestInit): Promise<Response> {
+export async function plataAuthFetch(rawInput: string, init?: RequestInit): Promise<Response> {
+  const input = resolveApiInput(rawInput)
+  // Cookies only go to our own origin (/api/auth/*); gateway calls are Bearer-only.
+  const credentials: RequestCredentials = init?.credentials ?? (input.startsWith("/") ? "include" : "omit")
   let token = typeof window !== "undefined" ? getAccessToken() : null
-  let response = await fetch(input, buildInit(token, init))
+  let response = await fetch(input, { ...buildInit(token, init), credentials })
 
   if (response.status !== 401) return response
 
   // Don't try refresh loops against auth endpoints themselves.
-  const url = typeof input === "string" ? input : ""
+  const url = input
   if (
     url.includes("/api/auth/login") ||
     url.includes("/api/auth/refresh") ||
@@ -135,7 +138,7 @@ export async function plataAuthFetch(input: string, init?: RequestInit): Promise
   }
 
   const newToken = await refreshOrRedirectToSignIn()
-  response = await fetch(input, buildInit(newToken, init))
+  response = await fetch(input, { ...buildInit(newToken, init), credentials })
 
   // Retry still unauthorized with a fresh token → permission issue, not expired session.
   if (response.status === 401) {

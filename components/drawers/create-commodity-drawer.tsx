@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { Drawer } from "@/components/drawer"
 import { Button } from "@/components/ui/button"
 import TextInput from "@/components/text-input"
 import InputGroup from "@/components/input-group"
+import { useProductSubtypeLabels } from "@/hooks/queries/productCatalog"
 
 interface CreateCommodityDrawerProps {
   isOpen: boolean
@@ -30,38 +31,10 @@ export default function CreateCommodityDrawer({
   const [productName, setProductName] = useState("")
   const [description, setDescription] = useState("")
   const [productType, setProductType] = useState("")
-  const [subtypeOptions, setSubtypeOptions] = useState<string[]>(COMMODITY_SUBTYPE_DEFAULTS)
+  const { data: fetchedSubtypeOptions } = useProductSubtypeLabels(isInvestment ? "Investment" : "Commodity", isOpen)
+  // Fall back to the built-in list until (or unless) the API returns subtypes.
+  const subtypeOptions = fetchedSubtypeOptions?.length ? fetchedSubtypeOptions : COMMODITY_SUBTYPE_DEFAULTS
 
-  useEffect(() => {
-    if (!isOpen) return
-
-    const fetchSubtypes = async () => {
-      const path = isInvestment ? "Investment" : "Commodity"
-      const defaults = isInvestment ? [...COMMODITY_SUBTYPE_DEFAULTS] : COMMODITY_SUBTYPE_DEFAULTS
-      try {
-        const res = await fetch(`/api/v1/products/types/${path}/subtypes`, {
-          credentials: "include",
-        })
-        const json = await res.json()
-        const list = (json?.data ?? []) as { value?: string; label?: string }[]
-        const normalized =
-          Array.isArray(list) && list.length
-            ? list
-                .map((x) => x.label || x.value)
-                .filter((v): v is string => typeof v === "string" && v.length > 0)
-            : []
-        if (normalized.length) {
-          setSubtypeOptions(normalized)
-        } else {
-          setSubtypeOptions(defaults)
-        }
-      } catch {
-        setSubtypeOptions(defaults)
-      }
-    }
-
-    fetchSubtypes()
-  }, [isOpen, isInvestment])
 
   const handleSubmit = () => {
     onSubmit({

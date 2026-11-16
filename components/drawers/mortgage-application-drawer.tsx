@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import TextInput from "@/components/text-input"
 import InputGroup from "@/components/input-group"
-import { mortgageApi } from "@/lib/services/accountService"
 import { Loader2 } from "lucide-react"
+import { useApplicationActions } from "@/hooks/queries/applications"
 
 interface MortgageApplicationDrawerProps {
   isOpen: boolean
@@ -56,6 +56,7 @@ export default function MortgageApplicationDrawer({
   product,
   userId,
 }: MortgageApplicationDrawerProps) {
+  const applicationActions = useApplicationActions()
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -202,7 +203,7 @@ export default function MortgageApplicationDrawer({
     setError(null)
 
     try {
-      const result = await mortgageApi.apply({
+      const result = await applicationActions.applyMortgage({
         product_id: product.id,
         merchant_id: product.merchantId,
         user_id: userId,

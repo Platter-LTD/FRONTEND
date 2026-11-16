@@ -27,3 +27,17 @@ export function getPlataApiBaseUrl(): string {
 export function getProductApiBaseUrl(): string {
   return getPlataApiBaseUrl()
 }
+
+/** Absolute gateway URL for a backend path, e.g. gatewayUrl("/api/v1/keys"). Browser calls go here directly. */
+export function gatewayUrl(path: string): string {
+  return `${getPlataApiBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`
+}
+
+/**
+ * `/api/v1/*` paths are gateway paths (our own server only serves `/api/auth/*`),
+ * so resolve them to the gateway origin; anything else is returned unchanged.
+ */
+export function resolveApiInput<T extends RequestInfo | URL>(input: T): T | string {
+  if (typeof input === "string" && input.startsWith("/api/v1/")) return gatewayUrl(input)
+  return input
+}

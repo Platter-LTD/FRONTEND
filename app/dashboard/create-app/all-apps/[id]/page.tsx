@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { useParams } from "next/navigation"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { rowActionsColumn } from "@/components/ui/row-actions"
@@ -8,73 +8,42 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Package, Eye, X, Loader2 } from "lucide-react"
-import { productApi } from "@/lib/services/product-api"
 import { extractProductItems } from "@/lib/productOverview"
 import { toast } from "sonner"
+import { useAppProducts, useProductActions, useProductOverview } from "@/hooks/queries/products"
 
 export default function UserAppDetailsPage() {
   const params = useParams()
   const appId = params.id as string
   const [activeTab, setActiveTab] = useState("general-info")
-  const [products, setProducts] = useState<any[]>([])
-  const [productsLoading, setProductsLoading] = useState(true)
-  const [productsError, setProductsError] = useState<string | null>(null)
+  const productsQuery = useAppProducts(appId)
+  const products: any[] = useMemo(
+    () => (productsQuery.data ? extractProductItems(productsQuery.data) : []),
+    [productsQuery.data],
+  )
+  const productsLoading = productsQuery.isLoading
+  const productsError = productsQuery.error ? "Failed to load products. Please try again." : null
+  const productActions = useProductActions()
   const [togglingProductId, setTogglingProductId] = useState<string | null>(null)
-  const [overviewLoading, setOverviewLoading] = useState(false)
-  const [overviewError, setOverviewError] = useState<string | null>(null)
-  const [overview, setOverview] = useState<{
-    requestedAmount?: number
-    approvedAmount?: number
-    totalInterest?: number
-  } | null>(null)
+  const overviewQuery = useProductOverview(appId)
+  const overviewLoading = overviewQuery.isLoading
+  const overviewError = overviewQuery.error ? overviewQuery.error.message || "Failed to load overview" : null
+  const overview: { requestedAmount?: number; approvedAmount?: number; totalInterest?: number } | null = useMemo(() => {
+    if (!overviewQuery.data) return null
+    const h = (overviewQuery.data as { data?: { headline?: Record<string, number> } })?.data?.headline || {}
+    return {
+      requestedAmount: Number(h.requestedAmount || 0),
+      approvedAmount: Number(h.approvedAmount || 0),
+      totalInterest: Number(h.totalInterest || 0),
+    }
+  }, [overviewQuery.data])
 
   const fmt = (n?: number) =>
     new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 2 }).format(Number(n || 0))
 
-  const fetchProducts = useCallback(async () => {
-    if (!appId) return
-    setProductsLoading(true)
-    setProductsError(null)
-    try {
-      const data = await productApi.getProductsByAppId(appId)
-      console.log(
-        "[App overview] GET /api/products (proxied to account-ms-plata /api/v1/products) response:",
-        data,
-      )
-      setProducts(extractProductItems(data))
-    } catch (err) {
-      console.error("[App overview] products fetch error:", err)
-      setProducts([])
-      setProductsError("Failed to load products. Please try again.")
-    } finally {
-      setProductsLoading(false)
-    }
-  }, [appId])
+  const fetchProducts = useCallback(() => void productsQuery.refetch(), [productsQuery])
 
-  useEffect(() => {
-    fetchProducts()
-  }, [fetchProducts])
 
-  useEffect(() => {
-    if (!appId) return
-    setOverviewLoading(true)
-    setOverviewError(null)
-    productApi
-      .getProductOverview(appId)
-      .then((res) => {
-        const h = (res as { data?: { headline?: Record<string, number> } })?.data?.headline || {}
-        setOverview({
-          requestedAmount: Number(h.requestedAmount || 0),
-          approvedAmount: Number(h.approvedAmount || 0),
-          totalInterest: Number(h.totalInterest || 0),
-        })
-      })
-      .catch((e) => {
-        setOverview(null)
-        setOverviewError(e instanceof Error ? e.message : "Failed to load overview")
-      })
-      .finally(() => setOverviewLoading(false))
-  }, [appId])
 
   const customers = [
     {
@@ -312,12 +281,8 @@ export default function UserAppDetailsPage() {
                             if (!pid) return
                             setTogglingProductId(pid)
                             try {
-                              await productApi.toggleProductStatus(appId, pid, checked)
-                              setProducts((prev) =>
-                                prev.map((p) =>
-                                  p?.id === pid ? { ...p, isActive: checked, status: checked ? "active" : "inactive" } : p,
-                                ),
-                              )
+                              // The mutation refreshes the cached product list.
+                              await productActions.toggleProductStatus(appId, pid, checked)
                             } catch (e) {
                               console.error("[App overview] toggle product:", e)
                               toast.error("Could not update product. Try again.")

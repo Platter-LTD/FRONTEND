@@ -34,19 +34,6 @@ import { cn } from "@/lib/utils"
 import { CountrySelect } from "@/components/ui/country-select"
 import { useCountries } from "@/hooks/useCountries"
 import { toast } from "sonner"
-import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import {
-    changeMerchantPasswordThunk,
-    deactivateMerchantAccountThunk,
-    fetchMerchantProfileThunk,
-    fetchMerchantSessionsThunk,
-    revokeMerchantSessionThunk,
-    setAccountFields,
-    setEmailFields,
-    setPasswordFields,
-    updateMerchantEmailThunk,
-    updateMerchantProfileThunk,
-} from "@/store/merchantSettingsSlice"
 import APIKeysSection from "@/components/APIKeysSection"
 import { usePermissions } from "@/hooks/usePermissions"
 import {
@@ -58,6 +45,7 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { useMerchantSettings } from "@/hooks/queries/merchantSettings"
 
 const SETTINGS_SECTIONS: SettingsNavItem[] = [
     { id: "account-settings", label: "Account", description: "Profile and email", icon: UserRound },
@@ -73,8 +61,9 @@ const SUPPORT_CHANNELS = [
 ]
 
 export default function SettingsPage() {
-    const dispatch = useAppDispatch()
     const [activeTab, setActiveTab] = useSettingsTab(SETTINGS_SECTIONS, "account-settings")
+    // Profile + sessions (React Query); sessions only load on the Login & security tab.
+    const settings = useMerchantSettings({ sessionsEnabled: activeTab === "login-security" })
     const [revokingId, setRevokingId] = useState<string | null>(null)
     const [deactivateOpen, setDeactivateOpen] = useState(false)
     const router = useRouter()
@@ -99,7 +88,10 @@ export default function SettingsPage() {
         passwordSaving,
         sessionsLoading,
         deactivating,
-    } = useAppSelector((s) => s.merchantSettings)
+        setAccountFields,
+        setEmailFields,
+        setPasswordFields,
+    } = settings
 
     const { countries } = useCountries()
     const resolvedCountryCode = useMemo(() => {
@@ -123,19 +115,8 @@ export default function SettingsPage() {
     }, [resolvedCountryCode, selectedDialCode])
 
     useEffect(() => {
-        void dispatch(fetchMerchantProfileThunk())
-            .unwrap()
-            .catch((e) => toast.error(String(e)))
-    }, [dispatch])
-
-    useEffect(() => {
-        if (activeTab !== "login-security") return
-        void dispatch(fetchMerchantSessionsThunk())
-            .unwrap()
-            .catch(() => {
-                /* optional: toast */
-            })
-    }, [activeTab, dispatch])
+        if (settings.profileError) toast.error(settings.profileError.message)
+    }, [settings.profileError])
 
     const handleUpdateProfile = async () => {
         const name = fullName.trim().replace(/\s+/g, " ")
@@ -148,10 +129,10 @@ export default function SettingsPage() {
             country: resolvedCountryCode,
         }
         try {
-            await dispatch(updateMerchantProfileThunk(body)).unwrap()
+            await settings.updateProfile(body)
             toast.success("Profile updated")
         } catch (e) {
-            toast.error(String(e))
+            toast.error(e instanceof Error ? e.message : String(e))
         }
     }
 
@@ -165,16 +146,14 @@ export default function SettingsPage() {
             return
         }
         try {
-            await dispatch(
-                updateMerchantEmailThunk({
+            await settings.updateEmail({
                     newEmail,
                     confirmEmail,
                     currentPassword: emailCurrentPassword,
-                }),
-            ).unwrap()
+                })
             toast.success("Email update submitted")
         } catch (e) {
-            toast.error(String(e))
+            toast.error(e instanceof Error ? e.message : String(e))
         }
     }
 
@@ -188,19 +167,17 @@ export default function SettingsPage() {
             return
         }
         try {
-            await dispatch(
-                changeMerchantPasswordThunk({ currentPassword: passwordCurrent, newPassword: passwordNew }),
-            ).unwrap()
+            await settings.changePassword({ currentPassword: passwordCurrent, newPassword: passwordNew })
             toast.success("Password updated")
         } catch (e) {
-            toast.error(String(e))
+            toast.error(e instanceof Error ? e.message : String(e))
         }
     }
 
     const handleRevokeSession = async (sessionId: string) => {
         try {
             setRevokingId(sessionId)
-            await dispatch(revokeMerchantSessionThunk(sessionId)).unwrap()
+            await settings.revokeSession(sessionId)
             toast.success("Signed out of that device")
         } catch {
             toast.error("Could not sign out of that device.")
@@ -211,12 +188,12 @@ export default function SettingsPage() {
 
     const handleDeactivate = async () => {
         try {
-            await dispatch(deactivateMerchantAccountThunk()).unwrap()
+            await settings.deactivateAccount()
             toast.success("Account deactivated")
             setDeactivateOpen(false)
             router.push("/signin")
         } catch (e) {
-            toast.error(String(e))
+            toast.error(e instanceof Error ? e.message : String(e))
         }
     }
 
@@ -252,7 +229,7 @@ export default function SettingsPage() {
                                     id="fullName"
                                     placeholder="e.g. Ada Okafor"
                                     value={fullName}
-                                    onChange={(e) => dispatch(setAccountFields({ fullName: e.target.value }))}
+                                    onChange={(e) => setAccountFields({ fullName: e.target.value })}
                                     className={settingsInputClass}
                                     autoComplete="name"
                                 />
@@ -260,7 +237,7 @@ export default function SettingsPage() {
                             <SettingsField label="Country">
                                 <CountrySelect
                                     value={resolvedCountryCode}
-                                    onValueChange={(value) => dispatch(setAccountFields({ country: value }))}
+                                    onValueChange={(value) => setAccountFields({ country: value })}
                                     placeholder="Select country"
                                     triggerClassName={settingsInputClass}
                                 />
@@ -275,7 +252,7 @@ export default function SettingsPage() {
                                         inputMode="tel"
                                         placeholder="801 234 5678"
                                         value={phone}
-                                        onChange={(e) => dispatch(setAccountFields({ phone: e.target.value }))}
+                                        onChange={(e) => setAccountFields({ phone: e.target.value })}
                                         className="min-w-0 flex-1 bg-transparent px-3 text-sm text-gray-900 outline-none placeholder:text-gray-400"
                                         autoComplete="tel-national"
                                     />
@@ -308,7 +285,7 @@ export default function SettingsPage() {
                                     type="email"
                                     placeholder="name@company.com"
                                     value={newEmail}
-                                    onChange={(e) => dispatch(setEmailFields({ newEmail: e.target.value }))}
+                                    onChange={(e) => setEmailFields({ newEmail: e.target.value })}
                                     className={settingsInputClass}
                                     autoComplete="email"
                                 />
@@ -323,7 +300,7 @@ export default function SettingsPage() {
                                     type="email"
                                     placeholder="name@company.com"
                                     value={confirmEmail}
-                                    onChange={(e) => dispatch(setEmailFields({ confirmEmail: e.target.value }))}
+                                    onChange={(e) => setEmailFields({ confirmEmail: e.target.value })}
                                     className={cn(settingsInputClass, emailMismatch && "border-red-400")}
                                 />
                             </SettingsField>
@@ -336,7 +313,7 @@ export default function SettingsPage() {
                                 <PasswordInput
                                     id="emailCurrentPassword"
                                     value={emailCurrentPassword}
-                                    onChange={(v) => dispatch(setEmailFields({ emailCurrentPassword: v }))}
+                                    onChange={(v) => setEmailFields({ emailCurrentPassword: v })}
                                     placeholder="Enter your password"
                                 />
                             </SettingsField>
@@ -366,7 +343,7 @@ export default function SettingsPage() {
                                 <PasswordInput
                                     id="passwordCurrent"
                                     value={passwordCurrent}
-                                    onChange={(v) => dispatch(setPasswordFields({ passwordCurrent: v }))}
+                                    onChange={(v) => setPasswordFields({ passwordCurrent: v })}
                                     placeholder="Enter current password"
                                 />
                             </SettingsField>
@@ -374,7 +351,7 @@ export default function SettingsPage() {
                                 <PasswordInput
                                     id="passwordNew"
                                     value={passwordNew}
-                                    onChange={(v) => dispatch(setPasswordFields({ passwordNew: v }))}
+                                    onChange={(v) => setPasswordFields({ passwordNew: v })}
                                     placeholder="Enter new password"
                                     autoComplete="new-password"
                                 />
@@ -387,7 +364,7 @@ export default function SettingsPage() {
                                 <PasswordInput
                                     id="passwordConfirm"
                                     value={passwordConfirm}
-                                    onChange={(v) => dispatch(setPasswordFields({ passwordConfirm: v }))}
+                                    onChange={(v) => setPasswordFields({ passwordConfirm: v })}
                                     placeholder="Re-enter new password"
                                     autoComplete="new-password"
                                 />

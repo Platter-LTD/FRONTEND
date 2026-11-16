@@ -1,15 +1,13 @@
 "use client"
 
-import { createContext, useEffect, useRef, type ReactNode } from "react"
-import { usePathname } from "next/navigation"
-import { buildSigninUrl, getCurrentReturnTo } from "@/lib/authReturnTo"
-import { getAccessToken } from "@/lib/cookieAuth"
+import { createContext, useEffect, type ReactNode } from "react"
 import { clearSecureTokens } from "@/lib/tokenManager"
-import { isOnAuthPage } from "@/lib/plataAuthFetch"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { loginThunk, loadUserFromTokenThunk, logoutThunk } from "@/store/authSlice"
-import { clearComplianceState } from "@/store/complianceSlice"
 import type { AuthUser } from "@/types/auth"
+import { clearPersistedKycStatus } from "@/hooks/queries/compliance"
+import { getQueryClient } from "@/lib/query/queryClient"
+import { useMutation } from "@tanstack/react-query"
 
 interface User {
   id: string
@@ -31,38 +29,11 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch()
-  const pathname = usePathname()
   const { user: authUser, loading, isAuthenticated } = useAppSelector((state) => state.auth)
-  const retriedLoadRef = useRef(false)
 
   useEffect(() => {
     dispatch(loadUserFromTokenThunk())
   }, [dispatch])
-
-  // Protected routes: leave when auth finished and there is no session.
-  // Never call handleSessionExpired here — it races in-flight refresh and clears good cookies.
-  useEffect(() => {
-    if (loading) return
-    if (isAuthenticated) {
-      retriedLoadRef.current = false
-      return
-    }
-    if (!pathname?.startsWith("/dashboard") && !pathname?.startsWith("/admin")) return
-    if (isOnAuthPage()) return
-
-    const token = typeof window !== "undefined" ? getAccessToken() : null
-    if (token && !retriedLoadRef.current) {
-      retriedLoadRef.current = true
-      void dispatch(loadUserFromTokenThunk())
-      return
-    }
-
-    // After retry (or no cookie): hard navigate so middleware doesn't bounce us back.
-    void (async () => {
-      if (token) await clearSecureTokens()
-      window.location.replace(buildSigninUrl(getCurrentReturnTo()))
-    })()
-  }, [loading, isAuthenticated, pathname, dispatch])
 
   const mapAuthUserToContextUser = (user: AuthUser | null): User | null => {
     if (!user) return null
@@ -77,18 +48,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const mappedUser = mapAuthUserToContextUser(authUser)
 
+  const loginMutation = useMutation({
+    mutationFn: (creds: { email: string; password: string }) => dispatch(loginThunk(creds)).unwrap(),
+    // New session: drop anything cached for a previous user on this browser.
+    onSuccess: () => getQueryClient().clear(),
+  })
+
   const signin = async (email: string, password: string) => {
-    try {
-      await dispatch(loginThunk({ email, password })).unwrap()
-    } catch (error: any) {
-      throw error
-    }
+    await loginMutation.mutateAsync({ email, password })
   }
 
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      await clearSecureTokens()
+      clearPersistedKycStatus()
+      await dispatch(logoutThunk())
+    },
+    // Drop every cached API response so nothing leaks into the next session on this browser.
+    onSettled: () => getQueryClient().clear(),
+  })
+
   const logout = async () => {
-    await clearSecureTokens()
-    dispatch(clearComplianceState())
-    await dispatch(logoutThunk())
+    await logoutMutation.mutateAsync()
   }
 
   return (

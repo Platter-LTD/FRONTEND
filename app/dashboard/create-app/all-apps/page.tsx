@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Plus, ExternalLink } from "lucide-react"
@@ -8,44 +8,15 @@ import CreateAppDrawer from "@/components/drawers/create-app-drawer"
 import { TableEmptyState } from "@/components/ui/table-states"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { rowActionsColumn } from "@/components/ui/row-actions"
-import { getAccessToken } from "@/lib/cookieAuth"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useApps } from "@/hooks/queries/apps"
 
 export default function AllAppsPage() {
   const router = useRouter()
   const [isCreateAppOpen, setIsCreateAppOpen] = useState(false)
-  const [apps, setApps] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: apps = [], isLoading: loading, error: appsError, refetch: refetchApps } = useApps()
+  const error = appsError ? "Failed to load applications. Please try again." : null
   const [statusFilter, setStatusFilter] = useState("all")
-
-  const fetchApps = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const token = getAccessToken()
-      const response = await fetch("/api/apps", {
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { Authorization: `Bearer ${token}` }),
-        },
-      })
-      const result = await response.json()
-      if (result.success && result.data) {
-        setApps(Array.isArray(result.data) ? result.data : [])
-      } else {
-        setApps([])
-        setError(result.error || "Failed to load applications")
-      }
-    } catch (err) {
-      console.error("Error fetching apps:", err)
-      setApps([])
-      setError("Failed to load applications. Please try again.")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
 
   // Clear any legacy app data from localStorage (we now use API only)
   useEffect(() => {
@@ -59,14 +30,9 @@ export default function AllAppsPage() {
     }
   }, [])
 
-  // Fetch apps from API whenever user lands on this page
-  useEffect(() => {
-    fetchApps()
-  }, [fetchApps])
-
+  // The create-app mutation refreshes the cached app list.
   const handleAppCreated = (_app: any) => {
     setIsCreateAppOpen(false)
-    fetchApps()
   }
 
   const handleAppClick = (appId: string) => {
@@ -156,7 +122,7 @@ export default function AllAppsPage() {
         isLoading={loading}
         isError={!!error}
         error={error}
-        onRefresh={fetchApps}
+        onRefresh={() => void refetchApps()}
         clientSearch
         download
         resetPageSignal={statusFilter}

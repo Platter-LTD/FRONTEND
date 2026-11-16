@@ -1,45 +1,23 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { CreditCard, Plus, Loader2, Building2, Wallet } from "lucide-react"
-import paymentService from "@/lib/services/paymentService"
 import type { PaymentMethod } from "@/lib/services/paymentService"
+import { usePaymentActions, usePaymentMethods } from "@/hooks/queries/payments"
 
 export function BillingPaymentMethodsTab() {
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    loadPaymentMethods()
-  }, [])
-
-  const loadPaymentMethods = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-      
-      // Load payment methods from payment-ms
-      const response = await paymentService.methods.getPaymentMethods()
-      if (response.data) {
-        setPaymentMethods(response.data)
-      }
-    } catch (err) {
-      console.error('Failed to load payment methods:', err)
-      setError('Failed to load payment methods')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const methodsQuery = usePaymentMethods()
+  const paymentActions = usePaymentActions()
+  const paymentMethods: PaymentMethod[] = methodsQuery.data?.data ?? []
+  const loading = methodsQuery.isLoading
+  const error = methodsQuery.error ? "Failed to load payment methods" : null
+  const loadPaymentMethods = () => void methodsQuery.refetch()
 
   const handleSetDefault = async (id: string) => {
     try {
-      await paymentService.methods.setDefaultPaymentMethod(id)
-      // Reload payment methods
-      loadPaymentMethods()
+      await paymentActions.setDefaultPaymentMethod(id)
     } catch (err) {
       console.error('Failed to set default payment method:', err)
     }
@@ -47,9 +25,7 @@ export function BillingPaymentMethodsTab() {
 
   const handleDeleteMethod = async (id: string) => {
     try {
-      await paymentService.methods.deletePaymentMethod(id)
-      // Reload payment methods
-      loadPaymentMethods()
+      await paymentActions.deletePaymentMethod(id)
     } catch (err) {
       console.error('Failed to delete payment method:', err)
     }

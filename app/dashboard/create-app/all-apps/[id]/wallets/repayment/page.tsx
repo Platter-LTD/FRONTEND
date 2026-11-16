@@ -10,23 +10,17 @@ import {
   merchantWalletMainBalance,
   type MerchantWallet,
 } from "@/lib/services/walletService"
-import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import {
-  fetchAppMerchantWalletsThunk,
-  fetchKycTransactionsThunk,
-} from "@/store/walletSlice"
 import { MerchantTransactionsTable } from "@/components/wallets/merchant-transactions-table"
 import { FundWalletDrawer } from "@/components/wallets/fund-wallet-drawer"
 import { WithdrawWalletDialog } from "@/components/wallets/withdraw-wallet-dialog"
 import { MerchantWalletBalanceCard } from "@/components/wallets/merchant-wallet-balance-card"
 import { plataWalletDisplayCurrency } from "@/lib/walletDisplay"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useAppWalletState, useMerchantWallet } from "@/hooks/queries/wallets"
 
 export default function RepaymentWalletPage() {
   const params = useParams()
   const appId = params.id as string
-  const dispatch = useAppDispatch()
-  const walletState = useAppSelector((s) => s.wallet)
   const { actions } = usePermissions()
   const canViewBalances = actions.viewWalletBalances
 
@@ -36,44 +30,24 @@ export default function RepaymentWalletPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [fundOpen, setFundOpen] = useState(false)
   const [withdrawOpen, setWithdrawOpen] = useState(false)
-  const [repaymentWallet, setRepaymentWallet] = useState<MerchantWallet | null>(null)
-  const [walletDetailLoading, setWalletDetailLoading] = useState(false)
-  const [walletDetailError, setWalletDetailError] = useState<string | null>(null)
+  const walletState = useAppWalletState(merchantId, appId, { settlement: true })
+  const repaymentWalletQuery = useMerchantWallet(merchantId, "REPAYMENT", appId)
+  const repaymentWallet: MerchantWallet | null = repaymentWalletQuery.data ?? null
+  const walletDetailLoading = repaymentWalletQuery.isFetching
+  const walletDetailError = repaymentWalletQuery.error?.message ?? null
 
   const inScope = walletState.merchantId === merchantId && walletState.appId === appId
   const bundleRepayment = inScope ? walletState.settlement ?? walletState.kyc : null
   // Prefer dedicated GET .../type/REPAYMENT (includes virtualNuban for Fund UI).
   const repayment = repaymentWallet ?? bundleRepayment
 
-  const refreshRepaymentWallet = useCallback(async () => {
-    if (!merchantId || !appId) return null
-    setWalletDetailLoading(true)
-    setWalletDetailError(null)
-    try {
-      const res = await merchantWalletApi.getMerchantWallet(merchantId, "REPAYMENT", appId)
-      const wallet = res.data ?? null
-      setRepaymentWallet(wallet)
-      return wallet
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to load repayment wallet"
-      setWalletDetailError(msg)
-      // Keep bundle fallback if type fetch fails
-      return null
-    } finally {
-      setWalletDetailLoading(false)
-    }
-  }, [merchantId, appId])
+  /** Refetch the repayment wallet detail; resolves to the fresh wallet (or null). */
+  const refreshRepaymentWallet = useCallback(async () => (await repaymentWalletQuery.refetch()).data ?? null, [repaymentWalletQuery])
 
+  /** Refetch wallets, transactions and wallet detail (React Query dedupes and caches). */
   const refresh = useCallback(() => {
-    if (!merchantId || !appId) return
-    void dispatch(fetchAppMerchantWalletsThunk({ merchantId, appId }))
-    void dispatch(fetchKycTransactionsThunk({ merchantId, appId }))
-    void refreshRepaymentWallet()
-  }, [dispatch, merchantId, appId, refreshRepaymentWallet])
-
-  useEffect(() => {
-    refresh()
-  }, [refresh])
+    void walletState.refresh()
+  }, [walletState])
 
   const txs = inScope ? walletState.kycTransactions : []
   const walletsLoading =

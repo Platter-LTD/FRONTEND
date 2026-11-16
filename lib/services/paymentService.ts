@@ -11,9 +11,11 @@
  * Backend: payment-ms (https://payment-ms.fly.dev)
  */
 
-const PAYMENT_SERVICE_URL = process.env.NEXT_PUBLIC_PAYMENT_SERVICE_URL?.replace(/\/$/, '') || 'https://payment-ms.fly.dev';
+// Payments go through the Plata gateway (/api/v1/payments/*), not payment-ms's own host.
+const PAYMENT_SERVICE_URL = getPlataApiBaseUrl();
 
 import { getAccessToken } from '@/lib/cookieAuth';
+import { getPlataApiBaseUrl } from "@/lib/plataApiBaseUrl"
 
 // ============================================================================
 // Types & Interfaces

@@ -1,16 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { rowActionsColumn } from "@/components/ui/row-actions"
-import { adminProductsApi, AdminProduct } from "@/lib/services/adminService"
+import { AdminProduct } from "@/lib/services/adminService"
 import SuspendProductDrawer from "@/components/drawers/suspend-product-drawer"
 import DeactivateConfirmationDrawer from "@/components/drawers/deactivate-confirmation-drawer"
 import DeactivationSuccessDrawer from "@/components/drawers/deactivation-success-drawer"
 import { toast } from "sonner"
+import { useAdminProducts, useAdminUpdateProduct } from "@/hooks/queries/admin"
 
 const TABS = [
   { id: "all", label: "All products" },
@@ -23,28 +24,15 @@ const TABS = [
 export default function AdminProductPage() {
   const [activeTab, setActiveTab] = useState("all")
   const router = useRouter()
-  const [products, setProducts] = useState<AdminProduct[]>([])
-  const [loading, setLoading] = useState(true)
+  const productType = activeTab !== "all" ? activeTab.charAt(0).toUpperCase() + activeTab.slice(1) : undefined
+  const { data: products = [], isLoading: loading, refetch: refetchProducts } = useAdminProducts(productType)
+  const updateProduct = useAdminUpdateProduct()
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
 
   const [isSuspendDrawerOpen, setIsSuspendDrawerOpen] = useState(false)
   const [isConfirmationDrawerOpen, setIsConfirmationDrawerOpen] = useState(false)
   const [isSuccessDrawerOpen, setIsSuccessDrawerOpen] = useState(false)
 
-  const fetchProducts = async () => {
-    setLoading(true)
-    const type = activeTab !== "all" ? activeTab.charAt(0).toUpperCase() + activeTab.slice(1) : undefined
-    const res = await adminProductsApi.getAllProducts(type)
-    if (res.success && res.data) {
-      setProducts(res.data)
-    } else {
-      setProducts([])
-      if (res.error) console.warn("[AdminProducts] API unavailable:", res.error)
-    }
-    setLoading(false)
-  }
-
-  useEffect(() => { fetchProducts() }, [activeTab])
 
 
   const handleDeactivate = () => {
@@ -54,12 +42,9 @@ export default function AdminProductPage() {
 
   const handleConfirmDeactivation = async () => {
     if (selectedProductId) {
-      const res = await adminProductsApi.updateProduct(selectedProductId, { isActive: false })
+      const res = await updateProduct.mutateAsync({ productId: selectedProductId, patch: { isActive: false } })
       if (res.success) {
-        setProducts(prev => prev.map(p =>
-          p.id === selectedProductId ? { ...p, isActive: false } : p
-        ))
-        toast.success("Product suspended")
+        toast.success("Product suspended") // list refetches via the mutation
       } else {
         toast.error("Failed to suspend product")
       }
@@ -160,7 +145,7 @@ export default function AdminProductPage() {
           columns={columns}
           data={products}
           isLoading={loading}
-          onRefresh={fetchProducts}
+          onRefresh={() => void refetchProducts()}
           clientSearch
           searchPlaceholder="Search by name, ID, or app..."
           download

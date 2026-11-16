@@ -1,50 +1,39 @@
 "use client"
 
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useEffect } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { teamApi } from "@/lib/services/teamService"
 import { ProductAuthShell } from "@/components/product-auth-shell"
+import { useInvitation } from "@/hooks/queries/team"
 
 function AcceptInvitationForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = (searchParams.get("token") || "").trim()
 
-  const [validateError, setValidateError] = useState<string | null>(null)
+  const invitation = useInvitation(token || null)
+  const res = invitation.data
+  const email = res?.success ? res.data?.email?.trim() : undefined
+  const validateError = !token
+    ? "Missing invitation token."
+    : invitation.error
+      ? invitation.error.message || "Invalid or expired invitation."
+      : res && !res.success
+        ? res.error || "Invalid or expired invitation."
+        : res && !email
+          ? "Invitation is valid but no email was returned. Please contact your admin."
+          : null
 
+  // Valid invitation → continue to sign-up with the invited email and role prefilled.
   useEffect(() => {
-    if (!token) {
-      setValidateError("Missing invitation token.")
-      return
-    }
-    let cancelled = false
-    void teamApi.validateInvitation(token).then((res) => {
-      if (cancelled) return
-      if (!res.success) {
-        setValidateError(res.error || "Invalid or expired invitation.")
-        return
-      }
-      const email = res.data?.email?.trim()
-      if (!email) {
-        setValidateError("Invitation is valid but no email was returned. Please contact your admin.")
-        return
-      }
-      const params = new URLSearchParams({
-        email,
-        token,
-        invitation: "1",
-      })
-      const roleName = res.data?.roleName?.trim()
-      if (roleName) params.set("role", roleName)
-      router.replace(`/signup?${params.toString()}`)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [router, token])
+    if (!res?.success || !email) return
+    const params = new URLSearchParams({ email, token, invitation: "1" })
+    const roleName = res.data?.roleName?.trim()
+    if (roleName) params.set("role", roleName)
+    router.replace(`/signup?${params.toString()}`)
+  }, [res, email, router, token])
 
   if (validateError) {
     return (

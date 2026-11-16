@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 import { AlertCircle, Check, X } from "lucide-react"
 import { toast } from "sonner"
 
@@ -17,10 +17,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { applicationApi, type LoanWorkflowStatus } from "@/lib/services/accountService"
+import type { LoanWorkflowStatus } from "@/lib/services/accountService"
 import { resolveApplicationCustomerName } from "@/lib/applicationCustomer"
 import { MortgageWorkflowDetailSheet } from "@/components/workflow/MortgageWorkflowDetailSheet"
 import { LoanWorkflowDetailSheet } from "@/components/workflow/LoanWorkflowDetailSheet"
+import { useApplicationActions, useLoanWorkflowApplications } from "@/hooks/queries/applications"
 
 const PLATA_ACCENT_DARK = "#9A813F"
 
@@ -140,10 +141,6 @@ export function WorkflowTable({
   tabs,
 }: WorkflowTableProps) {
   const [activeTab, setActiveTab] = useState<PlataWorkflowTabId>(tabs[0]?.id || "requested")
-  const [rows, setRows] = useState<PlataWorkflowRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [confirm, setConfirm] = useState<
     | { kind: "reject" | "blacklist"; row: PlataWorkflowRow; reason: string }
@@ -153,72 +150,40 @@ export function WorkflowTable({
 
   const requestFallback = productType === "LOAN" ? "Loan Application" : "Mortgage Application"
 
+  const applicationActions = useApplicationActions()
+
+  // Applications for the active tab (cached per app + tab).
+  const listQuery = useLoanWorkflowApplications(appId, activeTab)
+  const rows: PlataWorkflowRow[] = useMemo(() => {
+    if (!listQuery.data) return []
+    let list = listQuery.data.flatMap((res) => extractList(res))
+    if (listQuery.data.length > 1) {
+      list = Array.from(
+        new Map(list.map((row) => [String(row.id ?? row.applicationId ?? JSON.stringify(row)), row])).values(),
+      )
+    }
+    return list
+      .map((x) => mapRecord(x, productType, appId, requestFallback))
+      .filter((x): x is PlataWorkflowRow => x !== null)
+  }, [listQuery.data, productType, appId, requestFallback])
+  const loading = listQuery.isLoading
+  const refreshing = listQuery.isFetching && !listQuery.isLoading
+  // Do not call handleSessionExpired here — shared auth refresh owns that.
+  const error = listQuery.error ? listQuery.error.message || "Failed to load" : null
+
+  /** Refetch the current tab; a background refresh (`silent`) reports failures as a toast. */
   const fetchRows = useCallback(
     async (silent = false) => {
-      if (!silent) setLoading(true)
-      else setRefreshing(true)
-      setError(null)
-
-      try {
-        let list: Record<string, unknown>[] = []
-
-        if (activeTab === "under_review") {
-          const [requestedRes, underReviewRes] = await Promise.all([
-            applicationApi.getLoanWorkflowApplications({ appId, loanWorkflowStatus: "requested", limit: 100 }),
-            applicationApi.getLoanWorkflowApplications({ appId, loanWorkflowStatus: "under_review", limit: 100 }),
-          ])
-          if (!requestedRes.success && !underReviewRes.success) {
-            throw new Error(requestedRes.error || underReviewRes.error || "Failed to load")
-          }
-          list = [
-            ...extractList(requestedRes),
-            ...extractList(underReviewRes),
-          ]
-          list = Array.from(
-            new Map(
-              list.map((row) => [String(row.id ?? row.applicationId ?? JSON.stringify(row)), row]),
-            ).values(),
-          )
-        } else {
-          const res = await applicationApi.getLoanWorkflowApplications({
-            appId,
-            loanWorkflowStatus: activeTab,
-            limit: 100,
-          })
-          if (!res.success) {
-            throw new Error(res.error || "Failed to load")
-          }
-          list = extractList(res)
-        }
-
-        const mapped = list
-          .map((x) => mapRecord(x, productType, appId, requestFallback))
-          .filter((x): x is PlataWorkflowRow => x !== null)
-
-        setRows(mapped)
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "Failed to load"
-        // Do not call handleSessionExpired here — shared auth refresh owns that.
-        // Misclassified API errors previously forced a hard redirect to /signin.
-        setError(msg)
-        setRows([])
-        if (silent) toast.error(msg)
-      } finally {
-        if (!silent) setLoading(false)
-        else setRefreshing(false)
-      }
+      const result = await listQuery.refetch()
+      if (silent && result.error) toast.error(result.error.message || "Failed to load")
     },
-    [activeTab, appId, productType, requestFallback],
+    [listQuery],
   )
-
-  useEffect(() => {
-    void fetchRows(false)
-  }, [fetchRows])
 
   const handleApprove = async (row: PlataWorkflowRow) => {
     setBusyId(row.id)
     try {
-      const res = await applicationApi.approve(row.id)
+      const res = await applicationActions.approve(row.id)
       if (!res.success) throw new Error(res.error || "Approve failed")
       toast.success(`Approved ${row.ref}`)
       void fetchRows(true)
@@ -247,8 +212,8 @@ export function WorkflowTable({
     try {
       const res =
         kind === "reject"
-          ? await applicationApi.reject(row.id, trimmed || undefined)
-          : await applicationApi.blacklist(row.id, trimmed)
+          ? await applicationActions.reject(row.id, trimmed || undefined)
+          : await applicationActions.blacklist(row.id, trimmed)
       if (!res.success) throw new Error(res.error || `${kind} failed`)
       toast.success(
         kind === "reject" ? `Rejected ${row.ref}` : `Blacklisted ${row.ref}`,

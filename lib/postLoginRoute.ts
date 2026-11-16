@@ -1,6 +1,5 @@
 import { isMerchantComplianceBypassEnabled } from "@/lib/merchantComplianceBypass"
-import { store } from "@/store/store"
-import { fetchKycStatusThunk } from "@/store/complianceSlice"
+import { fetchKycStatus } from "@/hooks/queries/compliance"
 
 /**
  * Default landing route after sign-in for the PLATA dashboard (create-app / compliance).
@@ -11,7 +10,7 @@ export async function resolveDashboardPostLoginRoute(): Promise<string> {
     return "/dashboard/create-app/all-apps"
   }
   try {
-    const result = await store.dispatch(fetchKycStatusThunk()).unwrap()
+    const result = await fetchKycStatus()
     if (result.isApproved) {
       return "/dashboard/create-app/all-apps"
     }

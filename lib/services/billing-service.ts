@@ -13,7 +13,7 @@ import type {
     PaginatedResponse,
 } from '@/types/billing'
 
-const API_BASE = '/api/v1/billing'
+const API_BASE = '/v1/billing'
 
 export const billingService = {
     // Invoice methods

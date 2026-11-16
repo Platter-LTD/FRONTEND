@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Drawer } from '@/components/drawer'
 import { Button } from '@/components/ui/button'
 import { ArrowRight, Loader2 } from 'lucide-react'
-import paymentService from '@/lib/services/paymentService'
 import type { PaymentMethod } from '@/lib/services/paymentService'
+import { usePaymentMethods } from '@/hooks/queries/payments'
 
 interface SelectCardDrawerProps {
     isOpen: boolean
@@ -16,41 +16,24 @@ interface SelectCardDrawerProps {
 
 export function SelectCardDrawer({ isOpen, onClose, onAddCardClick, onPayClick }: SelectCardDrawerProps) {
     const [selectedCard, setSelectedCard] = useState<string | null>(null)
-    const [cards, setCards] = useState<PaymentMethod[]>([])
-    const [loading, setLoading] = useState(true)
+    const methodsQuery = usePaymentMethods(isOpen)
+    const cards: PaymentMethod[] = useMemo(
+        () => (methodsQuery.data?.data ?? []).filter((m) => m.type === 'card'),
+        [methodsQuery.data],
+    )
+    const loading = methodsQuery.isLoading
     const [paying, setPaying] = useState(false)
     const [error, setError] = useState<string | null>(null)
 
+    // Default selection: the default card, else the first card.
     useEffect(() => {
-        if (isOpen) {
-            loadCards()
-        }
-    }, [isOpen])
+        if (!isOpen || selectedCard || cards.length === 0) return
+        setSelectedCard((cards.find((c) => c.isDefault) ?? cards[0]).id)
+    }, [isOpen, cards, selectedCard])
 
-    const loadCards = async () => {
-        try {
-            setLoading(true)
-            setError(null)
-            const response = await paymentService.methods.getPaymentMethods()
-            if (response.data) {
-                // Filter to only card type payment methods
-                const cardMethods = response.data.filter(m => m.type === 'card')
-                setCards(cardMethods)
-                // Auto-select default card if available
-                const defaultCard = cardMethods.find(c => c.isDefault)
-                if (defaultCard) {
-                    setSelectedCard(defaultCard.id)
-                } else if (cardMethods.length > 0) {
-                    setSelectedCard(cardMethods[0].id)
-                }
-            }
-        } catch (err) {
-            console.error('Failed to load cards:', err)
-            setError('Failed to load payment methods')
-        } finally {
-            setLoading(false)
-        }
-    }
+    useEffect(() => {
+        if (methodsQuery.error) setError('Failed to load payment methods')
+    }, [methodsQuery.error])
 
     const handlePay = async () => {
         if (!selectedCard) return
@@ -99,7 +82,7 @@ export function SelectCardDrawer({ isOpen, onClose, onAddCardClick, onPayClick }
                 {error && !loading && (
                     <div className="text-center py-4">
                         <p className="text-red-600 mb-2">{error}</p>
-                        <Button onClick={loadCards} variant="outline" size="sm">
+                        <Button onClick={() => { setError(null); void methodsQuery.refetch() }} variant="outline" size="sm">
                             Retry
                         </Button>
                     </div>

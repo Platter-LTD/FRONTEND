@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { userWalletApi, Wallet } from '@/lib/services/walletService';
 import { getAccessToken } from '@/lib/cookieAuth';
 
@@ -19,10 +20,6 @@ interface UseWalletBalanceReturn {
  * Calls wallet-ms.fly.dev via walletService.user.getUserWallet(userId)
  */
 export function useWalletBalance(): UseWalletBalanceReturn {
-    const [wallet, setWallet] = useState<Wallet | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-
     const getUserIdFromToken = (): string | null => {
         if (typeof window === 'undefined') return null;
         const token = getAccessToken();
@@ -34,37 +31,25 @@ export function useWalletBalance(): UseWalletBalanceReturn {
             return null;
         }
     };
+    const userId = getUserIdFromToken();
 
-    const fetchBalance = useCallback(async () => {
-        setLoading(true);
-        setError(null);
+    const query = useQuery({
+        queryKey: ['wallets', 'user', userId ?? ''],
+        queryFn: async () => {
+            const response = await userWalletApi.getUserWallet(userId as string);
+            if (!response.success || !response.data) throw new Error('Could not fetch wallet');
+            return response.data;
+        },
+        enabled: Boolean(userId),
+    });
 
-        const userId = getUserIdFromToken();
-        if (!userId) {
-            setLoading(false);
-            setError('Not authenticated');
-            return;
-        }
-
-        try {
-            const response = await userWalletApi.getUserWallet(userId);
-            if (response.success && response.data) {
-                setWallet(response.data);
-            } else {
-                setError('Could not fetch wallet');
-            }
-        } catch (err) {
-            // Don't surface wallet errors loudly — mobile home page should still render
-            console.warn('Wallet balance fetch failed:', err);
-            setError(err instanceof Error ? err.message : 'Failed to fetch wallet');
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchBalance();
-    }, [fetchBalance]);
+    const wallet: Wallet | null = query.data ?? null;
+    const loading = Boolean(userId) && query.isLoading;
+    // Don't surface wallet errors loudly — mobile home page should still render.
+    const error = !userId ? 'Not authenticated' : query.error ? query.error.message || 'Failed to fetch wallet' : null;
+    const refetch = useCallback(async () => {
+        await query.refetch();
+    }, [query]);
 
     const balance = wallet?.mainBalance ?? 0;
 
@@ -73,5 +58,5 @@ export function useWalletBalance(): UseWalletBalanceReturn {
         ? `₦${balance.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : '₦0.00';
 
-    return { wallet, balance, formattedBalance, loading, error, refetch: fetchBalance };
+    return { wallet, balance, formattedBalance, loading, error, refetch };
 }

@@ -5,11 +5,12 @@ import { Mail } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "react-toastify"
-import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { Button } from "@/components/ui/button"
+import { useAuthActions } from "@/hooks/queries/auth"
 
 export default function VerifyEmailPage() {
+  const authActions = useAuthActions()
     const [email, setEmail] = useState("")
     const [isResending, setIsResending] = useState(false)
     const [isVerifying, setIsVerifying] = useState(false)
@@ -67,7 +68,7 @@ export default function VerifyEmailPage() {
         if (!email) return
         try {
             setIsResending(true)
-            await apiClient.post(
+            await authActions.post(
             ENDPOINTS.auth.otp.resendEmail,
             { identifier: email, channel: "email", purpose: "verification" },
             { includeAuth: false }
@@ -97,7 +98,7 @@ export default function VerifyEmailPage() {
 
         try {
             setIsVerifying(true)
-            const response = await apiClient.post(ENDPOINTS.auth.verify.emailOtp, {
+            const response = await authActions.post(ENDPOINTS.auth.verify.emailOtp, {
                 email,
                 otp: codeToUse
             })

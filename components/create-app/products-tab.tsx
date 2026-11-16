@@ -5,7 +5,6 @@ import { Plus } from "lucide-react"
 import { IoIosCopy } from "react-icons/io"
 import { Button } from "@/components/ui/button"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
-import { productApi } from "@/lib/services/product-api"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { toast } from "sonner"
 import CreateProductDrawer from "@/components/drawers/create-product-drawer"
@@ -22,8 +21,10 @@ import LoanCreatedSuccessDrawer from "@/components/drawers/loan-created-success-
 import MortgageCreatedSuccessDrawer from "@/components/drawers/mortgage-created-success-drawer"
 import SavingsCreatedSuccessDrawer from "@/components/drawers/savings-created-success-drawer"
 import CommodityCreatedSuccessDrawer from "@/components/drawers/commodity-created-success-drawer"
+import { useProductActions } from "@/hooks/queries/products"
 
 export function ProductsTab() {
+  const productActions = useProductActions()
   const [isCreateProductOpen, setIsCreateProductOpen] = useState(false)
   
   // Loan states
@@ -137,7 +138,7 @@ export function ProductsTab() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || "Loan Product",
         description: data?.description || "Loan product",
         type: "Loan",
@@ -166,8 +167,8 @@ export function ProductsTab() {
       const productId = loanData?.productId
       if (productId) {
         // Save configuration and update status to complete
-        await productApi.saveProductConfiguration(productId, 'Loan', configData)
-        await productApi.updateProduct(productId, { status: 'complete' })
+        await productActions.saveProductConfiguration(productId, 'Loan', configData)
+        await productActions.updateProduct(productId, { status: 'complete' })
       }
 
       setIsConfigureLoanOpen(false)
@@ -190,7 +191,7 @@ export function ProductsTab() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || "Mortgage Product",
         description: data?.description || "Mortgage product",
         type: "Mortgage",
@@ -219,8 +220,8 @@ export function ProductsTab() {
       const productId = mortgageData?.productId
       if (productId) {
         // Save configuration and update status to complete
-        await productApi.saveProductConfiguration(productId, 'Mortgage', configData)
-        await productApi.updateProduct(productId, { status: 'complete' })
+        await productActions.saveProductConfiguration(productId, 'Mortgage', configData)
+        await productActions.updateProduct(productId, { status: 'complete' })
       }
 
       setIsConfigureMortgageOpen(false)

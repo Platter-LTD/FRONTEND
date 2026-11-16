@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useMemo } from "react"
 import { ChevronDown } from "lucide-react"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
-import { adminUsersApi, AdminUser } from "@/lib/services/adminService"
+import { type AdminUser } from "@/lib/services/adminService"
 import { toast } from "sonner"
+import { useAdminUsers } from "@/hooks/queries/admin"
 
 const STATUS_STYLES: Record<string, string> = {
   Active: "bg-green-100 text-green-700",
@@ -16,24 +17,9 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: users = [], isLoading: loading, refetch: refetchUsers } = useAdminUsers()
   const [statusFilter, setStatusFilter] = useState<string>("All")
 
-  const fetchUsers = async () => {
-    setLoading(true)
-    const res = await adminUsersApi.getAllUsers()
-    if (res.success && res.data) {
-      setUsers(res.data)
-    } else {
-      // API unavailable — show empty state, don't use fake data
-      setUsers([])
-      if (res.error) console.warn("[AdminUsers] API unavailable:", res.error)
-    }
-    setLoading(false)
-  }
-
-  useEffect(() => { fetchUsers() }, [])
 
   const displayUsers = users.filter(u => statusFilter === "All" || u.status === statusFilter)
 
@@ -78,7 +64,7 @@ export default function AdminUsersPage() {
         columns={columns}
         data={displayUsers}
         isLoading={loading}
-        onRefresh={fetchUsers}
+        onRefresh={() => void refetchUsers()}
         clientSearch
         searchPlaceholder="Search users..."
         resetPageSignal={statusFilter}

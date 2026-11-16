@@ -19,11 +19,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { useAppBuilder } from "@/contexts/AppBuilderContext"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { appConfigurationApi, type AppConfiguration } from "@/lib/services/appService"
 import { toast } from "sonner"
 import { format, formatDistanceToNow } from "date-fns"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useQuery } from "@tanstack/react-query"
+import { queryKeys } from "@/lib/query/keys"
 
 interface ConfigVersion {
   id: string
@@ -46,48 +48,42 @@ export function PublishTab() {
   const { actions } = usePermissions()
   const canPublish = actions.publishApplication
   
-  const [versions, setVersions] = useState<ConfigVersion[]>([])
-  const [loadingVersions, setLoadingVersions] = useState(true)
+  // Saved configurations (cached per app) → version history rows.
+  const versionsQuery = useQuery({
+    queryKey: queryKeys.apps.configurations(appId ?? ""),
+    queryFn: () => appConfigurationApi.getAllConfigurations(appId as string),
+    enabled: Boolean(appId),
+  })
+  const loadingVersions = Boolean(appId) && versionsQuery.isLoading
   const [publishing, setPublishing] = useState(false)
   const [restoring, setRestoring] = useState<string | null>(null)
   const [restoreDialogOpen, setRestoreDialogOpen] = useState(false)
   const [versionToRestore, setVersionToRestore] = useState<ConfigVersion | null>(null)
 
-  // Fetch configuration versions
-  const fetchVersions = async () => {
-    if (!appId) {
-      setLoadingVersions(false)
-      return
-    }
-    
-    setLoadingVersions(true)
-    
-    try {
-      const response = await appConfigurationApi.getAllConfigurations(appId)
-      const configs = response.data || []
-      
-      // Transform configurations to versions
-      const transformedVersions: ConfigVersion[] = configs.map((config: AppConfiguration, index: number) => ({
-        id: config.id || `version-${index}`,
-        versionRef: `App_v${configs.length - index}_${(config.id || '').slice(-6) || Math.random().toString(36).slice(-6)}`,
-        updatedSections: getUpdatedSectionsFromConfig(config),
-        lastUpdated: config.updatedAt ? new Date(config.updatedAt) : new Date(),
-        status: config.isActive ? 'current' : 'archived' as const,
-        isPublished: config.isActive,
-      }))
-      
-      setVersions(transformedVersions)
-    } catch (error) {
-      console.error("Failed to fetch versions:", error)
-      toast.error("Failed to load version history")
-    } finally {
-      setLoadingVersions(false)
-    }
-  }
+  const versions: ConfigVersion[] = useMemo(() => {
+    const configs: AppConfiguration[] = versionsQuery.data?.data || []
+    return configs.map((config: AppConfiguration, index: number) => ({
+      id: config.id || `version-${index}`,
+      versionRef: `App_v${configs.length - index}_${(config.id || '').slice(-6) || `${index}`.padStart(6, '0')}`,
+      updatedSections: getUpdatedSectionsFromConfig(config),
+      lastUpdated: config.updatedAt ? new Date(config.updatedAt) : new Date(),
+      status: config.isActive ? 'current' : 'archived' as const,
+      isPublished: config.isActive,
+    }))
+    // getUpdatedSectionsFromConfig is a pure helper declared below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versionsQuery.data])
 
   useEffect(() => {
-    fetchVersions()
-  }, [appId])
+    if (versionsQuery.error) {
+      console.error("Failed to fetch versions:", versionsQuery.error)
+      toast.error("Failed to load version history")
+    }
+  }, [versionsQuery.error])
+
+  const fetchVersions = async () => {
+    await versionsQuery.refetch()
+  }
 
   function getUpdatedSectionsFromConfig(config: AppConfiguration): string[] {
     const sections: string[] = []
@@ -191,7 +187,7 @@ export function PublishTab() {
         <Button 
           variant="outline" 
           size="sm" 
-          onClick={fetchVersions}
+          onClick={() => void fetchVersions()}
           className="gap-2"
         >
           <RefreshCw className="w-4 h-4" />

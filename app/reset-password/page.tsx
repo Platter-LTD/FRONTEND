@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "react-toastify"
-import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { Eye, EyeOff } from "lucide-react"
 import { ProductAuthShell } from "@/components/product-auth-shell"
 import { FORGOT_PASSWORD_EMAIL_KEY } from "@/lib/forgotPasswordFlow"
+import { useAuthActions } from "@/hooks/queries/auth"
 
 function ResetPasswordForm() {
+  const authActions = useAuthActions()
   const [formData, setFormData] = useState({
     code: "",
     password: "",
@@ -69,7 +70,7 @@ function ResetPasswordForm() {
     setIsSubmitting(true)
 
     try {
-      await apiClient.post(
+      await authActions.post(
         ENDPOINTS.auth.password.reset,
         {
           email,

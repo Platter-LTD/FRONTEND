@@ -22,6 +22,7 @@ import {
 } from "@/components/drawers/product-config-form-fields"
 import { formatAmountDisplayFromUnknown } from "@/lib/formatAmountInput"
 import { validateAllInvestmentSteps, validateInvestmentStep } from "@/lib/productConfigureStepValidation"
+import { fetchSubtypesBody, fetchTenureOptionsBody } from "@/lib/productCatalogQueries"
 
 interface ConfigureInvestmentDrawerProps {
   isOpen: boolean
@@ -146,11 +147,7 @@ export default function ConfigureInvestmentDrawer({
     if (!isOpen) return
     const fetchOptions = async () => {
       try {
-        const tenureRes = await fetch("/api/configurations/options/investment-tenure", {
-          credentials: "include",
-          cache: "no-store",
-        })
-        const tenureJson = await tenureRes.json().catch(() => ({}))
+        const tenureJson = await fetchTenureOptionsBody("investment")
         const tenureList = (tenureJson?.data ?? []) as { value?: string; label?: string }[]
         const tenure =
           Array.isArray(tenureList) && tenureList.length
@@ -174,11 +171,7 @@ export default function ConfigureInvestmentDrawer({
       setTriggerDurationOptions(triggerDuration)
 
       try {
-        const subtypesRes = await fetch("/api/v1/products/types/INVESTMENT/subtypes", {
-          credentials: "include",
-          cache: "no-store",
-        })
-        const subtypesJson = (await subtypesRes.json().catch(() => ({}))) as {
+        const subtypesJson = (await fetchSubtypesBody("INVESTMENT")) as {
           data?: Array<{ label?: string; value?: string | number }>
         }
         const subtypeOptions = (subtypesJson?.data ?? [])

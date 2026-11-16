@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "react-toastify"
-import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { ArrowLeft } from "lucide-react"
 import { ProductAuthShell } from "@/components/product-auth-shell"
 import { FORGOT_PASSWORD_EMAIL_KEY } from "@/lib/forgotPasswordFlow"
+import { useAuthActions } from "@/hooks/queries/auth"
 
 export default function ForgotPasswordPage() {
+  const authActions = useAuthActions()
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -23,7 +24,7 @@ export default function ForgotPasswordPage() {
     setIsSubmitting(true)
 
     try {
-      await apiClient.post(ENDPOINTS.auth.password.forgot, { email: email.trim() }, { includeAuth: false })
+      await authActions.post(ENDPOINTS.auth.password.forgot, { email: email.trim() }, { includeAuth: false })
       if (typeof window !== "undefined") {
         sessionStorage.setItem(FORGOT_PASSWORD_EMAIL_KEY, email.trim())
       }

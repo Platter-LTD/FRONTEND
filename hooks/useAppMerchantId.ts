@@ -1,56 +1,29 @@
 "use client"
 
-import { useEffect, useState } from "react"
 import { getMerchantIdFromAccessToken } from "@/lib/merchantIdFromToken"
-import { appApi } from "@/lib/services/appService"
+import { useGetApiV1AppsId } from "@/lib/generated/plata/apps/apps"
 
 /**
  * Wallet-ms scopes wallets per app merchant id (create-app MS), not the Plata user JWT merchant id.
  * Each app has its own merchantId — using the JWT id leaks wallets/transactions from other apps.
+ * The app is read through the generated GET /apps/:id query (cached, shared with the app settings page).
  */
 export function useAppMerchantId(appId: string | null | undefined) {
-  const [merchantId, setMerchantId] = useState<string | null>(null)
-  const [loading, setLoading] = useState(Boolean(appId))
-  const [error, setError] = useState<string | null>(null)
+  const query = useGetApiV1AppsId(appId ?? "", { query: { enabled: Boolean(appId) } })
 
-  useEffect(() => {
-    if (!appId) {
-      setMerchantId(null)
-      setLoading(false)
-      setError(null)
-      return
+  if (!appId) return { merchantId: null, loading: false, error: null }
+
+  const fallback = getMerchantIdFromAccessToken()
+  if (query.error) {
+    return {
+      merchantId: fallback,
+      loading: false,
+      error: query.error instanceof Error ? query.error.message : "Failed to load app merchant",
     }
+  }
+  if (query.isLoading) return { merchantId: null, loading: true, error: null }
 
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-
-    void appApi
-      .getAppById(appId)
-      .then((res) => {
-        if (cancelled) return
-        const appMerchantId = res.data?.merchantId?.trim()
-        const fallback = getMerchantIdFromAccessToken()
-        const resolved = appMerchantId || fallback
-        setMerchantId(resolved)
-        if (!resolved) {
-          setError("No merchant ID found for this app.")
-        }
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return
-        const fallback = getMerchantIdFromAccessToken()
-        setMerchantId(fallback)
-        setError(e instanceof Error ? e.message : "Failed to load app merchant")
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [appId])
-
-  return { merchantId, loading, error }
+  const appMerchantId = (query.data as { data?: { merchantId?: string } } | undefined)?.data?.merchantId?.trim()
+  const resolved = appMerchantId || fallback
+  return { merchantId: resolved, loading: false, error: resolved ? null : "No merchant ID found for this app." }
 }

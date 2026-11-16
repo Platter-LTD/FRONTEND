@@ -334,44 +334,41 @@ export const BACKEND = {
   },
 } as const
 
-// ─── Frontend paths (relative to baseURL /api) for Next.js API proxy routes ───
-// Auth + password + OTP handled by /api/v1/auth/[...path] (shows v1 in request path)
-// Compliance (KYC) handled by single catch-all: /api/compliance/[...path]
+// ─── Paths relative to the gateway's /api (used with lib/api.ts, baseURL `${NEXT_PUBLIC_API_URL}/api`) ───
+// Login and token refresh go through our own /api/auth/* routes (they set the httpOnly refresh cookie).
 const AUTH_BASE = "/v1/auth"
-const OTP_BASE = "/otp"
-const USER_BASE = "/user"
-const COMPLIANCE_BASE = "/compliance"
+const OTP_BASE = "/v1/otp"
+const USER_BASE = "/v1/user"
+const COMPLIANCE_BASE = "/v1/kyc"
 
 export const ENDPOINTS = {
   auth: {
-    login: `${AUTH_BASE}/login`,
     signup: {
-      merchant: `${AUTH_BASE}/register/merchant`,
-      user: `${AUTH_BASE}/register`,
-      admin: `${AUTH_BASE}/register/admin`,
+      merchant: "/v1/registration/merchant",
+      user: "/v1/registration/user",
+      admin: "/v1/registration/admin",
     },
     verify: {
       account: `${AUTH_BASE}/verify-account`,
       token: `${AUTH_BASE}/verify-token`,
-      // Frontend verify-email uses OTP verify endpoint: POST /api/v1/otp/verify
-      emailOtp: '/v1/otp/verify',
+      emailOtp: `${OTP_BASE}/verify`,
     },
     otp: {
-      resendEmail: `${AUTH_BASE}/resend-email-otp`,
+      resendEmail: `${OTP_BASE}/resend`,
       generate: `${OTP_BASE}/generate`,
       verify: `${OTP_BASE}/verify`,
     },
     password: {
-      forgot: `${AUTH_BASE}/password/forgot`,
-      reset: `${AUTH_BASE}/password/reset`,
-      change: `${AUTH_BASE}/password/change`,
+      forgot: "/v1/password/forgot",
+      reset: "/v1/password/reset",
+      change: "/v1/password/change",
     },
     me: `${AUTH_BASE}/me`,
     logout: `${AUTH_BASE}/logout`,
     emailExists: (email: string) => `${AUTH_BASE}/email-exists/${encodeURIComponent(email)}`,
     sessions: {
-      list: "/sessions",
-      byId: (sessionId: string) => `/sessions/${encodeURIComponent(sessionId)}`,
+      list: "/v1/sessions",
+      byId: (sessionId: string) => `/v1/sessions/${encodeURIComponent(sessionId)}`,
     },
   },
   user: {
@@ -380,7 +377,7 @@ export const ENDPOINTS = {
     info: (userId: string) => `${USER_BASE}/info/${encodeURIComponent(userId)}`,
     getUser: (userId: string) => `${USER_BASE}/info/${encodeURIComponent(userId)}`,
   },
-  /** Compliance (KYC) — proxy to compliance-ms. Use ENDPOINTS.compliance.*; paths go through /api/compliance/[...path]. */
+  /** Compliance (KYC) on the gateway: /api/v1/kyc/* */
   compliance: {
     individual: {
       submit: `${COMPLIANCE_BASE}/individual/submit`,

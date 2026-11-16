@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Plus, Users, Loader2 } from "lucide-react"
 import { Drawer } from "@/components/drawer"
 import TextInput from "@/components/text-input"
-import { teamApi, type MerchantRole } from "@/lib/services/teamService"
+import type { MerchantRole } from "@/lib/services/teamService"
 import { toast } from "sonner"
+import { useTeamActions, useTeamRoles } from "@/hooks/queries/team"
 
 interface AddStaffDrawerProps {
   open: boolean
@@ -16,44 +17,32 @@ interface AddStaffDrawerProps {
   roles?: MerchantRole[]
 }
 
+const NO_ROLES: MerchantRole[] = []
+
 export function AddStaffDrawer({
   open,
   onOpenChange,
   onSuccess,
   roles: rolesProp,
 }: AddStaffDrawerProps) {
-  const [roles, setRoles] = useState<MerchantRole[]>(rolesProp ?? [])
+  // Use the roles passed in when there are any; otherwise load them (cached) while the drawer is open.
+  const hasRolesProp = Boolean(rolesProp && rolesProp.length > 0)
+  const rolesQuery = useTeamRoles(open && !hasRolesProp)
+  const roles: MerchantRole[] = hasRolesProp ? (rolesProp as MerchantRole[]) : (rolesQuery.data ?? NO_ROLES)
+  const loadingRoles = open && !hasRolesProp && rolesQuery.isPending
+  const teamActions = useTeamActions()
   const [selectedRoleId, setSelectedRoleId] = useState("")
   const [staffEmail, setStaffEmail] = useState("")
-  const [loadingRoles, setLoadingRoles] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
+  // Default the role picker to the first role once roles are available.
   useEffect(() => {
-    if (rolesProp) setRoles(rolesProp)
-  }, [rolesProp])
+    if (open && roles[0]) setSelectedRoleId((prev) => prev || roles[0].id)
+  }, [open, roles])
 
   useEffect(() => {
-    if (!open) return
-    if (rolesProp && rolesProp.length > 0) {
-      setSelectedRoleId((prev) => prev || rolesProp[0].id)
-      return
-    }
-    let cancelled = false
-    setLoadingRoles(true)
-    void teamApi.listRoles().then((res) => {
-      if (cancelled) return
-      setLoadingRoles(false)
-      if (res.success && res.data) {
-        setRoles(res.data)
-        if (res.data[0]) setSelectedRoleId(res.data[0].id)
-      } else {
-        toast.error(res.error || "Failed to load roles")
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [open, rolesProp])
+    if (rolesQuery.error) toast.error(rolesQuery.error.message || "Failed to load roles")
+  }, [rolesQuery.error])
 
   const handleInvite = async () => {
     const email = staffEmail.trim()
@@ -66,7 +55,7 @@ export function AddStaffDrawer({
       return
     }
     setSubmitting(true)
-    const res = await teamApi.createInvitation({ email, roleId: selectedRoleId })
+    const res = await teamActions.createInvitation({ email, roleId: selectedRoleId })
     setSubmitting(false)
     if (!res.success) {
       toast.error(res.error || "Failed to send invitation")

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useCallback, useMemo } from "react"
 import { Plus, Package, ExternalLink, Pencil, Power } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,7 @@ import {
   type CommodityConfigurePrefetched,
 } from "@/lib/productConfigurePrefetch"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useAppProducts, useProductActions } from "@/hooks/queries/products"
 
 export default function ProductsPage() {
   const params = useParams()
@@ -48,9 +49,15 @@ export default function ProductsPage() {
   const canPublishProduct = actions.publishProduct
   const canArchiveProduct = actions.archiveProduct
   const [isCreateProductOpen, setIsCreateProductOpen] = useState(false)
-  const [products, setProducts] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  // App products (cached); every create / configure / update mutation refreshes this query.
+  const productsQuery = useAppProducts(appId)
+  const products: any[] = useMemo(
+    () => (productsQuery.data ? extractProductItems(productsQuery.data) : []),
+    [productsQuery.data],
+  )
+  const loading = productsQuery.isLoading
+  const error = productsQuery.error ? "Failed to load products. Please try again." : null
+  const productActions = useProductActions()
   const [typeFilter, setTypeFilter] = useState("all")
 
   // Loan states
@@ -90,27 +97,14 @@ export default function ProductsPage() {
   const [isProcessingOpen, setIsProcessingOpen] = useState(false)
 
   const fetchProducts = useCallback(async () => {
-    if (!appId) return
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await productApi.getProductsByAppId(appId)
-      setProducts(extractProductItems(data))
-      setError(null)
-    } catch (err) {
-      console.error("Error fetching products:", err)
-      setProducts([])
-      setError("Failed to load products. Please try again.")
-    } finally {
-      setLoading(false)
-    }
-  }, [appId])
+    await productsQuery.refetch()
+  }, [productsQuery])
 
   const saveConfiguredProduct = useCallback(
     async (productId: string, productType: string, configData: Record<string, unknown>) => {
       // PUT /:id is first save and later edits (complete products included).
       // PUT /:id/manage is only a status-gated alias and is not required.
-      await productApi.saveProductConfiguration(productId, productType, {
+      await productActions.saveProductConfiguration(productId, productType, {
         ...configData,
         status: "complete",
       })
@@ -118,9 +112,6 @@ export default function ProductsPage() {
     [],
   )
 
-  useEffect(() => {
-    if (appId) fetchProducts()
-  }, [appId, fetchProducts])
 
   const typeOptions = Array.from(
     new Set(
@@ -136,8 +127,8 @@ export default function ProductsPage() {
       : products.filter((product) => String(product?.type ?? "").toLowerCase() === typeFilter.toLowerCase())
 
   const handleProductCreated = (product: any) => {
-    // Add the new product to the list (this will be called from the form page)
-    setProducts(prevProducts => [...prevProducts, product])
+    // The create mutation already refreshed the cached list; refetch to be sure it is current.
+    void productsQuery.refetch()
   }
 
   const handleProductSelect = (productType: string) => {
@@ -176,7 +167,7 @@ export default function ProductsPage() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || "Loan Product",
         description: data?.description || "Loan product",
         type: "Loan",
@@ -187,8 +178,7 @@ export default function ProductsPage() {
 
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -212,8 +202,7 @@ export default function ProductsPage() {
         await saveConfiguredProduct(configuringProductId, "Loan", configData)
 
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setIsConfigureLoanOpen(false)
         setLoanConfigurePrefetch(null)
@@ -240,7 +229,7 @@ export default function ProductsPage() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName,
         description: data?.description,
         type: "Mortgage",
@@ -251,8 +240,7 @@ export default function ProductsPage() {
 
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -276,8 +264,7 @@ export default function ProductsPage() {
         await saveConfiguredProduct(configuringProductId, "Mortgage", configData)
 
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setIsConfigureMortgageOpen(false)
         setMortgageConfigurePrefetch(null)
@@ -304,7 +291,7 @@ export default function ProductsPage() {
 
     try {
       // Create product with incomplete status
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || "Savings Product",
         description: data?.description || "Savings product",
         type: "Savings",
@@ -315,8 +302,7 @@ export default function ProductsPage() {
 
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -340,8 +326,7 @@ export default function ProductsPage() {
         await saveConfiguredProduct(configuringProductId, "Savings", configData)
 
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setIsConfigureSavingsOpen(false)
         setSavingsConfigurePrefetch(null)
@@ -369,7 +354,7 @@ export default function ProductsPage() {
     try {
       // Create product with incomplete status; use Investment type when selected
       const isInvestment = currentCreateType === "investment"
-      const result = await productApi.createProduct({
+      const result = await productActions.createProduct({
         name: data?.productName || (isInvestment ? "Investment Product" : "Commodity Product"),
         description: data?.description || (isInvestment ? "Investment product" : "Commodity product"),
         type: isInvestment ? "Investment" : "Commodity",
@@ -380,8 +365,7 @@ export default function ProductsPage() {
 
       if (result.success && result.data) {
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setTimeout(() => {
           setIsProcessingOpen(false)
@@ -406,8 +390,7 @@ export default function ProductsPage() {
         await saveConfiguredProduct(configuringProductId, configType, configData)
 
         // Refetch products to ensure we have the latest data
-        const productsData = await productApi.getProductsByAppId(appId)
-        setProducts(extractProductItems(productsData))
+        await productsQuery.refetch()
 
         setIsConfigureCommodityOpen(false)
         setCommodityConfigurePrefetch(null)
@@ -501,7 +484,7 @@ export default function ProductsPage() {
   const handleDeactivateProductFromMenu = async (productId: string) => {
     if (!confirm("Deactivate this product? Customers will no longer be able to use it until reactivated.")) return
     try {
-      await productApi.updateProduct(productId, { isActive: false })
+      await productActions.updateProduct(productId, { isActive: false })
       await fetchProducts()
     } catch (err) {
       console.error(err)
@@ -512,7 +495,7 @@ export default function ProductsPage() {
   const handleActivateProductFromMenu = async (productId: string) => {
     if (!confirm("Activate this product? Customers will be able to use it again.")) return
     try {
-      await productApi.updateProduct(productId, { isActive: true })
+      await productActions.updateProduct(productId, { isActive: true })
       await fetchProducts()
     } catch (err) {
       console.error(err)

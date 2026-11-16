@@ -2,14 +2,14 @@
 
 import { ArrowLeft } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
-import { useEffect, useState, useCallback } from "react"
-import { productApi } from "@/lib/services/product-api"
-import { extractProductItems } from "@/lib/productOverview"
+import { useState, useCallback, useMemo } from "react"
 import { formatProductApiErrorMessage } from "@/lib/formatProductApiErrorMessage"
 import { toast } from "sonner"
 import { mergeProductsForAppByType, productRowId } from "@/lib/mergeAppCatalogProducts"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
 import { Switch } from "@/components/ui/switch"
+import { useAppProducts, useProductActions, useProductList } from "@/hooks/queries/products"
+import { extractProductItems, withProductItemsAsData, type ListProductsParams } from "@/lib/productOverview"
 
 /** URL segment `loan` → Product MS discriminator `LOAN` (docs: canonical `type` values). */
 function productTypeParamToCanonical(param: string): string {
@@ -29,75 +29,57 @@ export default function ProductTypeListPage() {
   const router = useRouter()
   const productType = params.productType as string
   const appId = params.id as string
-  const [products, setProducts] = useState<any[]>([])
-  const [activations, setActivations] = useState<{ [key: string]: boolean }>({})
+  const canonical = productTypeParamToCanonical(productType)
+  const productActions = useProductActions()
+
+  // App activations + the type's catalog, both cached; merged into the rows shown.
+  const appProductsQuery = useAppProducts(appId)
+  const catalogQuery = useProductList(
+    appId
+      ? {
+          appId,
+          type: canonical && canonical.toLowerCase() !== "all" ? (canonical.toLowerCase() as ListProductsParams["type"]) : undefined,
+          page: 1,
+          limit: 100,
+        }
+      : null,
+  )
+  const loading = appProductsQuery.isLoading
+  const loadError = appProductsQuery.error ? appProductsQuery.error.message || "Failed to load app products" : null
+
+  const appRows = useMemo(
+    () => (appProductsQuery.data ? extractProductItems(appProductsQuery.data) : []),
+    [appProductsQuery.data],
+  )
+
+  // Activation state from the server, overlaid with toggles made on this page.
+  const [activationOverrides, setActivations] = useState<{ [key: string]: boolean }>({})
+  const activations = useMemo(() => {
+    const map: { [key: string]: boolean } = {}
+    appRows.forEach((row: any) => {
+      const pid = row.productId ?? row.id ?? row._id
+      if (!pid) return
+      const active = row.isActive !== false && row.isActive !== "inactive"
+      for (const key of [pid, row.id, row._id, row.productId]) if (key) map[String(key)] = active
+    })
+    return { ...map, ...activationOverrides }
+  }, [appRows, activationOverrides])
   const [pendingToggles, setPendingToggles] = useState<{ [key: string]: boolean }>({})
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+
+  const products: any[] = useMemo(() => {
+    if (appProductsQuery.error) return []
+    let catalogRows: unknown[] | null = null
+    const body = catalogQuery.data as { success?: boolean } | undefined
+    if (body && !(typeof body === "object" && !Array.isArray(body) && body.success === false)) {
+      const extracted = extractProductItems(withProductItemsAsData(body as Record<string, unknown>))
+      catalogRows = extracted.length ? extracted : null
+    }
+    return mergeProductsForAppByType(appRows, catalogRows, appId, canonical) as any[]
+  }, [appRows, catalogQuery.data, appProductsQuery.error, appId, canonical])
 
   const fetchData = useCallback(async () => {
-    try {
-      setLoading(true)
-      setLoadError(null)
-
-      const canonical = productTypeParamToCanonical(productType)
-
-      const [appOutcome, catalogOutcome] = await Promise.allSettled([
-        productApi.getProductsByAppId(appId),
-        productApi.getAllProducts({ appId, type: canonical, page: 1, limit: 100 }),
-      ])
-
-      if (appOutcome.status === "rejected") {
-        const msg =
-          appOutcome.reason instanceof Error ? appOutcome.reason.message : "Failed to load app products"
-        setProducts([])
-        setActivations({})
-        setLoadError(msg)
-        return
-      }
-
-      const activationsData = appOutcome.value
-      const appRows = extractProductItems(activationsData)
-
-      const activationMap: { [key: string]: boolean } = {}
-      appRows.forEach((row: any) => {
-        const pid = row.productId ?? row.id ?? row._id
-        if (pid) {
-          const active = row.isActive !== false && row.isActive !== "inactive"
-          activationMap[String(pid)] = active
-          if (row.id) activationMap[String(row.id)] = active
-          if (row._id) activationMap[String(row._id)] = active
-          if (row.productId) activationMap[String(row.productId)] = active
-        }
-      })
-      setActivations(activationMap)
-
-      let catalogRows: unknown[] | null = null
-      if (catalogOutcome.status === "fulfilled") {
-        const catalogRes = catalogOutcome.value as { success?: boolean; data?: unknown; error?: string } | unknown[]
-        const body = catalogRes as { success?: boolean; data?: unknown; error?: string }
-        if (!(body && typeof body === "object" && !Array.isArray(body) && body.success === false)) {
-          const extracted = extractProductItems(catalogRes)
-          catalogRows = extracted.length ? extracted : null
-        }
-      }
-
-      const merged = mergeProductsForAppByType(appRows, catalogRows, appId, canonical)
-      setProducts(merged as any[])
-    } catch (error) {
-      console.error("Error fetching data:", error)
-      setProducts([])
-      setLoadError(error instanceof Error ? error.message : "Failed to load products")
-    } finally {
-      setLoading(false)
-    }
-  }, [appId, productType])
-
-  useEffect(() => {
-    if (appId && productType) {
-      void fetchData()
-    }
-  }, [appId, productType, fetchData])
+    await Promise.all([appProductsQuery.refetch(), catalogQuery.refetch()])
+  }, [appProductsQuery, catalogQuery])
 
   const getProductTypeDisplayName = () => {
     return productType.charAt(0).toUpperCase() + productType.slice(1)
@@ -108,7 +90,7 @@ export default function ProductTypeListPage() {
       const newState = !currentState
       setPendingToggles((prev) => ({ ...prev, [toggleId]: true }))
 
-      await productApi.toggleAppProductActivation(appId, toggleId, newState)
+      await productActions.toggleAppProductActivation(appId, toggleId, newState)
 
       setActivations((prev) => ({
         ...prev,

@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Trash2, AlertTriangle, Loader2 } from "lucide-react"
-import { getAccessToken } from "@/lib/cookieAuth"
 import { Skeleton } from "@/components/ui/skeleton"
 import { usePermissions } from "@/hooks/usePermissions"
+import { useQueryClient } from "@tanstack/react-query"
+import { getGetApiV1AppsIdQueryKey, useDeleteApiV1AppsId, useGetApiV1AppsId } from "@/lib/generated/plata/apps/apps"
+import { invalidateDashboardApps } from "@/lib/dashboardSessionCache"
 
 interface App {
   id: string
@@ -17,49 +19,23 @@ interface App {
   [key: string]: unknown
 }
 
-const getAuthHeaders = () => {
-  const token = typeof window !== "undefined" ? getAccessToken() : null
-  return {
-    "Content-Type": "application/json",
-    ...(token && { Authorization: `Bearer ${token}` }),
-  }
-}
-
 export default function SettingsPage() {
   const params = useParams()
   const appId = params.id as string
   const router = useRouter()
   const { actions } = usePermissions()
   const canArchiveApp = actions.archiveApplication
-  const [app, setApp] = useState<App | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Generated orval hooks: GET /api/v1/apps/:id (cached) and DELETE /api/v1/apps/:id.
+  const appQuery = useGetApiV1AppsId(appId, { query: { enabled: Boolean(appId) } })
+  const app = (appQuery.data as { success?: boolean; data?: App } | undefined)?.data ?? null
+  const loading = appQuery.isLoading
+  const deleteApp = useDeleteApiV1AppsId()
+  const queryClient = useQueryClient()
   const [deleting, setDeleting] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [confirmText, setConfirmText] = useState("")
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchApp = async () => {
-      try {
-        const response = await fetch(`/api/apps/${appId}`, {
-          credentials: "include",
-          headers: getAuthHeaders(),
-        })
-        const data = await response.json()
-        if (data.success && data.data) {
-          setApp(data.data)
-        }
-      } catch (err) {
-        console.error("Failed to fetch app:", err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    if (appId) {
-      void fetchApp()
-    }
-  }, [appId])
 
   const handleDeleteApp = async () => {
     if (confirmText !== app?.name) {
@@ -71,22 +47,16 @@ export default function SettingsPage() {
       setDeleting(true)
       setError(null)
 
-      const response = await fetch(`/api/apps/${appId}`, {
-        method: "DELETE",
-        credentials: "include",
-        headers: getAuthHeaders(),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to delete app")
-      }
+      await deleteApp.mutateAsync({ id: appId })
+      // Drop the deleted app from every cached app list.
+      invalidateDashboardApps()
+      queryClient.removeQueries({ queryKey: getGetApiV1AppsIdQueryKey(appId) })
 
       router.push("/dashboard/create-app/all-apps")
     } catch (err) {
       console.error("Failed to delete app:", err)
-      setError(err instanceof Error ? err.message : "Failed to delete app")
+      const apiMessage = (err as { response?: { data?: { error?: string; message?: string } } })?.response?.data
+      setError(apiMessage?.error || apiMessage?.message || (err instanceof Error ? err.message : "Failed to delete app"))
     } finally {
       setDeleting(false)
     }

@@ -7,8 +7,6 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { MortgageWorkflowDetailSkeleton } from "@/components/ui/app-loading-skeleton"
 import { DrawerPanel } from "@/components/ui/drawer-panel"
-import { applicationApi } from "@/lib/services/accountService"
-import { pendingApprovedLoanApi } from "@/lib/pendingApprovedLoanApi"
 import {
   buildPlataLoanThread,
   extractLoanProgress,
@@ -23,6 +21,7 @@ import { OfferLetterUploadControl } from "@/components/workflow/OfferLetterUploa
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { fetchApplicationWithProfile, useApplicationActions } from "@/hooks/queries/applications"
 
 const PLATA_ACCENT = "#9A813F"
 
@@ -117,6 +116,7 @@ export function LoanWorkflowDetailSheet({
   onOpenChange,
   onUpdated,
 }: LoanWorkflowDetailSheetProps) {
+  const applicationActions = useApplicationActions()
   const [loading, setLoading] = useState(false)
   const [busyAction, setBusyAction] = useState<StepActionKind | null>(null)
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null)
@@ -132,10 +132,7 @@ export function LoanWorkflowDetailSheet({
     setLoading(true)
     setProfileError(null)
     try {
-      const [appRes, profileRes] = await Promise.all([
-        applicationApi.getWorkflowApplication(applicationId),
-        applicationApi.getSpringApplicantProfile(applicationId),
-      ])
+      const [appRes, profileRes] = await fetchApplicationWithProfile(applicationId)
 
       if (profileRes.success && profileRes.data) {
         setProfilePayload(profileRes.data)
@@ -264,7 +261,7 @@ export function LoanWorkflowDetailSheet({
 
   const handleMarkUnderReview = () =>
     void runAction("mark_under_review", async () => {
-      const res = await applicationApi.updateLoanWorkflowStatus(applicationId!, {
+      const res = await applicationActions.updateLoanWorkflowStatus(applicationId!, {
         loanWorkflowStatus: "under_review",
       })
       if (res.success) toast.success("Moved to under review")
@@ -274,7 +271,7 @@ export function LoanWorkflowDetailSheet({
   const handleApproveOffer = () =>
     void runAction("approve_offer", async () => {
       const approvedAmount = asPositiveNumber(approvedAmountInput)
-      const res = await applicationApi.approve(applicationId!, {
+      const res = await applicationActions.approve(applicationId!, {
         ...(approvedAmount != null ? { approvedAmount } : {}),
         ...(equityReceived
           ? {
@@ -294,7 +291,7 @@ export function LoanWorkflowDetailSheet({
 
   const handleApproveDisbursement = () =>
     void runAction("approve_disbursement", async () => {
-      const res = await pendingApprovedLoanApi.disburse(applicationId!)
+      const res = await applicationActions.disburseLoan(applicationId!)
       if (res.success) toast.success("Loan disbursed from Treasury to borrower wallet")
       return res
     })

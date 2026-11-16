@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Drawer } from "@/components/drawer"
 import { Loader2 } from "lucide-react"
 import { WEBSITE_URL_PREFIX } from "@/lib/websiteUrl"
+import { useCreateApp } from "@/hooks/queries/apps"
 
 interface CreateAppDrawerProps {
   isOpen: boolean
@@ -14,6 +15,7 @@ interface CreateAppDrawerProps {
 
 export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColor = "#9A813F" }: CreateAppDrawerProps) {
   const hoverColor = accentColor === "#7C3AED" ? "#6D28D9" : "#8A7335"
+  const createAppMutation = useCreateApp()
   const [formData, setFormData] = useState({
     name: "",
     websiteUrl: WEBSITE_URL_PREFIX,
@@ -77,46 +79,28 @@ export default function CreateAppDrawer({ isOpen, onClose, onSuccess, accentColo
         }
       }
 
-      // Call local API route which proxies to create-app-ms
-      const response = await fetch("/api/apps", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token && { "Authorization": `Bearer ${token}` })
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          websiteUrl: formData.websiteUrl,
-          alias: formData.alias,
-          description: formData.description,
-          ...(merchantId ? { merchantId } : {}),
-          source: 'spring-app'
-        })
+      const created = await createAppMutation.mutateAsync({
+        name: formData.name,
+        websiteUrl: formData.websiteUrl,
+        alias: formData.alias,
+        description: formData.description,
+        ...(merchantId ? { merchantId } : {}),
+        source: 'spring-app'
       });
 
-      const result = await response.json();
-      console.log('API response:', result);
-
-      if (result.success && result.data) {
-        const createdApp = result.data.app || result.data
-
-        onSuccess(createdApp)
-        setFormData({ name: "", websiteUrl: WEBSITE_URL_PREFIX, alias: "", description: "" })
-        setErrors({})
-        onClose()
-      } else {
-        // Show more detailed error message
-        let errorMessage = result.error || result.message || result.details?.message || "Failed to create app"
-        if (response.status >= 500 && /internal server error/i.test(String(errorMessage))) {
-          errorMessage =
-            "Could not create the app (server error). If you already created this app once, the name or alias may already be in use — open “All apps” instead of submitting the same form again."
-        }
-        console.error('Create app error:', errorMessage, result);
-        setErrors({ submit: errorMessage });
-      }
+      onSuccess(created?.app || created)
+      setFormData({ name: "", websiteUrl: WEBSITE_URL_PREFIX, alias: "", description: "" })
+      setErrors({})
+      onClose()
     } catch (error) {
       console.error("Error creating app:", error);
-      setErrors({ submit: error instanceof Error ? error.message : "An unexpected error occurred. Please try again." });
+      let errorMessage = error instanceof Error ? error.message : "An unexpected error occurred. Please try again."
+      const status = (error as { status?: number })?.status ?? 0
+      if (status >= 500 && /internal server error/i.test(errorMessage)) {
+        errorMessage =
+          "Could not create the app (server error). If you already created this app once, the name or alias may already be in use — open “All apps” instead of submitting the same form again."
+      }
+      setErrors({ submit: errorMessage });
     } finally {
       setIsLoading(false);
     }

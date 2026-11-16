@@ -5,7 +5,7 @@ import { Drawer } from '@/components/drawer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2 } from 'lucide-react'
-import paymentService from '@/lib/services/paymentService'
+import { usePaymentActions } from '@/hooks/queries/payments'
 
 interface AddCardDrawerProps {
     isOpen: boolean
@@ -14,6 +14,7 @@ interface AddCardDrawerProps {
 }
 
 export function AddCardDrawer({ isOpen, onClose, onSuccess }: AddCardDrawerProps) {
+    const paymentActions = usePaymentActions()
     const [formData, setFormData] = useState({
         cardName: '',
         cardNumber: '',
@@ -33,7 +34,7 @@ export function AddCardDrawer({ isOpen, onClose, onSuccess }: AddCardDrawerProps
             // Parse expiry date (MM/YY format)
             const [expiryMonth, expiryYear] = formData.expiryDate.split('/')
             
-            const response = await paymentService.methods.addPaymentMethod({
+            const response = await paymentActions.addPaymentMethod({
                 type: 'card',
                 cardNumber: formData.cardNumber.replace(/\s/g, ''),
                 expiryMonth: expiryMonth?.trim() || '',

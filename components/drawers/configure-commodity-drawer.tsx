@@ -37,6 +37,7 @@ import {
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
 } from "@/lib/otherRequirementPayload"
+import { fetchTenureOptionsBody } from "@/lib/productCatalogQueries"
 
 interface ConfigureCommodityDrawerProps {
   isOpen: boolean
@@ -405,13 +406,10 @@ export default function ConfigureCommodityDrawer({
       setContentTypeOptions(prefetchedOptions.requirementContentType ?? [])
       return
     }
-    const url = isInvestment
-      ? "/api/configurations/options/investment-tenure"
-      : "/api/configurations/options/commodity-tenure"
+    const tenureKind = isInvestment ? "investment" : "commodity"
     const fetchTenure = async () => {
       try {
-        const res = await fetch(url, { credentials: "include", cache: "no-store" })
-        const json = await res.json().catch(() => ({}))
+        const json = await fetchTenureOptionsBody(tenureKind)
         const list = (json?.data ?? []) as { value?: string; label?: string }[]
         const opts =
           Array.isArray(list) && list.length

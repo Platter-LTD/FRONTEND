@@ -38,6 +38,7 @@ import {
   shouldUseOtherRequirementFileUpload,
   type OtherRequirementDraft,
 } from "@/lib/otherRequirementPayload"
+import { fetchTenureOptionsBody } from "@/lib/productCatalogQueries"
 
 interface ConfigureSavingsDrawerProps {
   isOpen: boolean
@@ -207,8 +208,7 @@ export default function ConfigureSavingsDrawer({
     }
     const fetchOptions = async () => {
       try {
-        const tenureRes = await fetch("/api/configurations/options/savings-tenure", { credentials: "include", cache: "no-store" })
-        const tenureJson = await tenureRes.json().catch(() => ({}))
+        const tenureJson = await fetchTenureOptionsBody("savings")
         const tenureList = (tenureJson?.data ?? []) as { value?: string | number; label?: string }[]
         const tenure =
           Array.isArray(tenureList) && tenureList.length

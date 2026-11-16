@@ -3,13 +3,14 @@
 import { useEffect, useState, Suspense, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
-import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { Button } from "@/components/ui/button"
 import { toast } from "react-toastify"
 import { ProductAuthShell } from "@/components/product-auth-shell"
+import { useAuthActions } from "@/hooks/queries/auth"
 
 function VerifyEmailContent() {
+  const authActions = useAuthActions()
   const [email, setEmail] = useState<string>("")
   const [isResending, setIsResending] = useState(false)
   const [isVerifying, setIsVerifying] = useState(false)
@@ -69,7 +70,7 @@ function VerifyEmailContent() {
     if (!email) return
     try {
       setIsResending(true)
-      await apiClient.post(
+      await authActions.post(
         ENDPOINTS.auth.otp.resendEmail,
         { identifier: email, channel: "email", purpose: "verification" },
         { includeAuth: false }
@@ -101,7 +102,7 @@ function VerifyEmailContent() {
 
     try {
       setIsVerifying(true)
-      const response = await apiClient.post<any>(ENDPOINTS.auth.verify.emailOtp, {
+      const response = await authActions.post<any>(ENDPOINTS.auth.verify.emailOtp, {
         email,
         otp: codeToUse,
       })

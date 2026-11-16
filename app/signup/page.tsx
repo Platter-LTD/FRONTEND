@@ -5,13 +5,15 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { RegistrationForm } from "@/components/registration-form"
 import { toast } from "react-toastify"
-import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
 import { ProductAuthShell } from "@/components/product-auth-shell"
 import { registrationPasswordError } from "@/lib/passwordRules"
-import { teamApi } from "@/lib/services/teamService"
+import { useTeamActions } from "@/hooks/queries/team"
+import { useAuthActions } from "@/hooks/queries/auth"
 
 function SignupPageContent() {
+  const authActions = useAuthActions()
+  const teamActions = useTeamActions()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -50,7 +52,7 @@ function SignupPageContent() {
 
     try {
       if (invitationMode) {
-        const res = await teamApi.acceptInvitation({
+        const res = await teamActions.acceptInvitation({
           token: invitationToken,
           firstName: formData.firstName.trim(),
           lastName: formData.lastName.trim(),
@@ -84,7 +86,7 @@ function SignupPageContent() {
         user_merchant_id: `merchant_${Date.now()}`,
       }
 
-      const response = await apiClient.post(ENDPOINTS.auth.signup.merchant, registrationData, {
+      const response = await authActions.post(ENDPOINTS.auth.signup.merchant, registrationData, {
         includeAuth: false,
       })
 

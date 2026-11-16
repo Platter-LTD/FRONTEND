@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Info, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
@@ -17,6 +18,13 @@ import {
   type WithdrawalHistoryStatus,
 } from "@/lib/services/treasuryConsoleService"
 import { usePermissions } from "@/hooks/usePermissions"
+import {
+  treasuryKeys,
+  useSettlementsHistory,
+  useTreasuryAction,
+  useTreasuryConsole,
+  useWithdrawalsHistory,
+} from "@/hooks/queries/treasury"
 
 type TabKey = "withdrawals" | SettlementType
 type HistoryFilter = Exclude<WithdrawalHistoryStatus, "all">
@@ -91,160 +99,69 @@ function BatchToast(result: {
 
 type Props = { appId: string }
 
+const NO_ROWS: TreasuryPayoutRow[] = []
+const NO_SETTLEMENTS: Record<SettlementType, TreasuryPayoutRow[]> = { investments: [], commodities: [], savings: [] }
+const MANUAL_MODES: Record<SettlementType, SettlementMode> = {
+  investments: "manual",
+  commodities: "manual",
+  savings: "manual",
+}
+const NOT_REVERTED: Record<SettlementType, boolean> = { investments: false, commodities: false, savings: false }
+
 export function WithdrawalsConsole({ appId }: Props) {
   const { can } = usePermissions()
   const canApprovePayout = can("approve_payout")
   const canSetAutoSettle = can(["approve_payout", "manage_system_settings"])
 
   const [tab, setTab] = useState<TabKey>("withdrawals")
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [acting, setActing] = useState(false)
 
-  const [withdrawals, setWithdrawals] = useState<TreasuryPayoutRow[]>([])
   const [wdSelected, setWdSelected] = useState<Set<string>>(new Set())
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("approved")
-  const [historyRows, setHistoryRows] = useState<TreasuryPayoutRow[]>([])
-  const [historyTotal, setHistoryTotal] = useState(0)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [historyError, setHistoryError] = useState<string | null>(null)
 
-  const [settlements, setSettlements] = useState<Record<SettlementType, TreasuryPayoutRow[]>>({
-    investments: [],
-    commodities: [],
-    savings: [],
-  })
-  const [modes, setModes] = useState<Record<SettlementType, SettlementMode>>({
-    investments: "manual",
-    commodities: "manual",
-    savings: "manual",
-  })
-  const [reverted, setReverted] = useState<Record<SettlementType, boolean>>({
-    investments: false,
-    commodities: false,
-    savings: false,
-  })
   const [settleSelected, setSettleSelected] = useState<Record<SettlementType, Set<string>>>({
     investments: new Set(),
     commodities: new Set(),
     savings: new Set(),
   })
   const [settleHistoryFilter, setSettleHistoryFilter] = useState<HistoryFilter>("approved")
-  const [settleHistoryRows, setSettleHistoryRows] = useState<TreasuryPayoutRow[]>([])
-  const [settleHistoryTotal, setSettleHistoryTotal] = useState(0)
-  const [settleHistoryLoading, setSettleHistoryLoading] = useState(false)
-  const [settleHistoryError, setSettleHistoryError] = useState<string | null>(null)
 
-  const loadHistory = useCallback(
-    async (status: HistoryFilter) => {
-      if (!appId) return
-      setHistoryLoading(true)
-      setHistoryError(null)
-      const res = await treasuryConsoleApi.listWithdrawalsHistory(appId, {
-        status,
-        limit: 50,
-        skip: 0,
-      })
-      if (!res.success) {
-        setHistoryRows([])
-        setHistoryTotal(0)
-        setHistoryError(res.error)
-        setHistoryLoading(false)
-        return
-      }
-      setHistoryRows(res.data?.items ?? [])
-      setHistoryTotal(res.data?.pagination.total ?? res.data?.items.length ?? 0)
-      setHistoryLoading(false)
-    },
-    [appId],
+  const queryClient = useQueryClient()
+  const runAction = useTreasuryAction(appId)
+
+  // Pending queues + auto-settle modes (one cached query), and the history views (cached per filter).
+  const consoleQuery = useTreasuryConsole(appId)
+  const loading = consoleQuery.isLoading
+  const error = consoleQuery.error?.message ?? consoleQuery.data?.error ?? null
+  const withdrawals = consoleQuery.data?.withdrawals ?? NO_ROWS
+  const settlements = consoleQuery.data?.settlements ?? NO_SETTLEMENTS
+  const modes = consoleQuery.data?.modes ?? MANUAL_MODES
+  const reverted = consoleQuery.data?.reverted ?? NOT_REVERTED
+
+  const historyQuery = useWithdrawalsHistory(appId, historyFilter)
+  const historyRows = historyQuery.data?.rows ?? NO_ROWS
+  const historyTotal = historyQuery.data?.total ?? 0
+  const historyLoading = historyQuery.isFetching
+  const historyError = historyQuery.error?.message ?? null
+
+  const settleType: SettlementType = tab === "withdrawals" ? "investments" : tab
+  const settleHistoryQuery = useSettlementsHistory(appId, settleType, settleHistoryFilter, tab !== "withdrawals")
+  const settleHistoryRows = settleHistoryQuery.data?.rows ?? NO_ROWS
+  const settleHistoryTotal = settleHistoryQuery.data?.total ?? 0
+  const settleHistoryLoading = settleHistoryQuery.isFetching
+  const settleHistoryError = settleHistoryQuery.error?.message ?? null
+
+  /** Refetch every treasury query for this app (queues, modes, histories). */
+  const refresh = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: treasuryKeys.app(appId) }),
+    [queryClient, appId],
   )
 
-  const loadSettleHistory = useCallback(
-    async (type: SettlementType, status: HistoryFilter) => {
-      if (!appId) return
-      setSettleHistoryLoading(true)
-      setSettleHistoryError(null)
-      const res = await treasuryConsoleApi.listSettlementsHistory(appId, type, {
-        status,
-        limit: 50,
-        skip: 0,
-      })
-      if (!res.success) {
-        setSettleHistoryRows([])
-        setSettleHistoryTotal(0)
-        setSettleHistoryError(res.error)
-        setSettleHistoryLoading(false)
-        return
-      }
-      setSettleHistoryRows(res.data?.items ?? [])
-      setSettleHistoryTotal(res.data?.pagination.total ?? res.data?.items.length ?? 0)
-      setSettleHistoryLoading(false)
-    },
-    [appId],
-  )
-
-  const refresh = useCallback(async () => {
-    if (!appId) return
-    setLoading(true)
-    setError(null)
-    const [wd, inv, com, sav, invMode, comMode, savMode] = await Promise.all([
-      treasuryConsoleApi.listWithdrawals(appId),
-      treasuryConsoleApi.listSettlements(appId, "investments"),
-      treasuryConsoleApi.listSettlements(appId, "commodities"),
-      treasuryConsoleApi.listSettlements(appId, "savings"),
-      treasuryConsoleApi.getSettlementMode(appId, "investments"),
-      treasuryConsoleApi.getSettlementMode(appId, "commodities"),
-      treasuryConsoleApi.getSettlementMode(appId, "savings"),
-    ])
-
-    const firstErr =
-      (!wd.success && wd.error) ||
-      (!inv.success && inv.error) ||
-      (!com.success && com.error) ||
-      (!sav.success && sav.error) ||
-      null
-
-    if (firstErr) setError(firstErr)
-
-    if (wd.success) setWithdrawals(wd.data?.items ?? [])
-    setSettlements({
-      investments: inv.success ? inv.data?.items ?? [] : [],
-      commodities: com.success ? com.data?.items ?? [] : [],
-      savings: sav.success ? sav.data?.items ?? [] : [],
-    })
-    setModes({
-      investments: invMode.success ? invMode.data?.mode ?? "manual" : "manual",
-      commodities: comMode.success ? comMode.data?.mode ?? "manual" : "manual",
-      savings: savMode.success ? savMode.data?.mode ?? "manual" : "manual",
-    })
-    setReverted({
-      investments: Boolean(invMode.success && invMode.data?.revertedToManual),
-      commodities: Boolean(comMode.success && comMode.data?.revertedToManual),
-      savings: Boolean(savMode.success && savMode.data?.revertedToManual),
-    })
+  // Fresh queue data → clear row selections (as the old refresh did).
+  useEffect(() => {
     setWdSelected(new Set())
-    setSettleSelected({
-      investments: new Set(),
-      commodities: new Set(),
-      savings: new Set(),
-    })
-    setLoading(false)
-  }, [appId])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
-
-  useEffect(() => {
-    if (!appId) return
-    void loadHistory(historyFilter)
-  }, [appId, historyFilter, loadHistory])
-
-  useEffect(() => {
-    if (!appId) return
-    if (tab === "withdrawals") return
-    void loadSettleHistory(tab, settleHistoryFilter)
-  }, [appId, tab, settleHistoryFilter, loadSettleHistory])
+    setSettleSelected({ investments: new Set(), commodities: new Set(), savings: new Set() })
+  }, [consoleQuery.dataUpdatedAt])
 
   const badges = useMemo(
     () => ({
@@ -263,7 +180,7 @@ export function WithdrawalsConsole({ appId }: Props) {
     const refs = Array.from(wdSelected)
     if (!refs.length) return
     setActing(true)
-    const res = await treasuryConsoleApi.approveWithdrawals(appId, refs)
+    const res = await runAction(() => treasuryConsoleApi.approveWithdrawals(appId, refs))
     setActing(false)
     if (!res.success) {
       toast.error(res.error)
@@ -274,30 +191,26 @@ export function WithdrawalsConsole({ appId }: Props) {
       blockedCount: res.data?.blockedCount ?? 0,
       noun: "withdrawal request(s)",
     })
-    await refresh()
-    await loadHistory(historyFilter)
   }
 
   const rejectWithdrawals = async () => {
     const refs = Array.from(wdSelected)
     if (!refs.length) return
     setActing(true)
-    const res = await treasuryConsoleApi.rejectWithdrawals(appId, refs)
+    const res = await runAction(() => treasuryConsoleApi.rejectWithdrawals(appId, refs))
     setActing(false)
     if (!res.success) {
       toast.error(res.error)
       return
     }
     toast.success(`${res.data?.paidCount ?? refs.length} withdrawal request(s) rejected`)
-    await refresh()
-    await loadHistory(historyFilter)
   }
 
   const approveSettlements = async (type: SettlementType) => {
     const refs = Array.from(settleSelected[type])
     if (!refs.length) return
     setActing(true)
-    const res = await treasuryConsoleApi.approveSettlements(appId, type, refs)
+    const res = await runAction(() => treasuryConsoleApi.approveSettlements(appId, type, refs))
     setActing(false)
     if (!res.success) {
       toast.error(res.error)
@@ -308,29 +221,25 @@ export function WithdrawalsConsole({ appId }: Props) {
       blockedCount: res.data?.blockedCount ?? 0,
       noun: "return(s)",
     })
-    await refresh()
-    await loadSettleHistory(type, settleHistoryFilter)
   }
 
   const rejectSettlements = async (type: SettlementType) => {
     const refs = Array.from(settleSelected[type])
     if (!refs.length) return
     setActing(true)
-    const res = await treasuryConsoleApi.rejectSettlements(appId, type, refs)
+    const res = await runAction(() => treasuryConsoleApi.rejectSettlements(appId, type, refs))
     setActing(false)
     if (!res.success) {
       toast.error(res.error)
       return
     }
     toast.success(`${res.data?.paidCount ?? refs.length} return(s) rejected`)
-    await refresh()
-    await loadSettleHistory(type, settleHistoryFilter)
   }
 
   const toggleMode = async (type: SettlementType, next: boolean) => {
     const mode: SettlementMode = next ? "automatic" : "manual"
     setActing(true)
-    const res = await treasuryConsoleApi.setSettlementMode(appId, type, mode)
+    const res = await runAction(() => treasuryConsoleApi.setSettlementMode(appId, type, mode))
     setActing(false)
     if (!res.success) {
       toast.error(res.error)
@@ -348,8 +257,6 @@ export function WithdrawalsConsole({ appId }: Props) {
         toast.success("Automatic settlement is on — nothing pending right now")
       }
     }
-    await refresh()
-    await loadSettleHistory(type, settleHistoryFilter)
   }
 
   return (
@@ -434,7 +341,7 @@ export function WithdrawalsConsole({ appId }: Props) {
             onApprove={() => void approveWithdrawals()}
             onReject={() => void rejectWithdrawals()}
             onRefresh={() => void refresh()}
-            onRefreshHistory={() => void loadHistory(historyFilter)}
+            onRefreshHistory={() => void historyQuery.refetch()}
           />
         ) : (
           <SettlementPanel
@@ -471,7 +378,7 @@ export function WithdrawalsConsole({ appId }: Props) {
             onApprove={() => void approveSettlements(tab)}
             onReject={() => void rejectSettlements(tab)}
             onRefresh={() => void refresh()}
-            onRefreshHistory={() => void loadSettleHistory(tab, settleHistoryFilter)}
+            onRefreshHistory={() => void settleHistoryQuery.refetch()}
           />
         )}
       </div>

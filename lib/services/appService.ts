@@ -5,6 +5,15 @@ import { plataAuthFetch } from '@/lib/plataAuthFetch';
 import { emptyPwaTemplateConfig } from '@/lib/pwaTemplateBridge';
 import type { AnalyticsProductFilter, AnalyticsRange, AppAnalyticsResponse } from '@/lib/appAnalytics';
 import { fetchAppsListCached, invalidateDashboardApps } from '@/lib/dashboardSessionCache';
+import { gatewayFetch } from "@/lib/gatewayFetch"
+import { createApp as createAppOnGateway, fetchAppsList } from "@/lib/gateway/apps"
+import {
+  composeAnalyticsFromLiveSources,
+  unwrapAnalyticsPayload,
+  unwrapOverviewPayload,
+  unwrapStatsPayload,
+  unwrapTransactionsPayload,
+} from "@/lib/composeAppAnalytics"
 
 const getAuthHeaders = () => {
   const token = typeof window !== 'undefined' ? getAccessToken() : null;
@@ -119,13 +128,9 @@ export const appApi = {
       }
     }
 
-    const response = await fetch('/api/apps', {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({
-        ...appData,
-        ...(merchantId && { merchantId }),
-      }),
+    const response = await createAppOnGateway({
+      ...appData,
+      ...(merchantId && { merchantId }),
     });
 
     const data = await response.json();
@@ -144,7 +149,7 @@ export const appApi = {
     appId: string,
     status: 'active' | 'suspended',
   ): Promise<ApiResponse<App>> {
-    const response = await fetch(`/api/apps/${appId}/status`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/status`, {
       method: 'PATCH',
       headers: getAuthHeaders(),
       body: JSON.stringify({ status }),
@@ -163,19 +168,9 @@ export const appApi = {
    * Get all apps
    */
   async getAllApps(): Promise<ApiResponse<App[]>> {
-    return fetchAppsListCached(async () => {
-      const response = await fetch('/api/apps', {
-        headers: getAuthHeaders(),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch apps');
-      }
-
-      return data;
-    });
+    // Shares the React Query cache entry used by useApps().
+    const apps = await fetchAppsListCached(fetchAppsList);
+    return { success: true, data: apps } as ApiResponse<App[]>;
   },
 
   /**
@@ -190,22 +185,54 @@ export const appApi = {
       range: params?.range || '30d',
       productType: params?.productType || 'ALL',
     });
-    const response = await plataAuthFetch(
-      `/api/v1/apps/${encodeURIComponent(appId)}/analytics?${qs.toString()}`,
-      { headers: getAuthHeaders(), signal },
-    );
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error((data as { error?: string }).error || 'Failed to fetch app analytics');
+    const id = encodeURIComponent(appId);
+    const get = async (path: string) => {
+      const res = await plataAuthFetch(path, { headers: getAuthHeaders(), signal });
+      return { status: res.status, ok: res.ok, body: (await res.json().catch(() => ({}))) as any };
+    };
+
+    let primary: { status: number; ok: boolean; body: any } | null = null;
+    try {
+      primary = await get(`/api/v1/apps/${id}/analytics?${qs.toString()}`);
+      if (primary.ok && unwrapAnalyticsPayload(primary.body)) return primary.body as AppAnalyticsResponse;
+      if (primary.status === 401 || primary.status === 403) {
+        throw new Error(primary.body?.error || primary.body?.message || 'Failed to fetch app analytics');
+      }
+    } catch (err) {
+      if (signal?.aborted || (primary && (primary.status === 401 || primary.status === 403))) throw err;
     }
-    return data as AppAnalyticsResponse;
+
+    // Analytics endpoint unavailable: compose the screen from overview + stats + transactions
+    // (same fallback the old /api/v1/apps/[appId]/analytics route did server-side).
+    const [overviewRes, statsRes, txRes] = await Promise.all([
+      get(`/api/v1/products/app/${id}/product-overview`),
+      get(`/api/v1/apps/${id}/transaction-stats`),
+      get(`/api/v1/apps/${id}/transactions?limit=100`),
+    ]);
+    const overview = overviewRes.status < 400 ? unwrapOverviewPayload(overviewRes.body) : null;
+    const stats = statsRes.status < 400 ? unwrapStatsPayload(statsRes.body) : null;
+    const transactions = txRes.status < 400 ? unwrapTransactionsPayload(txRes.body) : [];
+    if (!overview && !stats && transactions.length === 0) {
+      throw new Error(primary?.body?.error || primary?.body?.message || 'Failed to fetch app analytics');
+    }
+    return {
+      success: true,
+      data: composeAnalyticsFromLiveSources({
+        appId,
+        range: (params?.range || '30d') as AnalyticsRange,
+        productType: (params?.productType || 'ALL') as AnalyticsProductFilter,
+        overview,
+        stats,
+        transactions,
+      }),
+    } as AppAnalyticsResponse;
   },
 
   /**
    * Get app by ID
    */
   async getAppById(appId: string): Promise<ApiResponse<App>> {
-    const response = await fetch(`/api/apps/${appId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}`, {
       headers: getAuthHeaders(),
     });
 
@@ -222,7 +249,7 @@ export const appApi = {
    * Update app
    */
   async updateApp(appId: string, updates: Partial<App>): Promise<ApiResponse<App>> {
-    const response = await fetch(`/api/apps/${appId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(updates),
@@ -241,7 +268,7 @@ export const appApi = {
    * Delete app
    */
   async deleteApp(appId: string): Promise<ApiResponse<void>> {
-    const response = await fetch(`/api/apps/${appId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -259,7 +286,7 @@ export const appApi = {
    * Get apps by merchant ID
    */
   async getAppsByMerchantId(merchantId: string): Promise<ApiResponse<App[]>> {
-    const response = await fetch(`/api/apps/merchant/${merchantId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/merchant/${merchantId}`, {
       headers: getAuthHeaders(),
     });
 
@@ -279,7 +306,7 @@ export const appLifecycleApi = {
    * Submit app for review
    */
   async submitApp(appId: string): Promise<ApiResponse<App>> {
-    const response = await fetch(`/api/apps/${appId}/submit`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/submit`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -297,7 +324,7 @@ export const appLifecycleApi = {
    * Approve app
    */
   async approveApp(appId: string, approvalData?: any): Promise<ApiResponse<App>> {
-    const response = await fetch(`/api/apps/${appId}/approve`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/approve`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(approvalData || {}),
@@ -316,7 +343,7 @@ export const appLifecycleApi = {
    * Reject app
    */
   async rejectApp(appId: string, reason?: string): Promise<ApiResponse<App>> {
-    const response = await fetch(`/api/apps/${appId}/reject`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/reject`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ reason }),
@@ -338,7 +365,7 @@ export const appProductKeyApi = {
    * Add product key to app
    */
   async addProductKey(appId: string, productKey: string): Promise<ApiResponse<App>> {
-    const response = await fetch(`/api/apps/${appId}/product-key`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/product-key`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ productKey }),
@@ -357,7 +384,7 @@ export const appProductKeyApi = {
    * Get product keys for app
    */
   async getProductKeys(appId: string): Promise<ApiResponse<string[]>> {
-    const response = await fetch(`/api/apps/${appId}/product-keys`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/product-keys`, {
       headers: getAuthHeaders(),
     });
 
@@ -374,7 +401,7 @@ export const appProductKeyApi = {
    * Remove product key from app
    */
   async removeProductKey(appId: string, productKey: string): Promise<ApiResponse<App>> {
-    const response = await fetch(`/api/apps/${appId}/product-key`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/product-key`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
       body: JSON.stringify({ productKey }),
@@ -415,8 +442,8 @@ export const appTransactionApi = {
       });
     }
 
-    const url = `/api/apps/${appId}/transactions?${queryParams.toString()}`;
-    const response = await fetch(url, { headers: getAuthHeaders() });
+    const url = `/api/v1/apps/${appId}/transactions?${queryParams.toString()}`;
+    const response = await gatewayFetch(url, { headers: getAuthHeaders() });
 
     const data = await response.json();
 
@@ -431,7 +458,7 @@ export const appTransactionApi = {
    * Get app transaction statistics
    */
   async getTransactionStats(appId: string): Promise<ApiResponse<AppTransactionStats>> {
-    const response = await fetch(`/api/apps/${appId}/transaction-stats`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/transaction-stats`, {
       headers: getAuthHeaders(),
     });
 
@@ -462,7 +489,7 @@ export const appDriveApi = {
       metadata?: any;
     }
   ): Promise<ApiResponse<AppDocument>> {
-    const response = await fetch(`/api/apps/${appId}/drive/documents`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/drive/documents`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(documentData),
@@ -501,8 +528,8 @@ export const appDriveApi = {
       });
     }
 
-    const url = `/api/apps/${appId}/drive/documents?${queryParams.toString()}`;
-    const response = await fetch(url, { headers: getAuthHeaders() });
+    const url = `/api/v1/apps/${appId}/drive/documents?${queryParams.toString()}`;
+    const response = await gatewayFetch(url, { headers: getAuthHeaders() });
 
     const data = await response.json();
 
@@ -517,7 +544,7 @@ export const appDriveApi = {
    * Get document by ID
    */
   async getDocumentById(appId: string, documentId: string): Promise<ApiResponse<AppDocument>> {
-    const response = await fetch(`/api/apps/${appId}/drive/documents/${documentId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/drive/documents/${documentId}`, {
       headers: getAuthHeaders(),
     });
 
@@ -538,7 +565,7 @@ export const appDriveApi = {
     documentId: string,
     updates: Partial<AppDocument>
   ): Promise<ApiResponse<AppDocument>> {
-    const response = await fetch(`/api/apps/${appId}/drive/documents/${documentId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/drive/documents/${documentId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(updates),
@@ -557,7 +584,7 @@ export const appDriveApi = {
    * Delete document
    */
   async deleteDocument(appId: string, documentId: string): Promise<ApiResponse<void>> {
-    const response = await fetch(`/api/apps/${appId}/drive/documents/${documentId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/drive/documents/${documentId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -575,7 +602,7 @@ export const appDriveApi = {
    * Get document statistics for app
    */
   async getDocumentStats(appId: string): Promise<ApiResponse<AppDocumentStats>> {
-    const response = await fetch(`/api/apps/${appId}/drive/document-stats`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/drive/document-stats`, {
       headers: getAuthHeaders(),
     });
 
@@ -770,7 +797,7 @@ export const appConfigurationApi = {
    * Get the currently active configuration for an app
    */
   async getActiveConfiguration(appId: string): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration`, {
       headers: getAuthHeaders(),
     });
 
@@ -787,7 +814,7 @@ export const appConfigurationApi = {
    * Get all configurations (active and inactive) for an app
    */
   async getAllConfigurations(appId: string): Promise<ApiResponse<AppConfiguration[]>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/all`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/all`, {
       headers: getAuthHeaders(),
     });
 
@@ -804,7 +831,7 @@ export const appConfigurationApi = {
    * Get configurations formatted for publish UI
    */
   async getPublishConfigurations(appId: string): Promise<ApiResponse<PublishUIResponse>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/publish`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/publish`, {
       headers: getAuthHeaders(),
     });
 
@@ -824,7 +851,7 @@ export const appConfigurationApi = {
     appId: string,
     config: Partial<AppConfiguration>
   ): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(config),
@@ -847,7 +874,7 @@ export const appConfigurationApi = {
     config: Partial<AppConfiguration>,
     options?: { skipAutoDeactivate?: boolean; isActive?: boolean }
   ): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/create`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/create`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify({ configuration: config, options }),
@@ -869,7 +896,7 @@ export const appConfigurationApi = {
     appId: string,
     configurationId: string
   ): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/${configurationId}/activate`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/${configurationId}/activate`, {
       method: 'PUT',
       headers: getAuthHeaders(),
     });
@@ -890,7 +917,7 @@ export const appConfigurationApi = {
     appId: string,
     isPublished: boolean
   ): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/publishing`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/publishing`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ isPublished }),
@@ -916,7 +943,7 @@ export const appConfigurationApi = {
     appId: string,
     appElements: AppElementsConfig
   ): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/app-elements`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/app-elements`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(appElements),
@@ -938,7 +965,7 @@ export const appConfigurationApi = {
     appId: string,
     appProfile: AppProfileConfig
   ): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/app-profile`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/app-profile`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(appProfile),
@@ -960,7 +987,7 @@ export const appConfigurationApi = {
     appId: string,
     onboarding: OnboardingConfig
   ): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/onboarding`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/onboarding`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(onboarding),
@@ -982,7 +1009,7 @@ export const appConfigurationApi = {
     appId: string,
     support: SupportConfig
   ): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/support`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/support`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(support),
@@ -1004,7 +1031,7 @@ export const appConfigurationApi = {
     appId: string,
     policy: PolicyConfig
   ): Promise<ApiResponse<AppConfiguration>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/policy`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/policy`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(policy),
@@ -1046,7 +1073,7 @@ export const appTemplateApi = {
       iconKey: data.iconKey,
       config: data.config ?? emptyPwaTemplateConfig(),
     };
-    const response = await fetch(`/api/apps/${appId}/configuration/templates`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/pwa-templates`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(body),
@@ -1065,7 +1092,7 @@ export const appTemplateApi = {
    * Get all templates for an app
    */
   async getAllTemplates(appId: string): Promise<ApiResponse<AppTemplate[]>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/templates`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/pwa-templates`, {
       headers: getAuthHeaders(),
     });
 
@@ -1082,7 +1109,7 @@ export const appTemplateApi = {
    * Get a specific template
    */
   async getTemplate(appId: string, templateId: string): Promise<ApiResponse<AppTemplate>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/templates/${templateId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/pwa-templates/${templateId}`, {
       headers: getAuthHeaders(),
     });
 
@@ -1099,7 +1126,7 @@ export const appTemplateApi = {
    * Mark template as applied for PWA (Next proxies PATCH …/pwa-templates/…/apply).
    */
   async applyTemplate(appId: string, templateId: string): Promise<ApiResponse<unknown>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/templates/${templateId}/apply`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/pwa-templates/${templateId}/apply`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
@@ -1134,7 +1161,7 @@ export const appTemplateApi = {
     if (data.iconKey !== undefined) payload.iconKey = data.iconKey;
     if (data.config !== undefined) payload.config = data.config;
 
-    const response = await fetch(`/api/apps/${appId}/configuration/templates/${templateId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/pwa-templates/${templateId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(payload),
@@ -1152,7 +1179,7 @@ export const appTemplateApi = {
   async uploadPwaLogo(appId: string, templateId: string, file: File): Promise<ApiResponse<unknown>> {
     const fd = new FormData();
     fd.append('file', file);
-    const response = await fetch(`/api/apps/${appId}/pwa-templates/${templateId}/assets/logo`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/pwa-templates/${templateId}/assets/logo`, {
       method: 'POST',
       headers: getAuthHeadersMultipart(),
       body: fd,
@@ -1167,7 +1194,7 @@ export const appTemplateApi = {
   async uploadPwaSplashImage(appId: string, templateId: string, file: File): Promise<ApiResponse<unknown>> {
     const fd = new FormData();
     fd.append('file', file);
-    const response = await fetch(`/api/apps/${appId}/pwa-templates/${templateId}/assets/splash`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/pwa-templates/${templateId}/assets/splash`, {
       method: 'POST',
       headers: getAuthHeadersMultipart(),
       body: fd,
@@ -1187,8 +1214,8 @@ export const appTemplateApi = {
   ): Promise<ApiResponse<unknown>> {
     const fd = new FormData();
     fd.append('file', file);
-    const response = await fetch(
-      `/api/apps/${appId}/pwa-templates/${templateId}/onboarding/screens/${screenIndex}/image`,
+    const response = await gatewayFetch(
+      `/api/v1/apps/${appId}/pwa-templates/${templateId}/onboarding/screens/${screenIndex}/image`,
       {
         method: 'POST',
         headers: getAuthHeadersMultipart(),
@@ -1206,7 +1233,7 @@ export const appTemplateApi = {
    * Delete a template
    */
   async deleteTemplate(appId: string, templateId: string): Promise<ApiResponse<void>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/templates/${templateId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/pwa-templates/${templateId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -1224,7 +1251,7 @@ export const appTemplateApi = {
    * Set a template as default
    */
   async setDefaultTemplate(appId: string, templateId: string): Promise<ApiResponse<AppTemplate>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/templates/${templateId}/set-default`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/pwa-templates/${templateId}/apply`, {
       method: 'PUT',
       headers: getAuthHeaders(),
     });
@@ -1244,7 +1271,7 @@ export const pwaPublicOptionsApi = {
   async getColorOptions(): Promise<
     ApiResponse<{ options?: Array<{ id: string; label: string; hex: string }>; defaults?: unknown }>
   > {
-    const response = await fetch('/api/v1/pwa/color-options');
+    const response = await gatewayFetch('/api/v1/pwa/color-options');
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || 'Failed to load color options');
@@ -1258,7 +1285,7 @@ export const pwaPublicOptionsApi = {
       defaultFontFamily?: string;
     }>
   > {
-    const response = await fetch('/api/v1/pwa/font-options');
+    const response = await gatewayFetch('/api/v1/pwa/font-options');
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data.error || 'Failed to load font options');
@@ -1279,7 +1306,7 @@ export const appSupportComponentApi = {
     appId: string,
     component: Omit<SupportComponent, 'id'>
   ): Promise<ApiResponse<SupportComponent>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/support/components`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/support/components`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(component),
@@ -1302,7 +1329,7 @@ export const appSupportComponentApi = {
     componentId: string,
     updates: Partial<SupportComponent>
   ): Promise<ApiResponse<SupportComponent>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/support/components/${componentId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/support/components/${componentId}`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify(updates),
@@ -1321,7 +1348,7 @@ export const appSupportComponentApi = {
    * Delete a support component
    */
   async deleteComponent(appId: string, componentId: string): Promise<ApiResponse<void>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/support/components/${componentId}`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/support/components/${componentId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });
@@ -1342,7 +1369,7 @@ export const appSupportComponentApi = {
     appId: string,
     componentIds: string[]
   ): Promise<ApiResponse<SupportComponent[]>> {
-    const response = await fetch(`/api/apps/${appId}/configuration/support/components/reorder`, {
+    const response = await gatewayFetch(`/api/v1/apps/${appId}/configuration/support/components/reorder`, {
       method: 'PUT',
       headers: getAuthHeaders(),
       body: JSON.stringify({ componentIds }),

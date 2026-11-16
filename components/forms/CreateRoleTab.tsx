@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import type { MerchantTeamState } from "@/hooks/useMerchantTeam"
-import { teamApi, type MerchantRole } from "@/lib/services/teamService"
+import type { MerchantRole } from "@/lib/services/teamService"
 import {
   isStandardRoleName,
   permissionLabel,
@@ -30,6 +30,7 @@ import {
 } from "@/lib/teamPermissions"
 import { usePermissions } from "@/hooks/usePermissions"
 import { toast } from "sonner"
+import { useTeamActions } from "@/hooks/queries/team"
 
 export interface CreateRoleTabProps {
   onCreateRole?: () => void
@@ -38,6 +39,7 @@ export interface CreateRoleTabProps {
 }
 
 export function CreateRoleTab({ onCreateRole, onEditRole, team }: CreateRoleTabProps) {
+  const teamActions = useTeamActions()
   const { roles, catalog, loading, error, refetch } = team
   const { can } = usePermissions()
   const canManageRoles = can([...TEAM_PERMISSIONS.manageRoles])
@@ -67,7 +69,7 @@ export function CreateRoleTab({ onCreateRole, onEditRole, team }: CreateRoleTabP
       return
     }
     setDeleting(true)
-    const res = await teamApi.deleteRole(deleteRole.id)
+    const res = await teamActions.deleteRole(deleteRole.id)
     setDeleting(false)
     if (!res.success) {
       toast.error(res.error || "Failed to delete role")
@@ -80,7 +82,7 @@ export function CreateRoleTab({ onCreateRole, onEditRole, team }: CreateRoleTabP
 
   const runEnsureDefaults = async (sync: boolean) => {
     setSeeding(true)
-    const res = await teamApi.ensureDefaultRoles(sync)
+    const res = await teamActions.ensureDefaultRoles(sync)
     setSeeding(false)
     if (!res.success) {
       toast.error(res.error || "Failed to ensure default roles")

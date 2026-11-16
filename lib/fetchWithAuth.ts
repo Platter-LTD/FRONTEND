@@ -4,6 +4,7 @@
  */
 
 import { getAccessToken } from '@/lib/cookieAuth';
+import { resolveApiInput } from '@/lib/plataApiBaseUrl';
 import { handleSessionExpired, isInvalidOrExpiredTokenError, refreshOrRedirectToSignIn } from '@/lib/plataAuthFetch';
 
 export type FetchWithAuthOptions = RequestInit & {
@@ -13,14 +14,26 @@ export type FetchWithAuthOptions = RequestInit & {
   additionalHeaders?: Record<string, string>;
 };
 
+function isSameOrigin(input: RequestInfo | URL): boolean {
+  const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (raw.startsWith('/')) return true;
+  if (typeof window === 'undefined') return false;
+  try {
+    return new URL(raw).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Fetch with Bearer token. On 401, refreshes once then retries.
  * If refresh fails (or retry still reports expired token), redirects to sign-in.
  */
 export async function fetchWithAuth(
-  input: RequestInfo | URL,
+  rawInput: RequestInfo | URL,
   options: FetchWithAuthOptions = {}
 ): Promise<Response> {
+  const input = resolveApiInput(rawInput);
   const { skipAuth = false, additionalHeaders, ...init } = options;
   const token = typeof window !== 'undefined' && !skipAuth ? getAccessToken() : null;
   const headers = new Headers(init.headers);
@@ -32,12 +45,14 @@ export async function fetchWithAuth(
     }
   }
 
-  let res = await fetch(input, { ...init, headers, credentials: init.credentials ?? 'include' });
+  // Cookies only go to our own origin (/api/auth/*); gateway calls are Bearer-only.
+  const credentials = init.credentials ?? (isSameOrigin(input) ? 'include' : 'omit');
+  let res = await fetch(input, { ...init, headers, credentials });
 
   if (res.status === 401 && !skipAuth) {
     const newToken = await refreshOrRedirectToSignIn();
     headers.set('Authorization', `Bearer ${newToken}`);
-    res = await fetch(input, { ...init, headers, credentials: init.credentials ?? 'include' });
+    res = await fetch(input, { ...init, headers, credentials });
 
     if (res.status === 401) {
       const body = await res.clone().json().catch(() => ({}));

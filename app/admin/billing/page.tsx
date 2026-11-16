@@ -4,68 +4,33 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { TableEmptyState } from "@/components/ui/table-states"
 import { DataTable, type ColumnDef } from "@/components/ui/data-table"
-import { billingService } from "@/lib/services/billing-service"
 import { formatCurrency, formatDate, getStatusColor } from "@/lib/utils/billing-utils"
 import type { Transaction } from "@/types/billing"
+import { useBillingTransactions } from "@/hooks/queries/billing"
 
 export default function AdminBillingPage() {
   const [activeTab, setActiveTab] = useState("all")
-  const [billings, setBillings] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [totalCount, setTotalCount] = useState(0)
 
-  useEffect(() => {
-    fetchBillings()
-  }, [activeTab, currentPage, pageSize])
+  // Transactions for the tab + page (cached per filter/page).
+  const status = activeTab === "incoming" ? "incoming" : activeTab === "pending" ? "pending" : undefined
+  const query = useBillingTransactions({ page: currentPage, limit: pageSize, ...(status ? { status } : {}) })
+  const billings: Transaction[] = (query.data?.success && query.data.data) || []
+  const loading = query.isLoading
+  const error = query.error ? query.error.message || "Failed to load billings" : null
+  // Use the API's total when it sends one; otherwise allow a next page whenever this page came back full.
+  const apiTotal = (query.data as { pagination?: { total?: number } } | undefined)?.pagination?.total
+  const totalCount =
+    typeof apiTotal === "number"
+      ? apiTotal
+      : (currentPage - 1) * pageSize + billings.length + (billings.length === pageSize ? 1 : 0)
+  const fetchBillings = () => void query.refetch()
 
   useEffect(() => {
     setCurrentPage(1)
   }, [activeTab])
 
-  const fetchBillings = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const params: any = {
-        page: currentPage,
-        limit: pageSize,
-      }
-
-      // Add status filter based on active tab
-      if (activeTab === "incoming") {
-        params.status = "incoming"
-      } else if (activeTab === "pending") {
-        params.status = "pending"
-      }
-
-      const response = await billingService.getTransactions(params)
-
-      if (response.success && response.data) {
-        setBillings(response.data)
-        // Use the API's total when it sends one; otherwise allow a next page
-        // whenever this page came back full.
-        const total = (response as { pagination?: { total?: number } }).pagination?.total
-        setTotalCount(
-          typeof total === "number"
-            ? total
-            : (currentPage - 1) * pageSize + response.data.length + (response.data.length === pageSize ? 1 : 0)
-        )
-      } else {
-        setBillings([])
-        setTotalCount(0)
-      }
-    } catch (err: any) {
-      console.error('Error fetching billings:', err)
-      setError(err.message || 'Failed to load billings')
-      setBillings([])
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleDownload = (billing: Transaction) => {
     // Implement download functionality

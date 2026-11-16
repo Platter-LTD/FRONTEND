@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FileText } from "lucide-react";
 import { BankTransferPaymentDrawer } from "@/components/BankTransferPaymentDrawer";
@@ -11,9 +11,11 @@ import { Card } from "@/components/ui/card";
 import { FaCircleArrowRight } from "react-icons/fa6";
 import { MdOutlineAddCard } from "react-icons/md";
 import { CardAddedDrawer } from "@/components/CardAddedDrawer";
-import paymentService from "@/lib/services/paymentService";
-import { billingService } from "@/lib/services/billing-service";
 import { toast } from "react-toastify";
+import { useOneTimeBillings } from "@/hooks/queries/billing";
+import { usePaymentActions, usePaymentMethods } from "@/hooks/queries/payments";
+
+const DEFAULT_BILL = { amount: 10000, status: "Pending", upcomingAmount: 10000, dueDate: "24 Sep, 2025" };
 
 export function PaymentMethodTab() {
   const [cardDrawerOpen, setCardDrawerOpen] = useState(false);
@@ -21,17 +23,21 @@ export function PaymentMethodTab() {
   const [addCardDrawerOpen, setAddCardDrawerOpen] = useState(false);
   const [cardAddedDrawerOpen, setCardAddedDrawerOpen] = useState(false);
   const [addedCardNumber, setAddedCardNumber] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // Current bill state
-  const [currentBill, setCurrentBill] = useState({
-    amount: 10000,
-    status: "Pending",
-    upcomingAmount: 10000,
-    dueDate: "24 Sep, 2025"
-  });
+  const billingQuery = useOneTimeBillings({ limit: 1 });
+  const currentBill = useMemo(() => {
+    const bill = billingQuery.data?.success ? billingQuery.data.data?.[0] : undefined;
+    if (!bill) return DEFAULT_BILL;
+    return {
+      amount: bill.amount || 10000,
+      status: bill.status || "Pending",
+      upcomingAmount: bill.amount || 10000,
+      dueDate: bill.dueDate ? new Date(bill.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : "24 Sep, 2025"
+    };
+  }, [billingQuery.data]);
 
   // Bank transfer details from API
   const [bankDetails, setBankDetails] = useState({
@@ -42,61 +48,32 @@ export function PaymentMethodTab() {
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
 
   // Saved cards from API
-  const [cards, setCards] = useState<PaymentCard[]>([]);
+  const methodsQuery = usePaymentMethods();
+  const paymentActions = usePaymentActions();
+  const isLoading = methodsQuery.isLoading;
+  // Saved card methods → display cards.
+  const cards: PaymentCard[] = useMemo(
+    () =>
+      methodsQuery.data?.success && methodsQuery.data.data
+        ? methodsQuery.data.data
+            .filter((method: any) => method.type === 'card')
+            .map((method: any) => ({
+              id: method.id,
+              brand: method.cardBrand?.toLowerCase() === 'mastercard' ? 'mastercard' : 'visa',
+              number: method.cardLast4 ? `****${method.cardLast4}` : '****',
+              name: method.cardholderName || 'Card Holder',
+              expiryDate: method.cardExpMonth && method.cardExpYear
+                ? `${String(method.cardExpMonth).padStart(2, '0')}/${String(method.cardExpYear).slice(-2)}`
+                : '**/**',
+              isDefault: method.isDefault,
+            }))
+        : [],
+    [methodsQuery.data],
+  );
 
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
 
   // Load payment methods and billing info on mount
-  useEffect(() => {
-    loadPaymentMethods();
-    loadBillingInfo();
-  }, []);
-
-  const loadPaymentMethods = async () => {
-    try {
-      setIsLoading(true);
-      const response = await paymentService.methods.getPaymentMethods();
-      if (response.success && response.data) {
-        // Transform API payment methods to PaymentCard format
-        const paymentCards: PaymentCard[] = response.data
-          .filter((method: any) => method.type === 'card')
-          .map((method: any) => ({
-            id: method.id,
-            brand: method.cardBrand?.toLowerCase() === 'mastercard' ? 'mastercard' : 'visa',
-            number: method.cardLast4 ? `****${method.cardLast4}` : '****',
-            name: method.cardholderName || 'Card Holder',
-            expiryDate: method.cardExpMonth && method.cardExpYear 
-              ? `${String(method.cardExpMonth).padStart(2, '0')}/${String(method.cardExpYear).slice(-2)}` 
-              : '**/**',
-            isDefault: method.isDefault,
-          }));
-        setCards(paymentCards);
-      }
-    } catch (err) {
-      console.error('Error loading payment methods:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadBillingInfo = async () => {
-    try {
-      // Get one-time billings to show current bill
-      const response = await billingService.getOneTimeBillings({ limit: 1 });
-      if (response.success && response.data && response.data.length > 0) {
-        const bill = response.data[0];
-        setCurrentBill({
-          amount: bill.amount || 10000,
-          status: bill.status || "Pending",
-          upcomingAmount: bill.amount || 10000,
-          dueDate: bill.dueDate ? new Date(bill.dueDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : "24 Sep, 2025"
-        });
-      }
-    } catch (err) {
-      console.error('Error loading billing info:', err);
-    }
-  };
-
   // Handle card payment
   const handleCardPayment = async () => {
     if (!selectedCard) return;
@@ -105,7 +82,7 @@ export function PaymentMethodTab() {
     setError(null);
     
     try {
-      const response = await paymentService.initiation.initiateCardPayment({
+      const response = await paymentActions.initiateCardPayment({
         amount: currentBill.amount,
         currency: 'NGN',
         cardNumber: '', // Card is already saved, using saved card ID
@@ -121,7 +98,7 @@ export function PaymentMethodTab() {
         // Payment successful
         setCardDrawerOpen(false);
         toast.success('Payment successful! 🎉');
-        loadBillingInfo(); // Refresh billing info
+        void billingQuery.refetch(); // Refresh billing info
       } else {
         setError(response.error || 'Payment failed');
         toast.error(`Payment failed: ${response.error}`);
@@ -141,7 +118,7 @@ export function PaymentMethodTab() {
     setError(null);
     
     try {
-      const response = await paymentService.initiation.initiateBankTransfer({
+      const response = await paymentActions.initiateBankTransfer({
         amount: currentBill.amount,
         currency: 'NGN',
         description: `Bill payment - ${currentBill.amount}`,
@@ -183,14 +160,14 @@ export function PaymentMethodTab() {
   const handleBankTransferPaid = async () => {
     if (paymentReference) {
       try {
-        const response = await paymentService.verification.verifyPayment({
+        const response = await paymentActions.verifyPayment({
           reference: paymentReference,
         });
         
         if (response.success && response.data?.verified) {
           // Bank transfer verified
           toast.success('Payment verified successfully! ✅');
-          loadBillingInfo();
+          void billingQuery.refetch();
         } else {
           toast.info('Payment verification pending. We will confirm once the transfer is received.', { autoClose: 5000 });
         }
@@ -211,7 +188,7 @@ export function PaymentMethodTab() {
     try {
       const [expiryMonth, expiryYear] = newCard.expiry.split('/');
       
-      const response = await paymentService.methods.addPaymentMethod({
+      const response = await paymentActions.addPaymentMethod({
         type: 'card',
         cardNumber: newCard.cardNumber,
         expiryMonth,
@@ -222,7 +199,6 @@ export function PaymentMethodTab() {
       
       if (response.success) {
         // Reload cards from API to get the correctly formatted card
-        await loadPaymentMethods();
         setAddCardDrawerOpen(false);
         setAddedCardNumber(`****${newCard.cardNumber.slice(-4)}`);
         setCardAddedDrawerOpen(true);
@@ -240,10 +216,9 @@ export function PaymentMethodTab() {
   // Handle removing a card
   const handleRemoveCard = async (cardId: string) => {
     try {
-      const response = await paymentService.methods.deletePaymentMethod(cardId);
+      const response = await paymentActions.deletePaymentMethod(cardId);
       if (response.success) {
         // Remove card from local state
-        setCards(cards.filter(card => card.id !== cardId));
         // Clear selection if this was the selected card
         if (selectedCard === cardId) {
           setSelectedCard(null);

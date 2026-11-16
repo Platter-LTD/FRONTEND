@@ -1,48 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { Card } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
-import { billingService } from '@/lib/services/billing-service'
 import { formatCurrency, formatDate, getRelativeTime } from '@/lib/utils/billing-utils'
 import type { OneTimeBilling } from '@/types/billing'
+import { useOneTimeBillings } from '@/hooks/queries/billing'
 
 export function BillingSummaryCard() {
-  const [currentBill, setCurrentBill] = useState<OneTimeBilling | null>(null)
-  const [upcomingBill, setUpcomingBill] = useState<OneTimeBilling | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetchBillingData()
-  }, [])
-
-  const fetchBillingData = async () => {
-    try {
-      setLoading(true)
-      // Get user ID from localStorage or auth context
-      const userId = typeof window !== 'undefined' ? localStorage.getItem('userId') || 'current-user' : 'current-user'
-
-      const response = await billingService.getOneTimeBillings({ limit: 10 })
-
-      if (response.success && response.data) {
-        const bills = response.data
-
-        // Find current pending bill
-        const pending = bills.find(b => b.status === 'pending')
-        setCurrentBill(pending || null)
-
-        // Find next upcoming bill (future due date)
-        const upcoming = bills
-          .filter(b => b.status === 'pending' && new Date(b.dueDate) > new Date())
-          .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
-        setUpcomingBill(upcoming || null)
-      }
-    } catch (err) {
-      console.error('Error fetching billing data:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const query = useOneTimeBillings({ limit: 10 })
+  const loading = query.isLoading
+  const { currentBill, upcomingBill } = useMemo(() => {
+    const bills: OneTimeBilling[] = query.data?.success && query.data.data ? query.data.data : []
+    // Current = first pending bill; upcoming = earliest pending bill with a future due date.
+    const upcoming = bills
+      .filter(b => b.status === 'pending' && new Date(b.dueDate) > new Date())
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
+    return { currentBill: bills.find(b => b.status === 'pending') ?? null, upcomingBill: upcoming ?? null }
+  }, [query.data])
 
   if (loading) {
     return (

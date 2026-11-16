@@ -3,12 +3,11 @@
 import { ComplianceHeader, ComplianceLayout, ComplianceStepper, type ComplianceStep } from "@/components/compliance/compliance-ui"
 import { useEffect, useMemo, useState } from "react"
 import { ComplianceFormProvider } from "@/providers/ComplianceFormProvider"
-import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchKycStatusThunk } from "@/store/complianceSlice"
 
 import BusinessInfoTab from "@/components/forms/BusinessInfoTab"
 import BusinessDocumentWrapper from "@/components/forms/BusinessDocumentWrapper"
 import ShareholderInfo from "@/components/forms/ShareholderInfo"
+import { useKycStatus } from "@/hooks/queries/compliance"
 
 const STEP_DESCRIPTIONS: Record<string, string> = {
     "business-info": "Company profile & survey",
@@ -24,9 +23,8 @@ interface TabCompletion {
 }
 
 export default function ComplianceDashboard() {
-    const dispatch = useAppDispatch()
-    /** Same KYC status as the sidebar (`fetchKycStatusThunk` → approved unlocks merchant nav). */
-    const kycApproved = useAppSelector((s) => s.compliance.isApproved)
+    /** Same cached KYC status as the sidebar (approved unlocks merchant nav). */
+    const kycApproved = useKycStatus().isApproved
 
     const [activeTab, setActiveTab] = useState("business-info")
     const [completion, setCompletion] = useState<TabCompletion>({
@@ -34,10 +32,6 @@ export default function ComplianceDashboard() {
         "business-document": false,
         "shareholder-info": false,
     })
-
-    useEffect(() => {
-        void dispatch(fetchKycStatusThunk())
-    }, [dispatch])
 
     const markComplete = (tabId: keyof TabCompletion) => {
         setCompletion((prev) => ({ ...prev, [tabId]: true }))

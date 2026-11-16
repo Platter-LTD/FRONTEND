@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react"
 import { toast } from "react-toastify"
-import api from "@/lib/api"
+import { useAuthActions } from "@/hooks/queries/auth"
 
 // Only allow in development mode
 const IS_PRODUCTION = process.env.NODE_ENV === 'production'
 
 export default function TestBypassPage() {
+  const authActions = useAuthActions()
   const [loading, setLoading] = useState(false)
   const [blocked, setBlocked] = useState(false)
 
@@ -35,7 +36,7 @@ export default function TestBypassPage() {
     setLoading(true)
     try {
       // Call the bypass endpoint
-      const response = await api.get("/api/v1/test/bypass-auth")
+      const response = await authActions.get<any>("/v1/test/bypass-auth")
 
         if (response.data.success) {
         const { accessToken, refreshToken } = response.data.data

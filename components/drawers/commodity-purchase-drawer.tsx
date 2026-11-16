@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import TextInput from "@/components/text-input"
 import InputGroup from "@/components/input-group"
-import { commodityApi } from "@/lib/services/accountService"
 import { Loader2, TrendingUp, TrendingDown } from "lucide-react"
+import { useApplicationActions } from "@/hooks/queries/applications"
 
 interface CommodityPurchaseDrawerProps {
   isOpen: boolean
@@ -42,6 +42,7 @@ export default function CommodityPurchaseDrawer({
   product,
   userId,
 }: CommodityPurchaseDrawerProps) {
+  const applicationActions = useApplicationActions()
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -131,7 +132,7 @@ export default function CommodityPurchaseDrawer({
     setError(null)
 
     try {
-      const result = await commodityApi.buy({
+      const result = await applicationActions.buyCommodity({
         product_id: product.id,
         user_id: "", // Will be set from auth context in real usage
         amount: totalAmount!,

@@ -35,20 +35,7 @@ export async function fetchCountries(): Promise<CountryOption[]> {
   if (cached?.length) return cached
   if (!fetchPromise) {
     fetchPromise = (async () => {
-      try {
-        // Prefer same-origin BFF (works in browser without CSP/CORS issues).
-        const res = await fetch("/api/countries", { cache: "force-cache" })
-        if (res.ok) {
-          const mapped = normalizeCountryRows(await res.json())
-          if (mapped.length) {
-            cached = mapped
-            return mapped
-          }
-        }
-      } catch {
-        // Fall through to bundled dataset.
-      }
-
+      // Countries are bundled with the app (no network call).
       const fallback = bundledCountries()
       if (!fallback.length) throw new Error("No countries available")
       cached = fallback

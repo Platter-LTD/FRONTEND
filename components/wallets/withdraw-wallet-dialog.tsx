@@ -18,7 +18,7 @@ import {
 import { NIGERIAN_BANKS } from "@/lib/ngBanks"
 import { WALLET_BRAND } from "@/lib/walletBrand"
 import { formatPlataWalletAmount, plataWalletDisplayCurrency } from "@/lib/walletDisplay"
-import { billingApi } from "@/lib/services/walletService"
+import { useRepaymentPayout } from "@/hooks/queries/wallets"
 
 export type WithdrawWalletMode = "user" | "merchant-settlement"
 
@@ -57,6 +57,7 @@ export function WithdrawWalletDialog({
   const [amount, setAmount] = useState("")
   const [narration, setNarration] = useState("Wallet withdrawal")
   const [submitting, setSubmitting] = useState(false)
+  const payout = useRepaymentPayout()
   const payoutReferenceRef = useRef(newPayoutReference())
 
   useEffect(() => {
@@ -131,7 +132,7 @@ export function WithdrawWalletDialog({
         return
       }
 
-      const res = await billingApi.repaymentPayout(payload, appId)
+      const res = await payout.mutateAsync({ payload, appId })
       const duplicate = Boolean(res.duplicate)
       if (duplicate) toast.message("Duplicate payout — already processed")
       else toast.success(res.message || "Repayment payout initiated")

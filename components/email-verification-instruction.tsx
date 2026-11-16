@@ -1,7 +1,7 @@
 "use client"
 import Image from "next/image"
-import { apiClient } from "@/lib/api"
 import { ENDPOINTS } from "@/lib/endpoints"
+import { useAuthActions } from "@/hooks/queries/auth"
 
 type Props = {
   email: string
@@ -11,6 +11,7 @@ type Props = {
 }
 
 export function EmailVerificationInstruction({ email, onResend, message, isResending }: Props) {
+  const authActions = useAuthActions()
   const handleResend = async () => {
     if (onResend) {
       try {
@@ -24,7 +25,7 @@ export function EmailVerificationInstruction({ email, onResend, message, isResen
     // fallback: use auth proxy resend OTP (consolidated Auth class)
     if (!email) return
     try {
-      await apiClient.post(
+      await authActions.post(
         ENDPOINTS.auth.otp.resendEmail,
         { identifier: email, channel: "email", purpose: "verification" },
         { includeAuth: false }

@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import TextInput from "@/components/text-input"
 import InputGroup from "@/components/input-group"
-import { loanApi, pricingApi } from "@/lib/services/accountService"
+import { pricingApi } from '@/lib/services/accountService'
 import { Loader2 } from "lucide-react"
+import { useApplicationActions } from "@/hooks/queries/applications"
 
 interface LoanApplicationDrawerProps {
   isOpen: boolean
@@ -49,6 +50,7 @@ export default function LoanApplicationDrawer({
   product,
   userId,
 }: LoanApplicationDrawerProps) {
+  const applicationActions = useApplicationActions()
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -158,7 +160,7 @@ export default function LoanApplicationDrawer({
     setError(null)
 
     try {
-      const result = await loanApi.apply({
+      const result = await applicationActions.applyLoan({
         product_id: product.id,
         merchant_id: product.merchantId,
         user_id: userId,

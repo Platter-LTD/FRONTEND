@@ -5,10 +5,11 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { SpringRegistrationForm } from "@/components/spring-registration-form"
 import { toast } from "react-toastify"
-import api from "@/lib/api"
 import { registrationPasswordError } from "@/lib/passwordRules"
+import { useAuthActions } from "@/hooks/queries/auth"
 
 export default function SignupPage() {
+  const authActions = useAuthActions()
     const [isSubmitting, setIsSubmitting] = useState(false)
     const router = useRouter()
 
@@ -54,7 +55,7 @@ export default function SignupPage() {
             }
 
             // Call the registration API - production endpoint
-            const response = await api.post("/auth/register/merchant", registrationData)
+            const response = await authActions.post("/v1/registration/merchant", registrationData)
 
             if (response.data) {
                 // Store email in sessionStorage for verification flow
