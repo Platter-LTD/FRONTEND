@@ -4,209 +4,111 @@ import * as React from "react"
 import { DrawerPanel } from "@/components/ui/drawer-panel"
 import { Upload, FileText } from "lucide-react"
 import { ComplianceService } from "@/lib/services/complianceService"
-import { useAuth } from "@/hooks/useAuth"
 import { toast } from "react-toastify"
 import { useComplianceForm } from "@/providers/ComplianceFormProvider"
-import { pickShareholderPhone } from "@/lib/pickShareholderPhone"
-import { pickShareholderKycUrl } from "@/lib/pickShareholderKycUrl"
 import { isPdfFile } from "@/lib/isPdfFile"
+import { AddressAutocomplete } from "@/components/AddressAutocomplete"
+import { toBeneficialOwnerPayload, toShareholderRow } from "@/lib/shareholders"
 
 const formatFileSize = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 
+const MAX_FILE_BYTES = 5 * 1024 * 1024
+const ELEVEN_DIGITS = /^\d{11}$/
+
+const EMPTY_FORM = { fullName: "", email: "", phoneNumber: "", bvn: "", nin: "", address: "" }
+
 export const CreateShareholderDrawer: React.FC = () => {
   const { shareholderDrawerOpen, setShareholderDrawerOpen, addShareholder } = useComplianceForm()
-  const { user } = useAuth()
-  const uboInputRef = React.useRef<HTMLInputElement>(null)
-  const bankInputRef = React.useRef<HTMLInputElement>(null)
+  const addressInputRef = React.useRef<HTMLInputElement>(null)
 
-  const [formData, setFormData] = React.useState({
-    fullName: "",
-    email: "",
-    phoneNumber: "",
-    bankAccount: "",
-  })
-  const [uboFile, setUboFile] = React.useState<File | null>(null)
-  const [bankFile, setBankFile] = React.useState<File | null>(null)
+  const [formData, setFormData] = React.useState(EMPTY_FORM)
+  // True only once the address was picked from a Google Places suggestion.
+  const [addressVerified, setAddressVerified] = React.useState(false)
+  const [addressFile, setAddressFile] = React.useState<File | null>(null)
   const [loading, setLoading] = React.useState(false)
 
-  const handleChange = (field: string, value: string) => {
+  const handleChange = (field: keyof typeof EMPTY_FORM, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleUboSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDigits = (field: "bvn" | "nin", value: string) => handleChange(field, value.replace(/\D/g, "").slice(0, 11))
+
+  const handleAddressFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target
     const f = input.files?.[0] ?? null
     input.value = ""
-    if (!f) {
-      setUboFile(null)
-      return
-    }
+    if (!f) return setAddressFile(null)
     if (!isPdfFile(f)) {
       toast.error(`${f.name} must be a PDF file`)
-      setUboFile(null)
-      return
+      return setAddressFile(null)
     }
-    setUboFile(f)
-  }
-
-  const handleBankSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const input = e.target
-    const f = input.files?.[0] ?? null
-    input.value = ""
-    if (!f) {
-      setBankFile(null)
-      return
+    if (f.size > MAX_FILE_BYTES) {
+      toast.error(`${f.name} must be 5MB or smaller`)
+      return setAddressFile(null)
     }
-    if (!isPdfFile(f)) {
-      toast.error(`${f.name} must be a PDF file`)
-      setBankFile(null)
-      return
-    }
-    setBankFile(f)
+    setAddressFile(f)
   }
 
-  const clearUbo = () => {
-    setUboFile(null)
-    if (uboInputRef.current) uboInputRef.current.value = ""
-  }
-
-  const clearBank = () => {
-    setBankFile(null)
-    if (bankInputRef.current) bankInputRef.current.value = ""
-  }
-
-  // Reset files when drawer closes so next open is clean
+  // Start clean each time the drawer opens.
   React.useEffect(() => {
     if (!shareholderDrawerOpen) {
-      setUboFile(null)
-      setBankFile(null)
-      if (uboInputRef.current) uboInputRef.current.value = ""
-      if (bankInputRef.current) bankInputRef.current.value = ""
+      setFormData(EMPTY_FORM)
+      setAddressVerified(false)
+      setAddressFile(null)
+      if (addressInputRef.current) addressInputRef.current.value = ""
     }
   }, [shareholderDrawerOpen])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.fullName || !formData.email) {
-      toast.error("Please provide full name and email")
-      return
-    }
-    if (!formData.bankAccount) {
-      toast.error("Bank Account is required")
-      return
-    }
-    if (!uboFile || !bankFile) {
-      toast.error("Please upload UBO and Bank Statement")
-      return
-    }
-
-    const maxSize = 5 * 1024 * 1024
-    if (uboFile && uboFile.size > maxSize) return toast.error("UBO file exceeds 5MB")
-    if (bankFile && bankFile.size > maxSize) return toast.error("Bank statement exceeds 5MB")
-
-    const currentToken = typeof window !== "undefined" ? (await import("@/lib/cookieAuth")).getAccessToken() : null
-    if (!currentToken) {
-      toast.error("No access token found. Please log in and try again.")
-      return
-    }
+    const bvn = formData.bvn.trim()
+    const nin = formData.nin.trim()
+    if (!formData.fullName.trim() || !formData.email.trim()) return toast.error("Please provide full name and email")
+    if (!bvn && !nin) return toast.error("Enter the shareholder's BVN or NIN")
+    if (bvn && !ELEVEN_DIGITS.test(bvn)) return toast.error("BVN must be 11 digits")
+    if (nin && !ELEVEN_DIGITS.test(nin)) return toast.error("NIN must be 11 digits")
+    if (!formData.address.trim() || !addressVerified) return toast.error("Select the shareholder's address from the suggestions")
+    if (!addressFile) return toast.error("Please upload the proof of address")
 
     setLoading(true)
     try {
-      // Upload UBO and Bank Statement to get fileUrl (per docs: upload first, then send URLs)
-      toast.info("Uploading documents…")
-      const uboUpload = await ComplianceService.uploadDocument(uboFile)
-      if (!uboUpload.success || !uboUpload.url) {
-        toast.error(uboUpload.error || "UBO upload failed")
-        return
-      }
-      const bankUpload = await ComplianceService.uploadDocument(bankFile)
-      if (!bankUpload.success || !bankUpload.url) {
-        toast.error(bankUpload.error || "Bank statement upload failed")
+      // Upload first, then send the returned URL (per API docs).
+      const upload = await ComplianceService.uploadDocument(addressFile)
+      if (!upload.success || !upload.url) {
+        toast.error(upload.error || "Proof of address upload failed")
         return
       }
 
-      const now = new Date().toISOString()
-      const bankStatement = {
-        fileName: bankFile.name,
-        fileType: bankFile.type || "application/pdf",
-        fileSize: bankFile.size,
-        fileUrl: bankUpload.url,
-        uploadDate: now,
-      }
-      const uboDocument = {
-        fileName: uboFile.name,
-        fileType: uboFile.type || "application/pdf",
-        fileSize: uboFile.size,
-        fileUrl: uboUpload.url,
-        uploadDate: now,
-      }
-
-      // API shape per compliance-ms docs: fullName, ownershipPercentage, bankStatement, status, kyc; optional email, bvn, bankAccount, uboDocument
       const newShareholder = {
         fullName: formData.fullName.trim(),
-        email: formData.email.trim() || undefined,
+        email: formData.email.trim(),
         phoneNumber: formData.phoneNumber.trim() || undefined,
-        bankAccount: formData.bankAccount.trim() || undefined,
-        ownershipPercentage: 100,
-        bankStatement,
-        uboDocument,
-        status: "pending" as const,
-        kyc: {
-          url: "https://liveness-test.example.com/placeholder",
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          status: "pending" as const,
+        bvn: bvn || undefined,
+        nin: nin || undefined,
+        address: formData.address.trim(),
+        addressDocument: {
+          fileName: addressFile.name,
+          fileType: addressFile.type || "application/pdf",
+          fileSize: addressFile.size,
+          fileUrl: upload.url,
+          uploadDate: new Date().toISOString(),
         },
+        status: "pending" as const,
       }
 
-      const existing: any[] = await ComplianceService.getShareholdersForCurrentMerchant().catch(() => [])
-      const payload = [...existing, newShareholder]
+      // PUT replaces the full list: resend existing rows (only spec fields) plus the new one.
+      const existing: unknown[] = await ComplianceService.getShareholdersForCurrentMerchant().catch(() => [])
+      const payload = [...existing.map(toBeneficialOwnerPayload), newShareholder]
+      const res = (await ComplianceService.upsertShareholdersForCurrentMerchant(payload)) as
+        | { data?: { shareholder?: unknown }; shareholder?: unknown }
+        | undefined
+      const saved = res?.data?.shareholder ?? res?.shareholder ?? newShareholder
 
-      const res = await ComplianceService.upsertShareholdersForCurrentMerchant(payload)
-      const resAny = res as Record<string, unknown> & { data?: Record<string, unknown> }
-      const shareholder =
-        (resAny?.data?.shareholder as Record<string, unknown> | undefined) ??
-        (resAny?.shareholder as Record<string, unknown> | undefined) ??
-        (newShareholder as unknown as Record<string, unknown>)
-
-      const kycUrl =
-        pickShareholderKycUrl(shareholder) ||
-        pickShareholderKycUrl(resAny?.data) ||
-        (Array.isArray((resAny?.data as { shareholders?: unknown[] })?.shareholders)
-          ? pickShareholderKycUrl(
-              (resAny.data as { shareholders: unknown[] }).shareholders.find(
-                (x) =>
-                  typeof x === "object" &&
-                  x !== null &&
-                  String((x as { email?: string }).email ?? "").toLowerCase() === formData.email.trim().toLowerCase(),
-              ),
-            )
-          : "")
-
-      addShareholder({
-        name: String(shareholder.fullName ?? formData.fullName),
-        email: String(shareholder.email ?? formData.email),
-        phone: pickShareholderPhone(shareholder) || formData.phoneNumber.trim() || "",
-        date: new Date().toISOString().slice(0, 16).replace("T", " "),
-        kycUrl: kycUrl || undefined,
-        status:
-          String(shareholder.status ?? "").toUpperCase() === "APPROVED" || shareholder.status === "Successful"
-            ? "Successful"
-            : "Pending",
-      })
-
+      addShareholder(toShareholderRow(saved))
       setShareholderDrawerOpen(false)
-      if (kycUrl) {
-        try {
-          await navigator.clipboard.writeText(kycUrl)
-          toast.success("Shareholder created. KYC link copied — use “Email link” in the table to open a draft to their address.")
-        } catch {
-          toast.success("Shareholder created. Use “Copy link” in the table to copy the KYC URL.")
-        }
-      } else {
-        toast.success("Shareholder created successfully.")
-      }
+      toast.success("Shareholder created successfully.")
     } catch (err: any) {
       const data = err?.response?.data
       const msg = data?.error ?? data?.message ?? err?.message ?? "Failed to create shareholder"
@@ -223,153 +125,118 @@ export const CreateShareholderDrawer: React.FC = () => {
     }
   }
 
+  const textField = (field: keyof typeof EMPTY_FORM, placeholder: string, type = "text") => (
+    <div className="border rounded-lg p-5 bg-white shadow-sm">
+      <input
+        type={type}
+        placeholder={placeholder}
+        value={formData[field]}
+        onChange={(e) => handleChange(field, e.target.value)}
+        className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
+      />
+    </div>
+  )
+
+  const idField = (field: "bvn" | "nin", placeholder: string) => (
+    <div className="border rounded-lg p-5 bg-white shadow-sm">
+      <input
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder={placeholder}
+        value={formData[field]}
+        onChange={(e) => handleDigits(field, e.target.value)}
+        className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400 tabular-nums"
+      />
+    </div>
+  )
+
   return (
     <DrawerPanel
-      open={!!(shareholderDrawerOpen)}
+      open={!!shareholderDrawerOpen}
       onOpenChange={(next) => {
         if (!next) setShareholderDrawerOpen(false)
       }}
       title="Create shareholder"
       className="sm:max-w-[52rem]"
-      description="Upload the shareholder’s documents and details."
+      description="Add the shareholder's details, BVN or NIN, and proof of address."
       bodyClassName="p-0 gap-0"
     >
-    <form
-      onSubmit={handleSubmit}
-      className="flex-1 flex flex-col min-h-0 px-6 sm:px-10 py-10 w-full max-w-full mx-auto overflow-y-auto"
-    >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full min-w-0">
-        <div className="flex flex-col gap-6 min-w-0">
-          <div className="flex items-center justify-between border rounded-lg p-5 bg-white shadow-sm flex-wrap gap-2">
-            <div className="flex items-center space-x-3 min-w-0 flex-1">
-              <Upload className="w-5 h-5 text-gray-400 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-700">Proof of Address of UBO</p>
-                <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
-                {uboFile && (
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1 text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded">
-                      <FileText className="w-4 h-4 text-gray-500" />
-                      <span className="truncate max-w-[160px]" title={uboFile.name}>
-                        {uboFile.name}
-                      </span>
-                      <span className="text-gray-500 text-xs">({formatFileSize(uboFile.size)})</span>
-                    </span>
-                    <button type="button" onClick={clearUbo} className="text-xs text-red-600 hover:underline">
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <label
-              className="px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors shrink-0 cursor-pointer"
-              style={{ backgroundColor: "#9A813F", color: "#fff" }}
-            >
-              <input
-                ref={uboInputRef}
-                type="file"
-                className="hidden"
-                accept=".pdf,application/pdf"
-                onChange={handleUboSelect}
-              />
-              {uboFile ? "Change file" : "Upload"}
-            </label>
-          </div>
-
-          <div className="border rounded-lg p-5 bg-white shadow-sm">
-            <input
-              type="text"
-              placeholder="Full Name"
-              value={formData.fullName}
-              onChange={(e) => handleChange("fullName", e.target.value)}
-              className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-            />
-          </div>
-
-          <div className="border rounded-lg p-5 bg-white shadow-sm">
-            <input
-              type="email"
-              placeholder="Email"
-              value={formData.email}
-              onChange={(e) => handleChange("email", e.target.value)}
-              className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-            />
-          </div>
-
-          <div className="border rounded-lg p-5 bg-white shadow-sm">
-            <input
-              type="tel"
-              placeholder="Phone Number"
-              value={formData.phoneNumber}
-              onChange={(e) => handleChange("phoneNumber", e.target.value)}
-              className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-6 min-w-0">
-          {/* BVN field intentionally disabled for current compliance flow */}
-
-          <div className="border rounded-lg p-5 bg-white shadow-sm">
-            <input
-              type="text"
-              placeholder="Bank Account"
-              value={formData.bankAccount}
-              onChange={(e) => handleChange("bankAccount", e.target.value)}
-              className="w-full bg-transparent outline-none text-gray-900 placeholder-gray-400"
-            />
-          </div>
-
-          <div className="flex items-center justify-between border rounded-lg p-5 bg-white shadow-sm flex-wrap gap-2">
-            <div className="flex items-center space-x-3 min-w-0 flex-1">
-              <Upload className="w-5 h-5 text-gray-400 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-700">Bank Statement</p>
-                <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
-                {bankFile && (
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1 text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded">
-                      <FileText className="w-4 h-4 text-gray-500" />
-                      <span className="truncate max-w-[160px]" title={bankFile.name}>
-                        {bankFile.name}
-                      </span>
-                      <span className="text-gray-500 text-xs">({formatFileSize(bankFile.size)})</span>
-                    </span>
-                    <button type="button" onClick={clearBank} className="text-xs text-red-600 hover:underline">
-                      Remove
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <label
-              className="px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors shrink-0 cursor-pointer"
-              style={{ backgroundColor: "#9A813F", color: "#fff" }}
-            >
-              <input
-                ref={bankInputRef}
-                type="file"
-                className="hidden"
-                accept=".pdf,application/pdf"
-                onChange={handleBankSelect}
-              />
-              {bankFile ? "Change file" : "Upload"}
-            </label>
-          </div>
-        </div>
-      </div>
-
-      <button
-        type="submit"
-        disabled={loading}
-        className="mt-8 w-full text-white py-3 rounded-md font-medium hover:opacity-90 transition-colors disabled:opacity-50 shrink-0"
-        style={{ backgroundColor: "#9A813F" }}
+      <form
+        onSubmit={handleSubmit}
+        className="flex-1 flex flex-col min-h-0 px-6 sm:px-10 py-10 w-full max-w-full mx-auto overflow-y-auto"
       >
-        {loading ? "Saving..." : "Save Shareholder"}
-      </button>
-    </form>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full min-w-0">
+          <div className="flex flex-col gap-6 min-w-0">
+            {textField("fullName", "Full Name")}
+            {textField("email", "Email", "email")}
+            {textField("phoneNumber", "Phone Number", "tel")}
+          </div>
 
+          <div className="flex flex-col gap-6 min-w-0">
+            {idField("bvn", "BVN (11 digits)")}
+            {idField("nin", "NIN (11 digits)")}
+            <p className="-mt-4 text-xs text-gray-500">Provide a BVN or NIN (at least one).</p>
+          </div>
+
+          <div className="md:col-span-2 flex flex-col gap-6 min-w-0">
+            <AddressAutocomplete
+              value={formData.address}
+              verified={addressVerified}
+              onChange={(text, verified) => {
+                handleChange("address", text)
+                setAddressVerified(verified)
+              }}
+            />
+
+            <div className="flex items-center justify-between border rounded-lg p-5 bg-white shadow-sm flex-wrap gap-2">
+              <div className="flex items-center space-x-3 min-w-0 flex-1">
+                <Upload className="w-5 h-5 text-gray-400 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-700">Proof of Address</p>
+                  <p className="text-xs text-gray-500">PDF format • Max. 5MB</p>
+                  {addressFile && (
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <span className="inline-flex items-center gap-1 text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                        <FileText className="w-4 h-4 text-gray-500" />
+                        <span className="truncate max-w-[160px]" title={addressFile.name}>
+                          {addressFile.name}
+                        </span>
+                        <span className="text-gray-500 text-xs">({formatFileSize(addressFile.size)})</span>
+                      </span>
+                      <button type="button" onClick={() => setAddressFile(null)} className="text-xs text-red-600 hover:underline">
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <label
+                className="px-4 py-2 rounded-md text-sm font-medium shadow-sm transition-colors shrink-0 cursor-pointer"
+                style={{ backgroundColor: "#9A813F", color: "#fff" }}
+              >
+                <input
+                  ref={addressInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,application/pdf"
+                  onChange={handleAddressFileSelect}
+                />
+                {addressFile ? "Change file" : "Upload"}
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="mt-8 w-full text-white py-3 rounded-md font-medium hover:opacity-90 transition-colors disabled:opacity-50 shrink-0"
+          style={{ backgroundColor: "#9A813F" }}
+        >
+          {loading ? "Saving..." : "Save Shareholder"}
+        </button>
+      </form>
     </DrawerPanel>
   )
 }

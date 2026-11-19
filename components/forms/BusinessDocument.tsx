@@ -10,6 +10,7 @@ import { ComplianceService } from "@/lib/services/complianceService";
 import { isPdfFile } from "@/lib/isPdfFile";
 import { useAuth } from "@/hooks/useAuth";
 import { useComplianceForm } from "@/providers/ComplianceFormProvider";
+import { useBusinessDocuments } from "@/hooks/queries/compliance";
 
 interface Props {
     onContinue: (missingIds?: string[]) => void;
@@ -123,6 +124,8 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
   const requiredCoreIds = ["coi", "shareholders", "bank_statement"]; // must-have for middleware + sensible minimum
 
   const [submitting, setSubmitting] = useState(false);
+  // Documents already saved on the server (GET /api/v1/kyc/business/documents), keyed by tile id.
+  const saved = useBusinessDocuments().data?.byTile ?? {};
 
   // Remove previous sessionStorage hydration; we now keep in context
 
@@ -170,22 +173,28 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
       // collect selected files from context
       const fileEntries = Object.entries(businessFiles).filter(([, f]) => !!f) as Array<[string, File]>;
       const selectedIds = new Set<string>();
+      const hasSaved = (id: string) => !!saved[id];
 
       // Enforce that required business documents are selected (license is optional)
       const requiredIds = allIds.filter(id => id !== "license");
       for (const [key] of fileEntries) selectedIds.add(key);
-      const missing = requiredIds.filter((id) => !selectedIds.has(id));
+      const missing = requiredIds.filter((id) => !selectedIds.has(id) && !hasSaved(id));
       if (missing.length > 0) {
         toast.error('Please upload all required documents before continuing.');
         return;
       }
-      if (!fileEntries.some(([key]) => key === 'director_id')) {
+      // Everything is already on file and nothing new was picked: nothing to resubmit.
+      if (fileEntries.length === 0) {
+        onContinue();
+        return;
+      }
+      if (!fileEntries.some(([key]) => key === 'director_id') && !hasSaved('director_id')) {
         toast.error('Please upload Director Identification (required by compliance).');
         return;
       }
 
       // Upload each file to compliance service to get real URLs (backend requires these)
-      const uploadResults: Array<{ key: string; file: File; url: string }> = [];
+      const uploadResults: Array<{ key: string; file: { name: string; size: number }; url: string }> = [];
       for (const [key, f] of fileEntries) {
         const up = await ComplianceService.uploadDocument(f) as { success?: boolean; url?: string; error?: string };
         if (!up?.success || !up?.url) {
@@ -194,8 +203,16 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
         }
         uploadResults.push({ key, file: f, url: up.url });
       }
+      // Reuse already-saved documents (with a known URL) for tiles the merchant did not replace.
+      for (const id of allIds) {
+        const sd = saved[id];
+        if (sd?.fileUrl && !uploadResults.some((r) => r.key === id)) {
+          // Backend rejects fileSize <= 0, so fall back to a positive placeholder when the size is unknown.
+          uploadResults.push({ key: id, file: { name: sd.fileName || `${id}.pdf`, size: sd.fileSize ?? 1024 }, url: sd.fileUrl });
+        }
+      }
 
-      // Backend requires exactly these 7 types (and min 8 items); build in fixed order so nothing is missed
+      // Backend requires these 8 types (one entry per type); license is optional and appended when present.
       const REQUIRED_BUSINESS_DOC_TYPES = [
         'certificate_of_incorporation',
         'articles_of_association',
@@ -204,13 +221,14 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
         'bank_statement',
         'aml_policies',
         'data_privacy_policy',
+        'director_identification',
       ] as const;
       const businessDocuments: BusinessDocPayload[] = [];
-      for (const requiredType of REQUIRED_BUSINESS_DOC_TYPES) {
-        const item = uploadResults.find((r) => mapToBusinessDocType(r.key) === requiredType);
+      for (const docType of [...REQUIRED_BUSINESS_DOC_TYPES, 'license']) {
+        const item = uploadResults.find((r) => mapToBusinessDocType(r.key) === docType);
         if (item) {
           businessDocuments.push({
-            type: requiredType,
+            type: docType,
             fileName: item.file.name,
             fileType: 'application/pdf',
             fileSize: item.file.size,
@@ -220,11 +238,9 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
           });
         }
       }
-      if (businessDocuments.length === 7) {
-        businessDocuments.push({ ...businessDocuments[0] });
-      }
-      if (businessDocuments.length < 7) {
-        toast.error(`Missing uploads for required document types. Found ${businessDocuments.length}, need 7.`);
+      const missingTypes = REQUIRED_BUSINESS_DOC_TYPES.filter((t) => !businessDocuments.some((d) => d.type === t));
+      if (missingTypes.length > 0) {
+        toast.error(`Missing uploads for required document types: ${missingTypes.join(', ')}.`);
         return;
       }
 
@@ -303,7 +319,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
 
   const docs = [...leftList, ...rightList];
   const requiredDocIds = allIds.filter((id) => id !== "license");
-  const uploadedRequired = requiredDocIds.filter((id) => !!businessFiles[id]).length;
+  const uploadedRequired = requiredDocIds.filter((id) => !!businessFiles[id] || !!saved[id]).length;
   const progressPct = Math.round((uploadedRequired / requiredDocIds.length) * 100);
   const validateDoc = (file: File) => (!isPdfFile(file) ? "Only PDF files are allowed." : file.size > MAX_DOC_BYTES ? "File must be 5MB or smaller." : null);
 
@@ -334,6 +350,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
               accept=".pdf,application/pdf"
               required={item.id !== "license"}
               file={businessFiles[item.id] || null}
+              saved={saved[item.id] || null}
               validate={validateDoc}
               onFile={(file) => handleFile(item.id, file)}
             />

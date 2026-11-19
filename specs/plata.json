@@ -1092,6 +1092,16 @@
           "merchantId": {
             "type": "string"
           },
+          "customerName": {
+            "type": "string"
+          },
+          "customerEmail": {
+            "type": "string",
+            "format": "email"
+          },
+          "customerPhone": {
+            "type": "string"
+          },
           "productType": {
             "$ref": "#/components/schemas/ProductType"
           },
@@ -1115,6 +1125,10 @@
             "$ref": "#/components/schemas/EquityPayment"
           },
           "applicant": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "applicantProfileSnapshot": {
             "type": "object",
             "additionalProperties": true
           },
@@ -3135,6 +3149,21 @@
             "type": "string",
             "description": "Borrower-stated use of funds."
           },
+          "applicantName": {
+            "type": "string"
+          },
+          "applicantEmail": {
+            "type": "string",
+            "format": "email",
+            "description": "Mirrored from applicant contact on external submit when omitted by caller."
+          },
+          "applicantPhone": {
+            "type": "string",
+            "description": "Mirrored from applicant contact on external submit when omitted by caller."
+          },
+          "guarantorKycStage": {
+            "type": "string"
+          },
           "totalRepaid": {
             "type": "number",
             "minimum": 0,
@@ -3188,7 +3217,8 @@
             "description": "Optional pre-merged effective terms (global + overlay).",
             "additionalProperties": true
           }
-        }
+        },
+        "additionalProperties": true
       },
       "ContractSnapshotMortgage": {
         "type": "object",
@@ -3875,6 +3905,15 @@
           },
           "customerName": {
             "type": "string"
+          },
+          "customerEmail": {
+            "type": "string",
+            "format": "email",
+            "description": "Applicant email (storefront external-applications `user.email`)."
+          },
+          "customerPhone": {
+            "type": "string",
+            "description": "Applicant phone (storefront external-applications `user.phone`)."
           },
           "productType": {
             "$ref": "#/components/schemas/ProductType"
@@ -22569,7 +22608,7 @@
           "KYC — Business"
         ],
         "summary": "Submit business KYC",
-        "description": "First successful submit may charge Billing wallet (one-time business KYC fee).",
+        "description": "Frontend order: upload files (`POST /api/v1/kyc/upload`), attach them (`PUT /api/v1/kyc/business/documents`), then submit. Submit needs all required document types attached (see the PUT endpoint); `license` is optional. Shareholders are not required to submit. A shareholder needs a BVN or NIN when it is created (beneficial owners endpoint), so document saves never fail on shareholder rules. First successful submit may charge Billing wallet (one-time business KYC fee). CAC/AML checks use **QoreID** (CAC Premium + AML/PEP) on compliance-ms (`QOREID_*` required). Director ID = QoreID NIN only; digital address = QoreID VeriFind (`verifind_4d` SDK).",
         "security": [
           {
             "bearerAuth": []
@@ -22805,7 +22844,8 @@
         "tags": [
           "KYC — Business"
         ],
-        "summary": "List business KYC documents",
+        "summary": "List the caller's business KYC documents",
+        "description": "Always the authenticated merchant's own documents. Each item has `_id`, `type`, `fileName`, `fileType`, `fileSize`, `uploadDate`, `status` (`pending|approved|rejected…`), `rejectionReason?`, `fileUrl`, `displayName`. Use `GET /api/v1/kyc/business/document/{documentId}` for one.\n\n**Frontend: call this on page load and fill the upload slots from it.** Map each item's `type` to its slot (for example `director_identification` → Director Identification, `license` → Operating License) and show `fileName` plus `status`. Without this, a reload shows every slot as empty even when the files are saved.",
         "security": [
           {
             "bearerAuth": []
@@ -22814,7 +22854,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "List business KYC documents",
+            "description": "List the caller's business KYC documents",
             "content": {
               "application/json": {
                 "schema": {
@@ -22897,7 +22937,8 @@
         "tags": [
           "KYC — Business"
         ],
-        "summary": "Upsert business KYC documents",
+        "summary": "Attach uploaded files as business KYC documents (step 2 of 2)",
+        "description": "**Business document flow:** (1) upload each file with `POST /api/v1/kyc/upload`; (2) send all chosen files here, one entry per document `type`; (3) submit with `POST /api/v1/kyc/business/submit`. **Document types:** required — `certificate_of_incorporation`, `articles_of_association`, `list_of_shareholders`, `proof_of_address`, `bank_statement`, `aml_policies`, `data_privacy_policy`, `director_identification`. Optional — `license` (Operating License, never required). `director_identification` is required (8 required types in total). Send the returned `key` (or `url`) with each `type`. Upserts one document per type, resets it to `pending`, and does **not** change the overall KYC status. The file must have been uploaded by the same user. A document already `approved` cannot be replaced (`409 DOCUMENT_ALREADY_APPROVED`). Errors carry a `code`: `DOCUMENTS_REQUIRED`, `TOO_MANY_DOCUMENTS`, `INVALID_DOCUMENTS` (with `details[{index,field,message}]`), `KYC_PROFILE_NOT_FOUND` (404 — submit business KYC first), `DOCUMENT_ALREADY_APPROVED` (409).",
         "security": [
           {
             "bearerAuth": []
@@ -22910,14 +22951,80 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "required": [
+                  "documents"
+                ],
+                "properties": {
+                  "documents": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "certificate_of_incorporation",
+                            "articles_of_association",
+                            "list_of_shareholders",
+                            "proof_of_address",
+                            "bank_statement",
+                            "aml_policies",
+                            "data_privacy_policy",
+                            "director_identification",
+                            "license"
+                          ],
+                          "description": "`license` (Operating License) is optional. All other types are required for business submission."
+                        },
+                        "key": {
+                          "type": "string",
+                          "description": "`key` from POST /kyc/upload (send this or `fileUrl`)"
+                        },
+                        "fileUrl": {
+                          "type": "string",
+                          "description": "`url` from POST /kyc/upload"
+                        },
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "fileType": {
+                          "type": "string",
+                          "enum": [
+                            "application/pdf",
+                            "image/jpeg",
+                            "image/png",
+                            "image/webp"
+                          ]
+                        },
+                        "fileSize": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "example": {
+                "documents": [
+                  {
+                    "type": "bank_statement",
+                    "key": "kyc/<userId>/6f1c….pdf",
+                    "fileName": "statement.pdf",
+                    "fileType": "application/pdf",
+                    "fileSize": 183422
+                  }
+                ]
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Upsert business KYC documents",
+            "description": "Attach uploaded files as business KYC documents (step 2 of 2)",
             "content": {
               "application/json": {
                 "schema": {
@@ -23884,7 +23991,170 @@
         "tags": [
           "KYC — Business"
         ],
-        "summary": "Update beneficial owners",
+        "summary": "Replace beneficial owners / shareholders (Create shareholder form)",
+        "description": "Body is the **full** array of shareholders (fetch existing, append, PUT). Per row: `fullName` (req), `email`, `phoneNumber`, `bvn`, `nin` (11 digits), `address` (text), `addressDocument` (`{fileName,fileType,fileSize,fileUrl,uploadDate}` — upload first, send URL), `status` (`pending`). Removed: `uboDocument`, `bankAccount`, `ownershipPercentage`, `bankStatement`, `kyc`. QoreID/BVN verification fields are preserved server-side when omitted.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "fullName"
+                  ],
+                  "properties": {
+                    "_id": {
+                      "type": "string",
+                      "description": "Existing shareholder id (omit for new rows)"
+                    },
+                    "fullName": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "phoneNumber": {
+                      "type": "string"
+                    },
+                    "bvn": {
+                      "type": "string",
+                      "description": "11-digit BVN"
+                    },
+                    "nin": {
+                      "type": "string",
+                      "description": "11-digit NIN"
+                    },
+                    "address": {
+                      "type": "string"
+                    },
+                    "addressDocument": {
+                      "type": "object",
+                      "properties": {
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "fileType": {
+                          "type": "string"
+                        },
+                        "fileSize": {
+                          "type": "number"
+                        },
+                        "fileUrl": {
+                          "type": "string"
+                        },
+                        "uploadDate": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    },
+                    "status": {
+                      "type": "string",
+                      "example": "pending"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Replace beneficial owners / shareholders (Create shareholder form)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kyc/business/shareholders/bvn/verify": {
+      "post": {
+        "tags": [
+          "KYC — Business"
+        ],
+        "summary": "Verify shareholder BVN (Prembly)",
+        "description": "Body: `{ bvn, shareholderId?, fullName?, firstName?, lastName? }`. Uses Prembly `/verification/bvn`. When `shareholderId` is set, persists `bvnVerification` on that row.",
         "security": [
           {
             "bearerAuth": []
@@ -23897,14 +24167,686 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "additionalProperties": true
+                "required": [
+                  "bvn"
+                ],
+                "properties": {
+                  "bvn": {
+                    "type": "string",
+                    "description": "11-digit BVN"
+                  },
+                  "shareholderId": {
+                    "type": "string"
+                  },
+                  "fullName": {
+                    "type": "string"
+                  },
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  }
+                }
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Update beneficial owners",
+            "description": "Verify shareholder BVN (Prembly)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Verify shareholder BVN (Prembly)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kyc/business/shareholders/{shareholderId}/bvn/verify": {
+      "post": {
+        "tags": [
+          "KYC — Business"
+        ],
+        "summary": "Verify shareholder BVN by id (Prembly)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shareholderId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "bvn"
+                ],
+                "properties": {
+                  "bvn": {
+                    "type": "string"
+                  },
+                  "fullName": {
+                    "type": "string"
+                  },
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verify shareholder BVN by id (Prembly)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Verify shareholder BVN by id (Prembly)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kyc/business/directors/{shareholderId}/identity/verify": {
+      "post": {
+        "tags": [
+          "KYC — Business"
+        ],
+        "summary": "Verify director ID (QoreID NIN only)",
+        "description": "Body: `{ idNumber?, idType?: \"nin\", firstName?, lastName?, dob? }`. `idNumber` defaults to the shareholder's saved `nin`. Passport is not supported. Uses shareholderId from beneficial owners list.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shareholderId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "idType": {
+                    "type": "string",
+                    "enum": [
+                      "nin"
+                    ],
+                    "default": "nin"
+                  },
+                  "idNumber": {
+                    "type": "string",
+                    "description": "NIN; optional if the shareholder already has `nin` saved"
+                  },
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  },
+                  "dob": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verify director ID (QoreID NIN only)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Verify director ID (QoreID NIN only)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kyc/business/directors/{shareholderId}/address/start": {
+      "post": {
+        "tags": [
+          "KYC — Business"
+        ],
+        "summary": "Start QoreID VeriFind digital address",
+        "description": "Mints `sdkSessionToken` for QoreID Web/mobile SDK (`verifind_4d`). Webhook completes at compliance `/api/v1/kyc/qoreid/webhook`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shareholderId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "addressLine": {
+                    "type": "string"
+                  },
+                  "addressCity": {
+                    "type": "string"
+                  },
+                  "addressState": {
+                    "type": "string"
+                  },
+                  "addressLga": {
+                    "type": "string"
+                  },
+                  "addressCountry": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Start QoreID VeriFind digital address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Start QoreID VeriFind digital address",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "success"
+                      ],
+                      "properties": {
+                        "success": {
+                          "type": "boolean",
+                          "example": true
+                        },
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/kyc/business/directors/{shareholderId}/address/status": {
+      "get": {
+        "tags": [
+          "KYC — Business"
+        ],
+        "summary": "Director ID + digital address status",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shareholderId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Director ID + digital address status",
             "content": {
               "application/json": {
                 "schema": {
@@ -24705,7 +25647,8 @@
         "tags": [
           "KYC — Business"
         ],
-        "summary": "Upload KYC file (multipart)",
+        "summary": "Upload KYC file (step 1 of 2)",
+        "description": "Multipart, single field `file` (PDF, JPEG, PNG or WEBP, max 10 MB). **Only stores the file — it does not create a document record.** Pass the returned `key` / `url` / `fileName` / `fileType` / `fileSize` to `PUT /api/v1/kyc/business/documents` to attach it. Note: this endpoint answers with a flat `{ success, url, key, … }` body (no `data` wrapper).",
         "security": [
           {
             "bearerAuth": []
@@ -24714,77 +25657,69 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Upload KYC file (multipart)",
+            "description": "Upload KYC file (step 1 of 2)",
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "type": "object",
-                      "required": [
-                        "success"
-                      ],
-                      "properties": {
-                        "success": {
-                          "type": "boolean",
-                          "example": true
-                        },
-                        "data": {
-                          "type": "object",
-                          "additionalProperties": true
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      }
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
                     },
-                    {
-                      "properties": {
-                        "data": {
-                          "type": "object",
-                          "additionalProperties": true
-                        }
-                      }
+                    "url": {
+                      "type": "string",
+                      "description": "Public file URL"
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "Storage key, e.g. kyc/<userId>/<uuid>.pdf"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "fileType": {
+                      "type": "string",
+                      "example": "application/pdf"
+                    },
+                    "fileSize": {
+                      "type": "integer",
+                      "description": "Bytes"
                     }
-                  ]
+                  }
                 }
               }
             }
           },
           "201": {
-            "description": "Upload KYC file (multipart)",
+            "description": "Upload KYC file (step 1 of 2)",
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "type": "object",
-                      "required": [
-                        "success"
-                      ],
-                      "properties": {
-                        "success": {
-                          "type": "boolean",
-                          "example": true
-                        },
-                        "data": {
-                          "type": "object",
-                          "additionalProperties": true
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      }
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
                     },
-                    {
-                      "properties": {
-                        "data": {
-                          "type": "object",
-                          "additionalProperties": true
-                        }
-                      }
+                    "url": {
+                      "type": "string",
+                      "description": "Public file URL"
+                    },
+                    "key": {
+                      "type": "string",
+                      "description": "Storage key, e.g. kyc/<userId>/<uuid>.pdf"
+                    },
+                    "fileName": {
+                      "type": "string"
+                    },
+                    "fileType": {
+                      "type": "string",
+                      "example": "application/pdf"
+                    },
+                    "fileSize": {
+                      "type": "integer",
+                      "description": "Bytes"
                     }
-                  ]
+                  }
                 }
               }
             }
@@ -24825,6 +25760,25 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
                 }
               }
             }

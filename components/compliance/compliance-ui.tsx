@@ -281,6 +281,7 @@ export function DocumentDropTile({
   required,
   file,
   invalid,
+  saved,
   validate,
   onFile,
 }: {
@@ -293,6 +294,8 @@ export function DocumentDropTile({
   file: File | null
   /** Highlight as missing (e.g. after a failed submit). */
   invalid?: boolean
+  /** A document already saved on the server (shown as uploaded when no new file is picked). */
+  saved?: { fileName?: string; fileUrl?: string } | null
   /** Return an error message to reject the file. */
   validate?: (file: File) => string | null
   onFile: (file: File | null) => void
@@ -316,7 +319,9 @@ export function DocumentDropTile({
     onFile(picked)
   }
 
-  const bad = !!error || (invalid && !file)
+  const hasSaved = !file && !!saved
+  const done = !!file || hasSaved
+  const bad = !!error || (invalid && !done)
 
   return (
     <div
@@ -332,19 +337,19 @@ export function DocumentDropTile({
       }}
       className={cn(
         "group relative flex items-center gap-4 rounded-xl border p-4 transition-colors",
-        file && !bad && "border-green-200 bg-green-50/40",
+        done && !bad && "border-green-200 bg-green-50/40",
         bad && "border-red-300 bg-red-50/60",
-        !file && !bad && "border-dashed border-gray-300 bg-white hover:border-brand/50 hover:bg-brand/[0.03]",
+        !done && !bad && "border-dashed border-gray-300 bg-white hover:border-brand/50 hover:bg-brand/[0.03]",
         dragging && "border-brand bg-brand/[0.05]"
       )}
     >
       <span
         className={cn(
           "flex size-11 shrink-0 items-center justify-center rounded-lg",
-          file && !bad ? "bg-green-100 text-green-700" : bad ? "bg-red-100 text-red-600" : "bg-brand/10 text-brand"
+          done && !bad ? "bg-green-100 text-green-700" : bad ? "bg-red-100 text-red-600" : "bg-brand/10 text-brand"
         )}
       >
-        {file && !bad ? <FileText className="size-5" /> : bad ? <AlertCircle className="size-5" /> : <UploadCloud className="size-5" />}
+        {done && !bad ? <FileText className="size-5" /> : bad ? <AlertCircle className="size-5" /> : <UploadCloud className="size-5" />}
       </span>
 
       <div className="min-w-0 flex-1">
@@ -364,6 +369,18 @@ export function DocumentDropTile({
             <Check className="size-3.5 shrink-0" />
             <span className="truncate">{file.name}</span>
             <span className="shrink-0 text-green-600/70">· {(file.size / 1024 / 1024).toFixed(2)} MB</span>
+          </p>
+        ) : hasSaved && !bad ? (
+          <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-green-700">
+            <Check className="size-3.5 shrink-0" />
+            {saved?.fileUrl ? (
+              <a href={saved.fileUrl} target="_blank" rel="noreferrer" className="truncate underline">
+                {saved.fileName || "Uploaded"}
+              </a>
+            ) : (
+              <span className="truncate">{saved?.fileName || "Uploaded"}</span>
+            )}
+            <span className="shrink-0 text-green-600/70">· saved</span>
           </p>
         ) : error ? (
           <p className="mt-0.5 text-xs text-red-600">
@@ -399,13 +416,13 @@ export function DocumentDropTile({
           onClick={() => inputRef.current?.click()}
           className={cn(
             "inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-sm font-medium transition-colors",
-            file
+            done
               ? "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
               : "bg-brand text-brand-foreground shadow-sm hover:brightness-95"
           )}
         >
-          {file ? <RefreshCw className="size-3.5" /> : <UploadCloud className="size-4" />}
-          {file ? "Replace" : "Upload"}
+          {done ? <RefreshCw className="size-3.5" /> : <UploadCloud className="size-4" />}
+          {done ? "Replace" : "Upload"}
         </button>
       </div>
 

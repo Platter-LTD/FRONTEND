@@ -5,6 +5,7 @@ import { ComplianceService } from "@/lib/services/complianceService"
 import { extractKycStatusString, isKycStatusApproved } from "@/lib/kycApproval"
 import { isMerchantComplianceBypassEnabled } from "@/lib/merchantComplianceBypass"
 import { getQueryClient } from "@/lib/query/queryClient"
+import { savedDocsByTile } from "@/lib/businessDocuments"
 
 const BYPASS = isMerchantComplianceBypassEnabled()
 const STORAGE_KEY = "spring_compliance_kyc_v1"
@@ -16,6 +17,7 @@ export type KycStatus = { kycStatusRaw: unknown; isApproved: boolean; statusStri
 export const complianceKeys = {
   kycStatus: ["compliance", "kyc-status"] as const,
   businessInfo: ["compliance", "business-info"] as const,
+  businessDocuments: ["compliance", "business-documents"] as const,
 }
 
 /** Last known status (survives reloads) so the sidebar doesn't flash "locked" while refetching. */
@@ -87,6 +89,22 @@ export function useKycStatus() {
 /** Fresh KYC status outside React components (e.g. choosing the post-login route). */
 export function fetchKycStatus(): Promise<KycStatus> {
   return getQueryClient().fetchQuery({ ...kycStatusQuery(), staleTime: 0 })
+}
+
+/** Already-saved business KYC documents (GET /api/v1/kyc/business/documents), keyed by UI tile id. */
+export function useBusinessDocuments(enabled = true) {
+  return useQuery({
+    queryKey: complianceKeys.businessDocuments,
+    queryFn: async () => {
+      const raw = await ComplianceService.getBusinessDocuments()
+      const byTile = savedDocsByTile(raw)
+      // Temporary diagnostics: the response shape is unconfirmed, so always log what came back and what parsed.
+      console.info("[MerchantCompliance/KYC] GET business/documents raw:", raw)
+      console.info("[MerchantCompliance/KYC] parsed tiles:", Object.keys(byTile))
+      return { raw, byTile }
+    },
+    enabled,
+  })
 }
 
 /** Business info (company name, logo, …) from the KYC profile. */

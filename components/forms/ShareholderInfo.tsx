@@ -12,8 +12,7 @@ import { toast } from "react-toastify"
 import { useAuth } from "@/hooks/useAuth"
 import { useComplianceForm } from "@/providers/ComplianceFormProvider"
 import type { ShareholderRow } from "@/providers/ComplianceFormProvider"
-import { pickShareholderPhone } from "@/lib/pickShareholderPhone"
-import { pickShareholderKycUrl } from "@/lib/pickShareholderKycUrl"
+import { shareholderDetailsRecord, toShareholderRow } from "@/lib/shareholders"
 
 export function ShareholderInfo() {
   const { user, loading: authLoading } = useAuth()
@@ -30,20 +29,7 @@ export function ShareholderInfo() {
       setLoading(true)
       try {
         const list = await ComplianceService.getShareholdersForCurrentMerchant()
-        const mapped: ShareholderRow[] = list.map((s: any) => ({
-          name: s.fullName || s.name || "Unknown",
-          email: s.email || "",
-          phone: pickShareholderPhone(s),
-          date: (s.submittedAt || new Date().toISOString()).slice(0, 16).replace("T", " "),
-          kycUrl: pickShareholderKycUrl(s) || undefined,
-          status:
-            s.status === "APPROVED" || s.status === "Successful"
-              ? "Successful"
-              : s.status === "REJECTED"
-                ? "Failed"
-                : "Pending",
-        }))
-        setShareholders(mapped)
+        setShareholders(list.map(toShareholderRow))
       } catch (err: any) {
         console.error("Failed to fetch shareholders", err)
         if (err?.response?.status === 404) {
@@ -73,68 +59,11 @@ export function ShareholderInfo() {
     }
   }
 
-  const copyKycUrl = async (url: string) => {
-    try {
-      await navigator.clipboard.writeText(url)
-      toast.success("KYC link copied to clipboard")
-    } catch {
-      toast.error("Could not copy — select the link manually")
-    }
-  }
-
-  const emailKycLink = (row: ShareholderRow) => {
-    const url = row.kycUrl?.trim()
-    if (!url) {
-      toast.error("No KYC link for this shareholder")
-      return
-    }
-    if (!row.email?.trim()) {
-      toast.error("No email on file — copy the link instead")
-      return
-    }
-    const subject = encodeURIComponent("Complete your shareholder KYC")
-    const body = encodeURIComponent(
-      `Hello,\n\nPlease complete your shareholder verification using this link:\n\n${url}\n\nThank you.`,
-    )
-    window.location.href = `mailto:${encodeURIComponent(row.email.trim())}?subject=${subject}&body=${body}`
-  }
-
   const columns: ColumnDef<ShareholderRow, unknown>[] = [
     { accessorKey: "name", header: "Name", cell: ({ row }) => <span className="text-gray-900">{row.original.name}</span> },
     { accessorKey: "email", header: "Email" },
     { accessorKey: "phone", header: "Phone" },
     { accessorKey: "date", header: "Date/time" },
-    {
-      id: "kyc",
-      header: "KYC",
-      accessorFn: (r) => r.kycUrl ?? "",
-      cell: ({ row: { original: row } }) =>
-        row.kycUrl ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-[#9A813F] hover:text-[#7A6449]"
-              onClick={() => void copyKycUrl(row.kycUrl!)}
-            >
-              Copy link
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-[#9A813F] hover:text-[#7A6449]"
-              onClick={() => emailKycLink(row)}
-              disabled={!row.email?.trim()}
-            >
-              Email link
-            </Button>
-          </div>
-        ) : (
-          <span className="text-xs text-gray-400">No link</span>
-        ),
-    },
     {
       id: "upload",
       header: "Upload",
@@ -153,10 +82,11 @@ export function ShareholderInfo() {
         tableId="shareholders"
         onRefresh={() => setReloadKey((k) => k + 1)}
         title="Shareholders"
-        description="Add everyone who owns 25% or more of the business. Each shareholder gets a KYC link to verify their identity."
+        description="Add everyone who owns 25% or more of the business. Include each shareholder's BVN or NIN, address and proof of address."
         columns={columns}
         data={shareholders}
         isLoading={loading}
+        rowDetails={{ title: (r) => r.name, record: shareholderDetailsRecord }}
         clientSearch
         download
         empty="No shareholders yet. Use “Create shareholder” to add one."
