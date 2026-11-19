@@ -3,15 +3,16 @@
 import { createContext, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
 import { WEBSITE_URL_PREFIX } from "@/lib/websiteUrl"
 import { ComplianceService } from "@/lib/services/complianceService"
+import { toShareholderRow } from "@/lib/shareholders"
 
 export interface ShareholderRow {
   name: string
   email: string
   phone: string
   date: string
-  /** KYC / liveness URL returned by compliance API — copy & email to shareholder. */
-  kycUrl?: string
   status: "Successful" | "Failed" | "Pending"
+  /** Full API record (address, BVN/NIN, uploaded files) for the details drawer. */
+  raw?: Record<string, unknown>
 }
 
 /** In-memory merchant KYC survey (merchant dashboard forms — no localStorage). */
@@ -114,19 +115,7 @@ export function ComplianceFormProvider({ children }: { children: ReactNode }) {
           ),
         }))
 
-        const mapped = owners.map((s: any) => ({
-          name: s.fullName || s.name || "Unknown",
-          email: s.email || "",
-          phone: s.phoneNumber || s.phone || "",
-          date: String(s.submittedAt || s.createdAt || new Date().toISOString()).slice(0, 16).replace("T", " "),
-          kycUrl: s?.kyc?.url || s?.kycUrl || "",
-          status:
-            s.status === "APPROVED" || s.status === "Successful"
-              ? ("Successful" as const)
-              : s.status === "REJECTED"
-                ? ("Failed" as const)
-                : ("Pending" as const),
-        }))
+        const mapped = owners.map(toShareholderRow)
         if (mapped.length > 0) setShareholders(mapped)
       } catch {
         // Keep blank defaults when prefill endpoints are unavailable.

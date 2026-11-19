@@ -76,7 +76,8 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'", // Required for inline styles
               "img-src 'self' data: https: blob:",
               "font-src 'self' data:",
-              "connect-src 'self' https://*.fly.dev https://*.vercel.app wss:",
+              // places.googleapis.com: shareholder address autocomplete (Google Places API New)
+              "connect-src 'self' https://*.fly.dev https://*.vercel.app https://places.googleapis.com wss:",
               "frame-ancestors 'self'",
               "base-uri 'self'",
               "form-action 'self'",
