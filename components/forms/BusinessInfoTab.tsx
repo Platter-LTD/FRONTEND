@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, ClipboardList, Globe, ArrowRight } from 'lucide-react';
 import { CurrencyVolumeField } from './CurrencyVolumeField';
-import { toast } from 'react-toastify';
 import { WEBSITE_URL_PREFIX } from '@/lib/websiteUrl';
 import { CountrySelect } from '@/components/ui/country-select';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -254,15 +253,10 @@ const BusinessInfoTab: React.FC<BusinessInfoTabProps> = ({ onContinue }) => {
 
       <StepFooter hint="You can come back and edit these details before submitting your documents.">
         <BrandButton
-          onClick={() => {
-            toast.success('✅ Business info saved successfully');
-            // Navigate to next tab
-            if (onContinue) {
-              setTimeout(() => onContinue(), 500);
-            }
-          }}
+          // No API call here: business info is sent with the documents on the next step.
+          onClick={() => onContinue?.()}
         >
-          Save &amp; continue
+          Next
           <ArrowRight className="size-4" />
         </BrandButton>
       </StepFooter>

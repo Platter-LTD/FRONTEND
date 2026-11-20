@@ -42,6 +42,29 @@ export class ComplianceService {
     return res.data;
   }
 
+  /** PUT /kyc/business/business-info — needs an existing KYC profile (404 KYC_PROFILE_NOT_FOUND otherwise). */
+  static async updateBusinessInfo(payload: Record<string, unknown>) {
+    const res = await apiClient.put(ENDPOINTS.compliance.business.businessInfo, payload);
+    return res.data;
+  }
+
+  /** PUT /kyc/business/business-survey — needs an existing KYC profile. */
+  static async updateBusinessSurvey(payload: Record<string, unknown>) {
+    const res = await apiClient.put(ENDPOINTS.compliance.business.businessSurvey, payload);
+    return res.data;
+  }
+
+  /**
+   * PUT /kyc/business/documents — upserts one document per type (resets it to pending) without
+   * resubmitting KYC. Files must come from POST /kyc/upload by the same user.
+   */
+  static async updateBusinessDocuments(
+    documents: Array<{ type: string; key?: string; fileUrl?: string; fileName?: string; fileType?: string; fileSize?: number }>,
+  ) {
+    const res = await apiClient.put(ENDPOINTS.compliance.business.documents, { documents });
+    return res.data;
+  }
+
   static async getKycStatusForCurrentUser() {
     const token = getAccessToken();
     const userId = decodeUserIdFromToken(token);
@@ -122,9 +145,15 @@ export class ComplianceService {
     return res.data;
   }
 
+  /** 404 means no KYC profile / no documents yet: treated as an empty list. */
   static async getBusinessDocuments() {
-    const res = await apiClient.get(ENDPOINTS.compliance.business.documents);
-    return res.data;
+    try {
+      const res = await apiClient.get(ENDPOINTS.compliance.business.documents);
+      return res.data;
+    } catch (err: unknown) {
+      if ((err as { response?: { status?: number } })?.response?.status === 404) return { success: true, data: [] };
+      throw err;
+    }
   }
 
   static async getBusinessDocument(documentId: string) {

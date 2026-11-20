@@ -10,8 +10,10 @@ import { ComplianceService } from "@/lib/services/complianceService";
 import { isPdfFile } from "@/lib/isPdfFile";
 import { useAuth } from "@/hooks/useAuth";
 import { useComplianceForm } from "@/providers/ComplianceFormProvider";
-import { useBusinessDocuments } from "@/hooks/queries/compliance";
+import { complianceKeys, useBusinessDocuments } from "@/hooks/queries/compliance";
+import { useQueryClient } from "@tanstack/react-query";
 import { OPTIONAL_TILE_IDS } from "@/lib/businessDocuments";
+import { snapshotFile } from "@/lib/snapshotFile";
 
 interface Props {
     onContinue: (missingIds?: string[]) => void;
@@ -59,6 +61,25 @@ type BusinessDocPayload = {
 };
 
 type GenericDoc = { type: string };
+
+type UploadedFile = { url: string; key?: string; name: string; size: number };
+
+// One entry per type in the first submission; optional types only when the merchant provided them.
+const REQUIRED_BUSINESS_DOC_TYPES = [
+  'certificate_of_incorporation',
+  'list_of_shareholders',
+  'proof_of_address',
+  'aml_policies',
+  'data_privacy_policy',
+  'director_identification',
+] as const;
+const OPTIONAL_BUSINESS_DOC_TYPES = ['articles_of_association', 'bank_statement', 'license'] as const;
+
+/** Backend error code, e.g. KYC_PROFILE_NOT_FOUND / DOCUMENT_ALREADY_APPROVED. */
+const errorCode = (err: any): string | undefined => {
+  const d = err?.response?.data;
+  return d?.code ?? d?.error?.code ?? d?.errorCode;
+};
 
 // Map UI IDs to business document type expected by backend dedicated schema
 const mapToBusinessDocType = (id: string): string => {
@@ -124,14 +145,31 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
   const allIds = [...leftList, ...rightList].map(i => i.id);
 
   const [submitting, setSubmitting] = useState(false);
+  const queryClient = useQueryClient();
   // Documents already saved on the server (GET /api/v1/kyc/business/documents), keyed by tile id.
-  const saved = useBusinessDocuments().data?.byTile ?? {};
+  const docsQuery = useBusinessDocuments();
+  const saved = docsQuery.data?.byTile ?? {};
 
   // Remove previous sessionStorage hydration; we now keep in context
 
   const MAX_DOC_BYTES = 5 * 1024 * 1024;
 
-  const handleFile = (key: string, file: File | null) => {
+  // One upload per picked file: started on pick, reused by every save attempt (so a failed
+  // save never re-uploads). A failed upload is dropped from the cache so the next save retries it.
+  const uploadsRef = useRef(new Map<File, Promise<UploadedFile>>());
+  const ensureUploaded = (file: File): Promise<UploadedFile> => {
+    const cached = uploadsRef.current.get(file);
+    if (cached) return cached;
+    const p = ComplianceService.uploadDocument(file).then((up) => {
+      if (!up?.success || !up?.url) throw new Error(up?.error || `Failed to upload ${file.name}. Please try again.`);
+      return { url: up.url, key: up.key, name: file.name, size: file.size };
+    });
+    p.catch(() => uploadsRef.current.delete(file));
+    uploadsRef.current.set(file, p);
+    return p;
+  };
+
+  const handleFile = async (key: string, file: File | null) => {
     if (!file) {
       setBusinessFile(key, null);
       return;
@@ -144,7 +182,128 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
       toast.error(`${file.name} must be 5MB or smaller`);
       return;
     }
-    setBusinessFile(key, file);
+    let snap: File;
+    try {
+      snap = await snapshotFile(file);
+    } catch {
+      toast.error(`Could not read ${file.name}. Please pick the file again.`);
+      return;
+    }
+    setBusinessFile(key, snap);
+    // Upload in the background; errors surface when the merchant saves.
+    ensureUploaded(snap).catch(() => {});
+  };
+
+  const monthlyVolume = (): number => {
+    const n = Number(String(info.monthlyVolume ?? "").trim().replace(/[^0-9.]/g, ""));
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  };
+
+  const buildBusinessInfo = () => ({
+    companyName: info.businessName,
+    industry: info.industry || 'Other',
+    businessDescription: info.businessModel ? `Model: ${info.businessModel}. Purpose: Payment processing.` : 'Payment processing and merchant onboarding.',
+    countryOfIncorporation: info.country || 'NG',
+    website: info.website || 'https://example.com',
+    companyRegId: info.companyRegId,
+    companyLogoUrl: "https://via.placeholder.com/1",
+  });
+
+  const buildBusinessSurvey = () => ({
+    businessType: (info.businessType || "Other").slice(0, 100),
+    country: (info.country || "NG").slice(0, 50),
+    businessModel: (info.businessModel || "B2C").slice(0, 20),
+    monthlyProcessedVolume: Math.max(0, Math.round(monthlyVolume())),
+  });
+
+  /** Profile already exists: save business info + survey, and only the documents the merchant changed. */
+  const saveChanges = async (picked: Array<{ id: string; upload: UploadedFile }>) => {
+    await ComplianceService.updateBusinessInfo(buildBusinessInfo());
+    await ComplianceService.updateBusinessSurvey(buildBusinessSurvey());
+    if (picked.length > 0) {
+      await ComplianceService.updateBusinessDocuments(
+        picked.map(({ id, upload }) => ({
+          type: mapToBusinessDocType(id),
+          key: upload.key,
+          fileUrl: upload.url,
+          fileName: upload.name,
+          fileType: 'application/pdf',
+          fileSize: upload.size,
+        })),
+      );
+    }
+  };
+
+  /** First submission: creates the KYC profile with business info and every document. */
+  const firstSubmit = async (userId: string, picked: Array<{ id: string; upload: UploadedFile }>): Promise<boolean> => {
+    // Picked files first, then documents already on file for tiles the merchant did not replace.
+    const byId = new Map<string, { name: string; size: number; url: string }>();
+    for (const { id, upload } of picked) byId.set(id, { name: upload.name, size: upload.size, url: upload.url });
+    for (const id of allIds) {
+      const sd = saved[id];
+      // Backend rejects fileSize <= 0, so fall back to a positive placeholder when the size is unknown.
+      if (sd?.fileUrl && !byId.has(id)) byId.set(id, { name: sd.fileName || `${id}.pdf`, size: sd.fileSize ?? 1024, url: sd.fileUrl });
+    }
+
+    const businessDocuments: BusinessDocPayload[] = [];
+    for (const docType of [...REQUIRED_BUSINESS_DOC_TYPES, ...OPTIONAL_BUSINESS_DOC_TYPES]) {
+      const id = allIds.find((x) => mapToBusinessDocType(x) === docType);
+      const item = id ? byId.get(id) : undefined;
+      if (item) {
+        businessDocuments.push({
+          type: docType,
+          fileName: item.name,
+          fileType: 'application/pdf',
+          fileSize: item.size,
+          fileUrl: item.url,
+          uploadedAt: new Date().toISOString(),
+          status: 'pending',
+        });
+      }
+    }
+    const missingTypes = REQUIRED_BUSINESS_DOC_TYPES.filter((t) => !businessDocuments.some((d) => d.type === t));
+    if (missingTypes.length > 0) {
+      toast.error(`Missing uploads for required document types: ${missingTypes.join(', ')}.`);
+      return false;
+    }
+
+    const bank = byId.get('bank_statement');
+    const monthlyVol = monthlyVolume();
+    const payload = {
+      userId,
+      userType: 'merchant',
+      businessDocuments,
+      businessInfo: buildBusinessInfo(),
+      businessSurvey: buildBusinessSurvey(),
+      shareholders: [
+        {
+          fullName: 'Primary Owner',
+          ownershipPercentage: 100,
+          bankStatement: {
+            fileName: bank?.name ?? 'placeholder.pdf',
+            fileType: 'application/pdf',
+            fileSize: bank?.size ?? 1024,
+            fileUrl: bank?.url ?? 'data:application/pdf;base64,',
+            uploadDate: new Date().toISOString(),
+          },
+          status: 'pending',
+          kyc: {
+            url: 'https://example.com/kyc',
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+            status: 'pending',
+          },
+        },
+      ],
+      riskAssessment: {
+        annualTurnover: Math.max(1, Math.round(monthlyVol * 12)),
+        expectedTransactionVolume: Math.max(1, Math.round(monthlyVol)),
+        highRiskJurisdiction: false,
+        sanctionListCheck: false,
+        adverseMediaCheck: false,
+      },
+    };
+    await ComplianceService.submitBusinessKyc(payload);
+    return true;
   };
 
   const submit = async () => {
@@ -156,161 +315,60 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
         toast.error('You must be logged in to submit KYC.');
         return;
       }
-
       if (!info.businessName?.trim() || !info.country?.trim()) {
         toast.error('Please fill Business Info (business name and country) before uploading documents.');
         return;
       }
 
-      // derive numeric metrics
-      const monthlyVol: number = (() => {
-        const rawVol = String(info.monthlyVolume ?? "").trim();
-        const n = Number(rawVol.replace(/[^0-9.]/g, ""));
-        return Number.isFinite(n) && n > 0 ? n : 1;
-      })();
-      const annualTurnover: number = Math.max(1, Math.round(monthlyVol * 12));
+      // Saved documents decide between "update" and "first submit", so wait until they are known.
+      if (docsQuery.isLoading) {
+        toast.info('Still loading your saved documents. Please try again in a moment.');
+        return;
+      }
 
-      // collect selected files from context
       const fileEntries = Object.entries(businessFiles).filter(([, f]) => !!f) as Array<[string, File]>;
-      const selectedIds = new Set<string>();
-      const hasSaved = (id: string) => !!saved[id];
-
-      // Enforce that required business documents are selected (license, bank statement and articles are optional)
-      const requiredIds = allIds.filter(id => !OPTIONAL_TILE_IDS.includes(id));
-      for (const [key] of fileEntries) selectedIds.add(key);
-      const missing = requiredIds.filter((id) => !selectedIds.has(id) && !hasSaved(id));
+      const missing = allIds
+        .filter((id) => !OPTIONAL_TILE_IDS.includes(id))
+        .filter((id) => !businessFiles[id] && !saved[id]);
       if (missing.length > 0) {
         toast.error('Please upload all required documents before continuing.');
         return;
       }
-      // Everything is already on file and nothing new was picked: nothing to resubmit.
-      if (fileEntries.length === 0) {
-        onContinue();
-        return;
-      }
-      if (!fileEntries.some(([key]) => key === 'director_id') && !hasSaved('director_id')) {
-        toast.error('Please upload Director Identification (required by compliance).');
-        return;
-      }
 
-      // Upload each file to compliance service to get real URLs (backend requires these)
-      const uploadResults: Array<{ key: string; file: { name: string; size: number }; url: string }> = [];
-      for (const [key, f] of fileEntries) {
-        const up = await ComplianceService.uploadDocument(f) as { success?: boolean; url?: string; error?: string };
-        if (!up?.success || !up?.url) {
-          toast.error(up?.error || `Failed to upload ${f.name}. Please try again.`);
-          return;
+      // Await uploads (already started on pick; cached results are reused on retries).
+      const picked: Array<{ id: string; upload: UploadedFile }> = [];
+      for (const [id, f] of fileEntries) picked.push({ id, upload: await ensureUploaded(f) });
+
+      // A profile exists once business KYC was submitted, which is when documents are on file.
+      const hasProfile = Object.keys(saved).length > 0;
+      let submitted = false;
+      if (hasProfile) {
+        try {
+          await saveChanges(picked);
+        } catch (err: any) {
+          if (errorCode(err) !== 'KYC_PROFILE_NOT_FOUND') throw err;
+          submitted = await firstSubmit(userId, picked);
+          if (!submitted) return;
         }
-        uploadResults.push({ key, file: f, url: up.url });
-      }
-      // Reuse already-saved documents (with a known URL) for tiles the merchant did not replace.
-      for (const id of allIds) {
-        const sd = saved[id];
-        if (sd?.fileUrl && !uploadResults.some((r) => r.key === id)) {
-          // Backend rejects fileSize <= 0, so fall back to a positive placeholder when the size is unknown.
-          uploadResults.push({ key: id, file: { name: sd.fileName || `${id}.pdf`, size: sd.fileSize ?? 1024 }, url: sd.fileUrl });
-        }
+      } else {
+        submitted = await firstSubmit(userId, picked);
+        if (!submitted) return;
       }
 
-      // One entry per type; optional types are appended only when the merchant provided them.
-      const REQUIRED_BUSINESS_DOC_TYPES = [
-        'certificate_of_incorporation',
-        'list_of_shareholders',
-        'proof_of_address',
-        'aml_policies',
-        'data_privacy_policy',
-        'director_identification',
-      ] as const;
-      const OPTIONAL_BUSINESS_DOC_TYPES = ['articles_of_association', 'bank_statement', 'license'] as const;
-      const businessDocuments: BusinessDocPayload[] = [];
-      for (const docType of [...REQUIRED_BUSINESS_DOC_TYPES, ...OPTIONAL_BUSINESS_DOC_TYPES]) {
-        const item = uploadResults.find((r) => mapToBusinessDocType(r.key) === docType);
-        if (item) {
-          businessDocuments.push({
-            type: docType,
-            fileName: item.file.name,
-            fileType: 'application/pdf',
-            fileSize: item.file.size,
-            fileUrl: item.url,
-            uploadedAt: new Date().toISOString(),
-            status: 'pending',
-          });
-        }
-      }
-      const missingTypes = REQUIRED_BUSINESS_DOC_TYPES.filter((t) => !businessDocuments.some((d) => d.type === t));
-      if (missingTypes.length > 0) {
-        toast.error(`Missing uploads for required document types: ${missingTypes.join(', ')}.`);
-        return;
-      }
-
-      const bankUpload = uploadResults.find((r) => r.key === 'bank_statement');
-      const shareholderBankStmt = bankUpload
-        ? {
-            fileName: bankUpload.file.name,
-            fileType: 'application/pdf' as const,
-            fileSize: bankUpload.file.size,
-            fileUrl: bankUpload.url,
-            uploadDate: new Date().toISOString(),
-          }
-        : null;
-
-      const payload = {
-        userId,
-        userType: 'merchant',
-        businessDocuments,
-        businessInfo: {
-          companyName: info.businessName,
-          industry: info.industry || 'Other',
-          businessDescription: info.businessModel ? `Model: ${info.businessModel}. Purpose: Payment processing.` : 'Payment processing and merchant onboarding.',
-          countryOfIncorporation: info.country || 'NG',
-          website: info.website || 'https://example.com',
-          companyRegId: info.companyRegId,
-          // bvn: (info.bvn || "").replace(/\D/g, "").slice(0, 11),
-          companyLogoUrl: "https://via.placeholder.com/1",
-        },
-        businessSurvey: {
-          businessType: (info.businessType || "Other").slice(0, 100),
-          country: (info.country || "NG").slice(0, 50),
-          businessModel: (info.businessModel || "B2C").slice(0, 20),
-          monthlyProcessedVolume: Math.max(0, Math.round(monthlyVol || 0)),
-        },
-        shareholders: [
-          {
-            fullName: 'Primary Owner',
-            ownershipPercentage: 100,
-            bankStatement: shareholderBankStmt || {
-              fileName: 'placeholder.pdf',
-              fileType: 'application/pdf',
-              fileSize: 1024,
-              fileUrl: 'data:application/pdf;base64,',
-              uploadDate: new Date().toISOString(),
-            },
-            status: 'pending',
-            kyc: {
-              url: 'https://example.com/kyc',
-              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-              status: 'pending',
-            },
-          },
-        ],
-        riskAssessment: {
-          annualTurnover,
-          expectedTransactionVolume: Math.max(1, Math.round(monthlyVol || 1)),
-          highRiskJurisdiction: false,
-          sanctionListCheck: false,
-          adverseMediaCheck: false,
-        },
-      } as any;
-
-      await ComplianceService.submitBusinessKyc(payload as any);
-      toast.success('Business KYC submitted');
-      // Call onContinue without arguments to signal success
+      // Picked files are now on the server: clear them so tiles show the saved versions.
+      for (const [id] of fileEntries) setBusinessFile(id, null);
+      await queryClient.invalidateQueries({ queryKey: complianceKeys.businessDocuments });
+      toast.success(submitted ? 'Business KYC submitted' : 'Changes saved');
       onContinue();
     } catch (err: any) {
       // eslint-disable-next-line no-console
-      console.error('Business KYC submit failed', err);
-      const msg = err?.response?.data?.error || err?.message || 'Failed to submit KYC';
-      toast.error(msg);
+      console.error('Business KYC save failed', err);
+      if (errorCode(err) === 'DOCUMENT_ALREADY_APPROVED') {
+        toast.error('One of these documents is already approved and cannot be replaced. Remove it and try again.');
+        return;
+      }
+      const data = err?.response?.data;
+      toast.error(data?.error || data?.message || err?.message || 'Failed to save business KYC');
     } finally {
       setSubmitting(false);
     }

@@ -7,6 +7,7 @@ import { ComplianceService } from "@/lib/services/complianceService"
 import { toast } from "react-toastify"
 import { useComplianceForm } from "@/providers/ComplianceFormProvider"
 import { isPdfFile } from "@/lib/isPdfFile"
+import { snapshotFile } from "@/lib/snapshotFile"
 import { AddressAutocomplete } from "@/components/AddressAutocomplete"
 import { toBeneficialOwnerPayload, toShareholderRow } from "@/lib/shareholders"
 
@@ -34,7 +35,7 @@ export const CreateShareholderDrawer: React.FC = () => {
 
   const handleDigits = (field: "bvn" | "nin", value: string) => handleChange(field, value.replace(/\D/g, "").slice(0, 11))
 
-  const handleAddressFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAddressFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target
     const f = input.files?.[0] ?? null
     input.value = ""
@@ -47,7 +48,12 @@ export const CreateShareholderDrawer: React.FC = () => {
       toast.error(`${f.name} must be 5MB or smaller`)
       return setAddressFile(null)
     }
-    setAddressFile(f)
+    try {
+      setAddressFile(await snapshotFile(f))
+    } catch {
+      toast.error(`Could not read ${f.name}. Please pick the file again.`)
+      setAddressFile(null)
+    }
   }
 
   // Start clean each time the drawer opens.
