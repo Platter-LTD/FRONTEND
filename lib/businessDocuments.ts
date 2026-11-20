@@ -132,5 +132,8 @@ export function savedDocsByTile(raw: unknown): Record<string, SavedBusinessDoc> 
   return map
 }
 
-/** Tiles that must be on file for the documents step to count as complete (license is optional). */
-export const REQUIRED_TILE_IDS = ["coi", "shareholders", "bank_statement", "data_privacy", "article", "proof_address", "aml", "director_id"]
+/** Tiles the merchant may skip. Bank statement and articles are optional in the UI (backend required list is being relaxed). */
+export const OPTIONAL_TILE_IDS = ["license", "bank_statement", "article"]
+
+/** Tiles that must be on file for the documents step to count as complete. */
+export const REQUIRED_TILE_IDS = ["coi", "shareholders", "data_privacy", "proof_address", "aml", "director_id"]

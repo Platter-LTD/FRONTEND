@@ -11,6 +11,7 @@ import { isPdfFile } from "@/lib/isPdfFile";
 import { useAuth } from "@/hooks/useAuth";
 import { useComplianceForm } from "@/providers/ComplianceFormProvider";
 import { useBusinessDocuments } from "@/hooks/queries/compliance";
+import { OPTIONAL_TILE_IDS } from "@/lib/businessDocuments";
 
 interface Props {
     onContinue: (missingIds?: string[]) => void;
@@ -108,12 +109,12 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
   const leftList = [
     { id: "coi", title: "COI (certificate of Inc)", hint: "PDF format • Max. 5MB" },
     { id: "shareholders", title: "List of shareholders", hint: "PDF format • Max. 5MB" },
-    { id: "bank_statement", title: "Bank Statement", hint: "PDF format • Max. 5MB" },
+    { id: "bank_statement", title: "Bank Statement (optional)", hint: "PDF format • Max. 5MB" },
     { id: "data_privacy", title: "Data & Privacy Policy", hint: "PDF format • Max. 5MB" },
   ];
 
   const rightList = [
-    { id: "article", title: "Article of formation/Association", hint: "PDF format • Max. 5MB" },
+    { id: "article", title: "Article of formation/Association (optional)", hint: "PDF format • Max. 5MB" },
     { id: "proof_address", title: "Proof of Address", hint: "PDF format • Max. 5MB" },
     { id: "aml", title: "AML Polices", hint: "PDF format • Max. 5MB" },
     { id: "director_id", title: "Director Identification", hint: "PDF format • Max. 5MB" },
@@ -121,7 +122,6 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
   ];
 
   const allIds = [...leftList, ...rightList].map(i => i.id);
-  const requiredCoreIds = ["coi", "shareholders", "bank_statement"]; // must-have for middleware + sensible minimum
 
   const [submitting, setSubmitting] = useState(false);
   // Documents already saved on the server (GET /api/v1/kyc/business/documents), keyed by tile id.
@@ -175,8 +175,8 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
       const selectedIds = new Set<string>();
       const hasSaved = (id: string) => !!saved[id];
 
-      // Enforce that required business documents are selected (license is optional)
-      const requiredIds = allIds.filter(id => id !== "license");
+      // Enforce that required business documents are selected (license, bank statement and articles are optional)
+      const requiredIds = allIds.filter(id => !OPTIONAL_TILE_IDS.includes(id));
       for (const [key] of fileEntries) selectedIds.add(key);
       const missing = requiredIds.filter((id) => !selectedIds.has(id) && !hasSaved(id));
       if (missing.length > 0) {
@@ -212,19 +212,18 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
         }
       }
 
-      // Backend requires these 8 types (one entry per type); license is optional and appended when present.
+      // One entry per type; optional types are appended only when the merchant provided them.
       const REQUIRED_BUSINESS_DOC_TYPES = [
         'certificate_of_incorporation',
-        'articles_of_association',
         'list_of_shareholders',
         'proof_of_address',
-        'bank_statement',
         'aml_policies',
         'data_privacy_policy',
         'director_identification',
       ] as const;
+      const OPTIONAL_BUSINESS_DOC_TYPES = ['articles_of_association', 'bank_statement', 'license'] as const;
       const businessDocuments: BusinessDocPayload[] = [];
-      for (const docType of [...REQUIRED_BUSINESS_DOC_TYPES, 'license']) {
+      for (const docType of [...REQUIRED_BUSINESS_DOC_TYPES, ...OPTIONAL_BUSINESS_DOC_TYPES]) {
         const item = uploadResults.find((r) => mapToBusinessDocType(r.key) === docType);
         if (item) {
           businessDocuments.push({
@@ -318,7 +317,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
   };
 
   const docs = [...leftList, ...rightList];
-  const requiredDocIds = allIds.filter((id) => id !== "license");
+  const requiredDocIds = allIds.filter((id) => !OPTIONAL_TILE_IDS.includes(id));
   const uploadedRequired = requiredDocIds.filter((id) => !!businessFiles[id] || !!saved[id]).length;
   const progressPct = Math.round((uploadedRequired / requiredDocIds.length) * 100);
   const validateDoc = (file: File) => (!isPdfFile(file) ? "Only PDF files are allowed." : file.size > MAX_DOC_BYTES ? "File must be 5MB or smaller." : null);
@@ -348,7 +347,7 @@ const BusinessDocument: React.FC<Props> = ({ onContinue }) => {
               title={item.title}
               hint={item.hint}
               accept=".pdf,application/pdf"
-              required={item.id !== "license"}
+              required={!OPTIONAL_TILE_IDS.includes(item.id)}
               file={businessFiles[item.id] || null}
               saved={saved[item.id] || null}
               validate={validateDoc}
