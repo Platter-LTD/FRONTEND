@@ -21,6 +21,7 @@ const KYC_KEYS = new Set(["kyc", "kycUrl", "kycURL", "kycLink", "kyc_link", "ver
 /** Document fields on a shareholder record, with their display label. */
 const FILE_FIELDS: Array<[string, string]> = [
   ["addressDocument", "Proof of address"],
+  ["statusReport", "Status report"],
   ["uboDocument", "Proof of address (UBO)"],
   ["bankStatement", "Bank statement"],
 ]
@@ -98,7 +99,7 @@ export function shareholderDetailsRecord(row: ShareholderRow): Record<string, un
 export function toBeneficialOwnerPayload(raw: unknown): Raw {
   const s = isObj(raw) ? raw : {}
   const out: Raw = {}
-  for (const k of ["_id", "fullName", "email", "phoneNumber", "bvn", "nin", "address", "addressDocument", "status"]) {
+  for (const k of ["_id", "fullName", "email", "phoneNumber", "shareholderType", "bvn", "nin", "address", "addressDocument", "statusReport", "status"]) {
     const v = s[k]
     if (v != null && v !== "") out[k] = v
   }
