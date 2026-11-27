@@ -13,10 +13,12 @@ import { useAuth } from "@/hooks/useAuth"
 import { useComplianceForm } from "@/providers/ComplianceFormProvider"
 import type { ShareholderRow } from "@/providers/ComplianceFormProvider"
 import { shareholderDetailsRecord, toShareholderRow } from "@/lib/shareholders"
+import { useShareholderActions } from "@/components/ShareholderActions"
 
 export function ShareholderInfo() {
   const { user, loading: authLoading } = useAuth()
-  const { shareholders, setShareholders, setShareholderDrawerOpen } = useComplianceForm()
+  const { shareholders, setShareholders } = useComplianceForm()
+  const { openCreate, actionsColumn, deleteDialog } = useShareholderActions()
   const [loading, setLoading] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -74,6 +76,7 @@ export function ShareholderInfo() {
       ),
     },
     { accessorKey: "status", header: "Status", cell: ({ row }) => <Badge className={getStatusColor(row.original.status)}>{row.original.status}</Badge> },
+    actionsColumn,
   ]
 
   return (
@@ -91,7 +94,7 @@ export function ShareholderInfo() {
         download
         empty="No shareholders yet. Use “Create shareholder” to add one."
         action={
-          <BrandButton onClick={() => setShareholderDrawerOpen(true)} className="h-9 px-4">
+          <BrandButton onClick={openCreate} className="h-9 px-4">
             <UserPlus className="size-4" />
             Create shareholder
           </BrandButton>
@@ -99,6 +102,7 @@ export function ShareholderInfo() {
       />
 
       <CreateShareholderDrawer />
+      {deleteDialog}
     </div>
   )
 }

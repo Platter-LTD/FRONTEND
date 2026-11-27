@@ -9,7 +9,7 @@ import { useComplianceForm } from "@/providers/ComplianceFormProvider"
 import { isPdfFile } from "@/lib/isPdfFile"
 import { snapshotFile } from "@/lib/snapshotFile"
 import { AddressAutocomplete } from "@/components/AddressAutocomplete"
-import { toBeneficialOwnerPayload, toShareholderRow } from "@/lib/shareholders"
+import { shareholderId, toBeneficialOwnerPayload } from "@/lib/shareholders"
 
 const formatFileSize = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -20,9 +20,20 @@ const ELEVEN_DIGITS = /^\d{11}$/
 const EMPTY_FORM = { fullName: "", email: "", phoneNumber: "", bvn: "", nin: "", address: "" }
 
 type ShareholderType = "individual" | "entity"
+type Raw = Record<string, unknown>
+
+const isObj = (v: unknown): v is Raw => !!v && typeof v === "object" && !Array.isArray(v)
+const text = (v: unknown) => (typeof v === "string" ? v.trim() : typeof v === "number" ? String(v) : "")
+/** A saved document (addressDocument / statusReport) if it has a file URL or name. */
+const savedDoc = (v: unknown): Raw | null => (isObj(v) && (text(v.fileUrl) || text(v.fileName)) ? v : null)
 
 export const CreateShareholderDrawer: React.FC = () => {
-  const { shareholderDrawerOpen, setShareholderDrawerOpen, addShareholder } = useComplianceForm()
+  const { shareholderDrawerOpen, setShareholderDrawerOpen, editingShareholder, setEditingShareholder, reloadShareholders } =
+    useComplianceForm()
+  // Edit mode: the shareholder as the API returned it (null when creating).
+  const editing = editingShareholder?.raw ?? null
+  const editingId = editingShareholder?.id || (editing ? shareholderId(editing) : "")
+  const isEdit = !!editing
   const addressInputRef = React.useRef<HTMLInputElement>(null)
   const statusReportInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -33,6 +44,9 @@ export const CreateShareholderDrawer: React.FC = () => {
   // Individual: BVN/NIN. Entity (company): no BVN/NIN, a status report instead.
   const [shareholderType, setShareholderType] = React.useState<ShareholderType>("individual")
   const [statusReportFile, setStatusReportFile] = React.useState<File | null>(null)
+  // Files already on the server for the shareholder being edited (kept unless replaced).
+  const [savedAddressDoc, setSavedAddressDoc] = React.useState<Raw | null>(null)
+  const [savedStatusReport, setSavedStatusReport] = React.useState<Raw | null>(null)
   const [loading, setLoading] = React.useState(false)
 
   const handleChange = (field: keyof typeof EMPTY_FORM, value: string) => {
@@ -71,18 +85,43 @@ export const CreateShareholderDrawer: React.FC = () => {
     else setStatusReportFile(null)
   }
 
-  // Start clean each time the drawer opens.
+  const closeDrawer = () => {
+    setShareholderDrawerOpen(false)
+    setEditingShareholder(null)
+  }
+
+  // Start clean each time the drawer closes; prefill from the shareholder when it opens in edit mode.
   React.useEffect(() => {
-    if (!shareholderDrawerOpen) {
+    if (addressInputRef.current) addressInputRef.current.value = ""
+    if (statusReportInputRef.current) statusReportInputRef.current.value = ""
+    setAddressFile(null)
+    setStatusReportFile(null)
+    if (!shareholderDrawerOpen || !editing) {
       setFormData(EMPTY_FORM)
       setAddressVerified(false)
-      setAddressFile(null)
       setShareholderType("individual")
-      setStatusReportFile(null)
-      if (addressInputRef.current) addressInputRef.current.value = ""
-      if (statusReportInputRef.current) statusReportInputRef.current.value = ""
+      setSavedAddressDoc(null)
+      setSavedStatusReport(null)
+      return
     }
-  }, [shareholderDrawerOpen])
+    const type: ShareholderType = String(editing.shareholderType).toLowerCase() === "entity" ? "entity" : "individual"
+    // Only prefill BVN/NIN when the API returns the full number (masked values stay on file).
+    const digits = (v: unknown) => (ELEVEN_DIGITS.test(text(v)) ? text(v) : "")
+    const address = text(editing.address)
+    setShareholderType(type)
+    setFormData({
+      fullName: text(editing.fullName) || text(editing.name),
+      email: text(editing.email),
+      phoneNumber: editingShareholder?.phone || text(editing.phoneNumber),
+      bvn: type === "individual" ? digits(editing.bvn) : "",
+      nin: type === "individual" ? digits(editing.nin) : "",
+      address,
+    })
+    // The saved address was already verified when the shareholder was created.
+    setAddressVerified(!!address)
+    setSavedAddressDoc(savedDoc(editing.addressDocument))
+    setSavedStatusReport(savedDoc(editing.statusReport))
+  }, [shareholderDrawerOpen, editing, editingShareholder?.phone])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,25 +130,40 @@ export const CreateShareholderDrawer: React.FC = () => {
     const nin = formData.nin.trim()
     if (!formData.fullName.trim() || !formData.email.trim()) return toast.error("Please provide full name and email")
     const isEntity = shareholderType === "entity"
+    // Editing: a blank BVN/NIN keeps the one on file.
+    const keptBvn = isEdit && !bvn && String(editing?.shareholderType ?? "individual") !== "entity" ? text(editing?.bvn) : ""
+    const keptNin = isEdit && !nin && String(editing?.shareholderType ?? "individual") !== "entity" ? text(editing?.nin) : ""
+    const keptStatusReport = isEntity && !statusReportFile ? savedStatusReport : null
+    const keptAddressDoc = !addressFile ? savedAddressDoc : null
     if (!isEntity) {
-      if (!bvn && !nin) return toast.error("Enter the shareholder's BVN or NIN")
+      if (!bvn && !nin && !keptBvn && !keptNin) return toast.error("Enter the shareholder's BVN or NIN")
       if (bvn && !ELEVEN_DIGITS.test(bvn)) return toast.error("BVN must be 11 digits")
       if (nin && !ELEVEN_DIGITS.test(nin)) return toast.error("NIN must be 11 digits")
-    } else if (!statusReportFile) {
+    } else if (!statusReportFile && !keptStatusReport) {
       return toast.error("Please upload the entity's status report")
     }
     if (!formData.address.trim() || !addressVerified) return toast.error("Select the shareholder's address from the suggestions")
-    if (!addressFile) return toast.error("Please upload the proof of address")
+    if (!addressFile && !keptAddressDoc) return toast.error("Please upload the proof of address")
 
     setLoading(true)
     try {
-      // Upload first, then send the returned URL (per API docs).
-      const upload = await ComplianceService.uploadDocument(addressFile)
-      if (!upload.success || !upload.url) {
-        toast.error(upload.error || "Proof of address upload failed")
-        return
+      // Upload new files first, then send the returned URLs (per API docs). Unchanged files are resent as-is.
+      let addressDocument: Record<string, unknown> | null = keptAddressDoc
+      if (addressFile) {
+        const upload = await ComplianceService.uploadDocument(addressFile)
+        if (!upload.success || !upload.url) {
+          toast.error(upload.error || "Proof of address upload failed")
+          return
+        }
+        addressDocument = {
+          fileName: addressFile.name,
+          fileType: addressFile.type || "application/pdf",
+          fileSize: addressFile.size,
+          fileUrl: upload.url,
+          uploadDate: new Date().toISOString(),
+        }
       }
-      let statusReport: Record<string, unknown> | undefined
+      let statusReport: Record<string, unknown> | undefined = keptStatusReport ?? undefined
       if (isEntity && statusReportFile) {
         const reportUpload = await ComplianceService.uploadDocument(statusReportFile)
         if (!reportUpload.success || !reportUpload.url) {
@@ -125,39 +179,39 @@ export const CreateShareholderDrawer: React.FC = () => {
         }
       }
 
-      const newShareholder = {
+      const shareholder = {
+        ...(isEdit && editingId ? { _id: editingId } : {}),
         fullName: formData.fullName.trim(),
         email: formData.email.trim(),
         phoneNumber: formData.phoneNumber.trim() || undefined,
         shareholderType,
         // Individual: BVN and/or NIN. Entity: status report instead (no BVN/NIN).
-        ...(isEntity ? { statusReport } : { bvn: bvn || undefined, nin: nin || undefined }),
+        ...(isEntity
+          ? { statusReport }
+          : { bvn: bvn || keptBvn || undefined, nin: nin || keptNin || undefined }),
         address: formData.address.trim(),
-        addressDocument: {
-          fileName: addressFile.name,
-          fileType: addressFile.type || "application/pdf",
-          fileSize: addressFile.size,
-          fileUrl: upload.url,
-          uploadDate: new Date().toISOString(),
-        },
-        status: "pending" as const,
+        addressDocument: addressDocument ?? undefined,
+        status: isEdit ? (text(editing?.status) || "pending") : "pending",
       }
 
-      // PUT replaces the full list: resend existing rows (only spec fields) plus the new one.
+      // PUT replaces the full list: resend existing rows (only spec fields) with this one added or replaced.
       const existing: unknown[] = await ComplianceService.getShareholdersForCurrentMerchant().catch(() => [])
-      const payload = [...existing.map(toBeneficialOwnerPayload), newShareholder]
-      const res = (await ComplianceService.upsertShareholdersForCurrentMerchant(payload)) as
-        | { data?: { shareholder?: unknown }; shareholder?: unknown }
-        | undefined
-      const saved = res?.data?.shareholder ?? res?.shareholder ?? newShareholder
+      const rows = existing.map(toBeneficialOwnerPayload)
+      const index = isEdit && editingId ? rows.findIndex((r) => shareholderId(r) === editingId) : -1
+      if (isEdit && index < 0) {
+        toast.error("This shareholder no longer exists. Refresh the list and try again.")
+        return
+      }
+      const payload = index >= 0 ? rows.map((r, i) => (i === index ? toBeneficialOwnerPayload(shareholder) : r)) : [...rows, shareholder]
+      await ComplianceService.upsertShareholdersForCurrentMerchant(payload)
 
-      addShareholder(toShareholderRow(saved))
-      setShareholderDrawerOpen(false)
-      toast.success("Shareholder created successfully.")
+      await reloadShareholders().catch(() => undefined)
+      closeDrawer()
+      toast.success(isEdit ? "Shareholder updated successfully." : "Shareholder created successfully.")
     } catch (err: any) {
       const data = err?.response?.data
-      const msg = data?.error ?? data?.message ?? err?.message ?? "Failed to create shareholder"
-      console.error("Create shareholder failed", { status: err?.response?.status, data, err })
+      const msg = data?.error ?? data?.message ?? err?.message ?? (isEdit ? "Failed to update shareholder" : "Failed to create shareholder")
+      console.error(isEdit ? "Update shareholder failed" : "Create shareholder failed", { status: err?.response?.status, data, err })
       if (err?.response?.status === 401) {
         toast.error("Unauthorized — please log in again.")
       } else if (String(msg).toLowerCase().includes("no kyc profile") || String(msg).toLowerCase().includes("no profile found")) {
@@ -185,6 +239,8 @@ export const CreateShareholderDrawer: React.FC = () => {
   const fileTile = (opts: {
     label: string
     file: File | null
+    /** File already on the server (edit mode), shown until a new one is picked. */
+    saved?: Raw | null
     inputRef: React.RefObject<HTMLInputElement>
     onSelect: (e: React.ChangeEvent<HTMLInputElement>) => void
     onRemove: () => void
@@ -209,6 +265,22 @@ export const CreateShareholderDrawer: React.FC = () => {
               </button>
             </div>
           )}
+          {!opts.file && opts.saved && (
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1 text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                <FileText className="w-4 h-4 text-gray-500" />
+                <span className="truncate max-w-[160px]" title={text(opts.saved.fileName) || "Saved file"}>
+                  {text(opts.saved.fileName) || "Saved file"}
+                </span>
+              </span>
+              {text(opts.saved.fileUrl) && (
+                <a href={text(opts.saved.fileUrl)} target="_blank" rel="noreferrer" className="text-xs text-[#9A813F] hover:underline">
+                  View
+                </a>
+              )}
+              <span className="text-xs text-gray-500">On file</span>
+            </div>
+          )}
         </div>
       </div>
       <label
@@ -216,7 +288,7 @@ export const CreateShareholderDrawer: React.FC = () => {
         style={{ backgroundColor: "#9A813F", color: "#fff" }}
       >
         <input ref={opts.inputRef} type="file" className="hidden" accept=".pdf,application/pdf" onChange={opts.onSelect} />
-        {opts.file ? "Change file" : "Upload"}
+        {opts.file || opts.saved ? "Change file" : "Upload"}
       </label>
     </div>
   )
@@ -239,9 +311,9 @@ export const CreateShareholderDrawer: React.FC = () => {
     <DrawerPanel
       open={!!shareholderDrawerOpen}
       onOpenChange={(next) => {
-        if (!next) setShareholderDrawerOpen(false)
+        if (!next) closeDrawer()
       }}
-      title="Create shareholder"
+      title={isEdit ? "Edit shareholder" : "Create shareholder"}
       className="sm:max-w-[52rem]"
       description="Add the shareholder's details: BVN or NIN for an individual, or a status report for an entity."
       bodyClassName="p-0 gap-0"
@@ -281,14 +353,15 @@ export const CreateShareholderDrawer: React.FC = () => {
           <div className="flex flex-col gap-6 min-w-0">
             {shareholderType === "individual" ? (
               <>
-                {idField("bvn", "BVN (11 digits)")}
-                {idField("nin", "NIN (11 digits)")}
+                {idField("bvn", isEdit && text(editing?.bvn) && !formData.bvn ? "BVN on file (leave blank to keep)" : "BVN (11 digits)")}
+                {idField("nin", isEdit && text(editing?.nin) && !formData.nin ? "NIN on file (leave blank to keep)" : "NIN (11 digits)")}
                 <p className="-mt-4 text-xs text-gray-500">Provide a BVN or NIN (at least one).</p>
               </>
             ) : (
               fileTile({
                 label: "Status Report",
                 file: statusReportFile,
+                saved: savedStatusReport,
                 inputRef: statusReportInputRef,
                 onSelect: handleStatusReportSelect,
                 onRemove: () => setStatusReportFile(null),
@@ -309,6 +382,7 @@ export const CreateShareholderDrawer: React.FC = () => {
             {fileTile({
               label: "Proof of Address",
               file: addressFile,
+              saved: savedAddressDoc,
               inputRef: addressInputRef,
               onSelect: handleAddressFileSelect,
               onRemove: () => setAddressFile(null),
@@ -322,7 +396,7 @@ export const CreateShareholderDrawer: React.FC = () => {
           className="mt-8 w-full text-white py-3 rounded-md font-medium hover:opacity-90 transition-colors disabled:opacity-50 shrink-0"
           style={{ backgroundColor: "#9A813F" }}
         >
-          {loading ? "Saving..." : "Save Shareholder"}
+          {loading ? "Saving..." : isEdit ? "Update Shareholder" : "Save Shareholder"}
         </button>
       </form>
     </DrawerPanel>

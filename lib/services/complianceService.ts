@@ -1,6 +1,7 @@
 import { apiClient } from "@/lib/api";
 import { getAccessToken } from "@/lib/cookieAuth";
 import { ENDPOINTS } from "@/lib/endpoints";
+import { toBeneficialOwnerPayload } from "@/lib/shareholders";
 
 /** localStorage key for sign-in redirect fallback when KYC status API is unavailable */
 export const COMPLIANCE_COMPLETE_KEY = "plata_compliance_complete_v1";
@@ -96,6 +97,18 @@ export class ComplianceService {
     if (!token) throw new Error("Missing access token. Please log in before submitting shareholders.");
     const res = await apiClient.put(ENDPOINTS.compliance.business.beneficialOwnersPut, payload);
     return res.data;
+  }
+
+  /**
+   * Remove one shareholder. The Plata spec has no DELETE …/beneficial-owners/{id}, so this re-sends
+   * the full list (PUT replaces it) without that shareholder.
+   */
+  static async deleteShareholder(shareholderId: string) {
+    const existing = await this.getShareholdersForCurrentMerchant();
+    const rows = existing.map(toBeneficialOwnerPayload);
+    const remaining = rows.filter((r) => String(r._id ?? "") !== shareholderId);
+    if (remaining.length === rows.length) throw new Error("Shareholder not found. Refresh the list and try again.");
+    return this.upsertShareholdersForCurrentMerchant(remaining);
   }
 
   // --- Business dropdown options (from compliance-ms) ---
