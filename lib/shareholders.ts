@@ -50,10 +50,17 @@ const statusOf = (s: unknown): ShareholderRow["status"] => {
   return "Pending"
 }
 
+/** Server id of a shareholder row (`_id` per the spec; `id` as a fallback). */
+export function shareholderId(raw: unknown): string {
+  const s = isObj(raw) ? raw : {}
+  return str(s._id) || str(s.id) || str(s.shareholderId)
+}
+
 /** API shareholder (GET /kyc/business/{merchantId}/beneficial-owners) -> table row. */
 export function toShareholderRow(raw: unknown): ShareholderRow {
   const s = isObj(raw) ? raw : {}
   return {
+    id: shareholderId(s) || undefined,
     name: str(s.fullName) || str(s.name) || "Unknown",
     email: str(s.email),
     phone: pickShareholderPhone(s),

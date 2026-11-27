@@ -1,11 +1,13 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
+import { createContext, useCallback, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react"
 import { WEBSITE_URL_PREFIX } from "@/lib/websiteUrl"
 import { ComplianceService } from "@/lib/services/complianceService"
 import { toShareholderRow } from "@/lib/shareholders"
 
 export interface ShareholderRow {
+  /** Server `_id`, needed to edit or delete the shareholder. */
+  id?: string
   name: string
   email: string
   phone: string
@@ -53,6 +55,11 @@ interface ComplianceFormContextType {
   addShareholder: (shareholder: ShareholderRow) => void
   shareholderDrawerOpen: boolean
   setShareholderDrawerOpen: (open: boolean) => void
+  /** Shareholder being edited in the drawer (null = create a new one). */
+  editingShareholder: ShareholderRow | null
+  setEditingShareholder: (row: ShareholderRow | null) => void
+  /** Re-fetch shareholders from the API (after create / edit / delete). */
+  reloadShareholders: () => Promise<void>
   merchantBusinessSurvey: MerchantBusinessSurveyState
   setMerchantBusinessSurvey: Dispatch<SetStateAction<MerchantBusinessSurveyState>>
   compliancePrefill: Record<string, unknown> | null
@@ -64,6 +71,11 @@ export function ComplianceFormProvider({ children }: { children: ReactNode }) {
   const [businessFiles, setBusinessFiles] = useState<Record<string, File>>({})
   const [shareholders, setShareholders] = useState<ShareholderRow[]>([])
   const [shareholderDrawerOpen, setShareholderDrawerOpen] = useState(false)
+  const [editingShareholder, setEditingShareholder] = useState<ShareholderRow | null>(null)
+  const reloadShareholders = useCallback(async () => {
+    const list = await ComplianceService.getShareholdersForCurrentMerchant()
+    setShareholders(list.map(toShareholderRow))
+  }, [])
   const [merchantBusinessSurvey, setMerchantBusinessSurvey] = useState<MerchantBusinessSurveyState>(() =>
     createDefaultMerchantBusinessSurvey(),
   )
@@ -133,6 +145,9 @@ export function ComplianceFormProvider({ children }: { children: ReactNode }) {
         addShareholder,
         shareholderDrawerOpen,
         setShareholderDrawerOpen,
+        editingShareholder,
+        setEditingShareholder,
+        reloadShareholders,
         merchantBusinessSurvey,
         setMerchantBusinessSurvey,
         compliancePrefill,
